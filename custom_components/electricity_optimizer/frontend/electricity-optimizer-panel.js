@@ -974,10 +974,15 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._carsLoading = true;
     try {
       const res = await this._hass.callWS({ type: "electricity_optimizer/cars/list" });
-      this._cars = res.cars || [];
+      const cars = res.cars || [];
+      const json = JSON.stringify(cars);
       this._carsLoadedAt = Date.now();
-      this._carsStamp = Date.now();
-      this._maybeRender();
+      if (json !== this._carsJson) {
+        this._cars = cars;
+        this._carsJson = json;
+        this._carsStamp = Date.now();
+        this._maybeRender();
+      }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn("electricity-optimizer: cars/list failed", err);
@@ -1295,12 +1300,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._batteryLoading = true;
     try {
       const res = await this._hass.callWS({ type: "electricity_optimizer/battery/get" });
-      this._battery = res.battery || null;
-      this._batteryRuntime = res.runtime || {};
       this._batteryLoadedAt = Date.now();
-      this._batteryStamp = Date.now();
       this._batteryError = null;
-      this._maybeRender();
+      this._applyBattery(res);
     } catch (err) {
       this._batteryError = err && err.message ? err.message : String(err);
       if (this._battery === undefined) this._battery = null;
@@ -1309,12 +1311,22 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
   }
 
+  _applyBattery(res) {
+    const battery = res.battery || null;
+    const runtime = res.runtime || {};
+    const json = JSON.stringify([battery, runtime]);
+    if (json === this._batteryJson) return;
+    this._battery = battery;
+    this._batteryRuntime = runtime;
+    this._batteryJson = json;
+    this._batteryStamp = Date.now();
+    this._maybeRender();
+  }
+
   async _saveBattery(patch) {
     const res = await this._hass.callWS({ type: "electricity_optimizer/battery/save", battery: patch });
-    this._battery = res.battery;
-    this._batteryRuntime = res.runtime || {};
     this._batteryLoadedAt = Date.now();
-    this._batteryStamp = Date.now();
+    this._applyBattery(res);
     return res;
   }
 
@@ -1376,7 +1388,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (this._battery === undefined) {
       return `<div class="card"><div class="empty"><ha-icon icon="mdi:timer-sand"></ha-icon>Henter batteri…</div></div>`;
     }
-    if (this._editingBattery || this._battery === null) return this._renderBatteryForm(this._battery || {});
+    if (this._battery === null) this._editingBattery = true;
+    if (this._editingBattery) return this._renderBatteryForm(this._battery || this._pendingBatteryForm || {});
     const b = this._battery;
     const rt = this._batteryRuntime || {};
     const live = this._readBatteryLive();
@@ -1559,18 +1572,19 @@ class ElectricityOptimizerPanel extends HTMLElement {
           await this._saveBattery(data);
           this._editingBattery = false;
           this._batteryFormError = null;
+          this._pendingBatteryForm = null;
         } catch (err) {
           this._batteryFormError = (err && (err.message || err.code)) || String(err);
-          this._battery = this._battery ? { ...this._battery, ...data } : this._battery;
-          if (!this._battery) this._pendingBatteryForm = data;
+          if (this._battery) this._battery = { ...this._battery, ...data };
+          else this._pendingBatteryForm = data;
         }
         this._maybeRender(true);
       } else if (action === "delete") {
         if (!window.confirm("Fjern husbatteriet fra Electricity Optimizer?")) return;
         const res = await this._hass.callWS({ type: "electricity_optimizer/battery/delete" });
-        this._battery = res.battery || null;
-        this._batteryRuntime = {};
-        this._editingBattery = false;
+        this._applyBattery(res);
+        this._editingBattery = true;
+        this._pendingBatteryForm = null;
         this._maybeRender(true);
       } else if (action === "override") {
         await this._saveBattery({ override: btn.dataset.value });
