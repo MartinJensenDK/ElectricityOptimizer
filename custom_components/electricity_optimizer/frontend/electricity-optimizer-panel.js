@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.9.0";
+const PANEL_JS_VERSION = "0.10.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -124,6 +124,10 @@ const STYLE = `
   .kpi .value { font-size: 28px; font-weight: 500; line-height: 1.1; }
   .kpi .value small { font-size: 13px; font-weight: 400; color: var(--secondary-text-color); margin-left: 4px; }
   .kpi .sub { font-size: 13px; color: var(--secondary-text-color); }
+  .kpi.live .value { font-size: 26px; }
+  .kpi.live .value.in { color: var(--error-color, #db4437); }
+  .kpi.live .value.out { color: var(--success-color, #43a047); }
+  .kpi.live .value.sun { color: var(--warning-color, #ffa600); }
   .badge {
     display: inline-block;
     padding: 2px 10px;
@@ -605,6 +609,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
     return `
+      ${this._renderLiveRow()}
       <div class="grid">
         <div class="card kpi">
           <div class="label"><ha-icon icon="mdi:flash"></ha-icon>Pris lige nu</div>
@@ -683,6 +688,50 @@ class ElectricityOptimizerPanel extends HTMLElement {
         </div>
       </div>
       ${this._renderRulesCard()}`;
+  }
+
+  _gridLiveW() {
+    // battery's grid sensor first, then the rules' house-level sensor
+    const live = this._battery ? this._readBatteryLive() : { gridW: null, houseW: null };
+    if (live.gridW !== null) return live.gridW;
+    const r = this._rules;
+    if (r && r.grid_power_entity) {
+      const g = this._numState(r.grid_power_entity);
+      const kw = ElectricityOptimizerPanel._toKw(g.value, g.unit);
+      if (kw !== null) return kw * 1000 * (r.grid_sign === "export_positive" ? -1 : 1);
+    }
+    return null;
+  }
+
+  _renderLiveRow() {
+    const solar = this._readSolar();
+    const bat = this._battery ? this._readBatteryLive() : { soc: null, batW: null, gridW: null, houseW: null };
+    const gridW = this._gridLiveW();
+    const solarW = solar.powerKw === null ? null : Math.round(solar.powerKw * 1000);
+    const w = (v) => (v === null ? "–" : `${fmtNum(Math.abs(v), 0)}<small>W</small>`);
+    return `
+      <div class="grid">
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu</div>
+          <div class="value ${solarW ? "sun" : ""}">${w(solarW)}</div>
+          <div class="sub">${solar.configured ? (solar.todayKwh !== null ? `${fmtNum(solar.todayKwh, 1)} kWh i dag` : "") : "Ingen sensor – se Konfigurer"}</div>
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Husforbrug</div>
+          <div class="value">${w(bat.houseW)}</div>
+          <div class="sub">${this._battery && this._battery.house_power_entity ? "lige nu" : "Ingen sensor – vælg under Hus batteri"}</div>
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri</div>
+          <div class="value ${bat.batW > 0 ? "out" : bat.batW < 0 ? "in" : ""}">${bat.soc === null ? "–" : `${fmtNum(bat.soc, 0)}<small>%</small>`}</div>
+          <div class="sub">${bat.batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : bat.batW >= 0 ? `lader ${fmtNum(bat.batW, 0)} W` : `aflader ${fmtNum(-bat.batW, 0)} W`}</div>
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet</div>
+          <div class="value ${gridW > 0 ? "in" : gridW < 0 ? "out" : ""}">${w(gridW)}</div>
+          <div class="sub">${gridW === null ? "Ingen net-sensor" : gridW > 0 ? "køber fra nettet" : gridW < 0 ? "sælger til nettet" : "i balance"}</div>
+        </div>
+      </div>`;
   }
 
   _renderSolarStatusRow() {
