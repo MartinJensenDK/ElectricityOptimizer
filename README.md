@@ -6,8 +6,8 @@ timer på elmarkedet til hus og elbil, og bruger husbatteriet når prisen er hø
 Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants sidebar med tre faner:
 
 - **Forsiden** – live-række med gauges for solproduktion, husforbrug, elnet, batteri-effekt og batteri-%,
-  prisgraf for i dag og i morgen med lodret nu-streg (prisen lige nu står i toppen) og elbilernes
-  planlagte ladetimer indtegnet, billigste og dyreste timer fremover, status for solceller,
+  prisgraf for i dag og i morgen med lodret nu-streg (prisen lige nu står i toppen), ladeperioder for
+  biler og husbatteri (lyseblå felt fra start til forventet slut) og elbilernes planlagte ladetimer, billigste og dyreste timer fremover, status for solceller,
   batteri og elbiler samt reglerne for opladning.
 - **Solceller** – produktion lige nu (og udnyttelse af kWp), produceret i dag mod prognosen,
   prognose for i dag/i morgen, solens højde og op-/nedgang samt dagens produktionskurve
@@ -84,8 +84,8 @@ Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem el
 
 | Regel | Betydning |
 | --- | --- |
-| Sol først til | *Elbil*: bilen får eksport + batteriets ladeeffekt. *Husbatteri*: bilen får kun eksporten |
-| Elbil-sol: batteri ≥ (%) | Elbilen lader kun fra sol, når husbatteriet er mindst så fuldt; falder det under grænsen, stopper bilen. Tom = ingen grænse |
+| Sol prioritet | Sorterbar liste (træk eller tryk ⇅): nr. 1 får solstrømmen først. *Elbil* som nr. 1: bilen får eksport + batteriets ladeeffekt. *Husbatteri* som nr. 1: elbilen lader ikke fra sol |
+| Prioriter over / under (%) | Interval for nr. 1's ladestand. Er ladestanden over den øvre eller under den nedre grænse, prioriteres der ikke længere, og solstrømmen bruges normalt (bilen får kun den rene eksport) |
 | Elbil-sol: sol ≥ (W) | Elbilen lader kun fra sol, når solcellerne (effekt-sensoren fra opsætningen) har produceret mindst så meget i det valgte antal minutter; falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det |
 | … i mindst (min) | Hvor længe produktion og overskud skal være over grænsen, før der startes, og under, før der stoppes |
 | Hovedsikring (A) | Valgfri øvre grænse pr. fase for elbiler + batteri-opladning fra nettet. Tom = ingen grænse |

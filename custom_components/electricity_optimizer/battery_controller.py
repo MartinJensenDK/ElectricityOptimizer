@@ -266,7 +266,30 @@ class BatteryController:
             mode = "normal"
             rt["status"] = "full"
         rt["mode"] = mode
+        rt["session"] = self._session(ctx.now, plan, mode)
         return mode
+
+    @staticmethod
+    def _session(now: datetime, plan: dict[str, Any], mode: str) -> dict[str, Any] | None:
+        """The current or next contiguous block of grid-charging slots, for the chart."""
+        upcoming = [sl for sl in plan["plan"] if sl["mode"] == "charge" and datetime.fromisoformat(sl["end"]) > now]
+        if not upcoming:
+            return None
+        block = [upcoming[0]]
+        for sl in upcoming[1:]:
+            if sl["start"] == block[-1]["end"]:
+                block.append(sl)
+            else:
+                break
+        start = datetime.fromisoformat(block[0]["start"])
+        if mode == "charge" and start <= now:
+            start = now
+        return {
+            "start": start.isoformat(),
+            "end": block[-1]["end"],
+            "source": "grid",
+            "estimated": any(sl.get("estimated") for sl in block),
+        }
 
     async def async_apply(self, ctx: Context, mode: str | None) -> None:
         """Apply the mode after the EV round, honouring the shared rules."""

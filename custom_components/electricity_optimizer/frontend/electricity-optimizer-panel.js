@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.17.0";
+const PANEL_JS_VERSION = "0.18.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -170,7 +170,23 @@ const STYLE = `
   .legend .l-high::before { background: var(--error-color, #db4437); }
   .legend .l-tmr::before { background: var(--secondary-text-color); opacity: 0.55; }
   .legend .l-car::before { background: var(--c); }
-  .ev-plan { opacity: 0.2; pointer-events: none; }
+  .session { fill: #64b5f6; opacity: 0.28; }
+  .session-edge { stroke: #1e88e5; stroke-width: 1.5; }
+  .session-edge.est { stroke-dasharray: 4 3; }
+  .session-label { font-size: 10px; font-weight: 500; fill: #1565c0; }
+  .legend .l-session::before { background: #64b5f6; border: 1px solid #1e88e5; box-sizing: border-box; }
+  .prio-field { min-width: 190px; }
+  .prio-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .prio-list li {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: grab;
+    border: 1px solid var(--divider-color); background: var(--card-background-color, #fff); font-size: 14px; color: var(--primary-text-color);
+  }
+  .prio-list li:first-child { border-color: var(--primary-color); }
+  .prio-list li.dragging { opacity: 0.5; }
+  .prio-list li.over { outline: 2px dashed var(--primary-color); outline-offset: -2px; }
+  .prio-list .grip { color: var(--secondary-text-color); letter-spacing: -3px; font-size: 14px; user-select: none; }
+  .prio-list .num { font-weight: 600; color: var(--primary-color); }
+  .prio-list .swap { margin-left: auto; border: 0; background: transparent; cursor: pointer; color: var(--secondary-text-color); font-size: 14px; padding: 0 4px; }
   .ev-band { opacity: 0.95; }
   .now-mark { stroke: var(--primary-text-color); stroke-width: 1.5; }
   .now-pill { fill: var(--primary-text-color); }
@@ -515,6 +531,47 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._contentEl.addEventListener("focusin", showTip);
     this._contentEl.addEventListener("focusout", hideTip);
     this._contentEl.addEventListener("scroll", () => (this._tipEl.hidden = true));
+    // drag & drop in the solar priority list (two rows: dropping on the other row swaps them)
+    this._contentEl.addEventListener("dragstart", (ev) => {
+      const li = ev.target.closest && ev.target.closest("[data-prio-item]");
+      if (!li) return;
+      this._dragPrio = li.dataset.prioItem;
+      li.classList.add("dragging");
+      if (ev.dataTransfer) {
+        ev.dataTransfer.effectAllowed = "move";
+        ev.dataTransfer.setData("text/plain", li.dataset.prioItem);
+      }
+    });
+    this._contentEl.addEventListener("dragend", (ev) => {
+      const li = ev.target.closest && ev.target.closest("[data-prio-item]");
+      if (li) li.classList.remove("dragging");
+      for (const el of this._contentEl.querySelectorAll(".prio-list .over")) el.classList.remove("over");
+    });
+    this._contentEl.addEventListener("dragover", (ev) => {
+      const li = ev.target.closest && ev.target.closest("[data-prio-item]");
+      if (!li || !this._dragPrio) return;
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+      if (li.dataset.prioItem !== this._dragPrio) li.classList.add("over");
+    });
+    this._contentEl.addEventListener("dragleave", (ev) => {
+      const li = ev.target.closest && ev.target.closest("[data-prio-item]");
+      if (li) li.classList.remove("over");
+    });
+    this._contentEl.addEventListener("drop", (ev) => {
+      const li = ev.target.closest && ev.target.closest("[data-prio-item]");
+      if (!li || !this._dragPrio) return;
+      ev.preventDefault();
+      const dragged = this._dragPrio;
+      this._dragPrio = null;
+      const list = li.closest(".prio-list");
+      const items = [...list.querySelectorAll("[data-prio-item]")].map((el) => el.dataset.prioItem);
+      const from = items.indexOf(dragged), to = items.indexOf(li.dataset.prioItem);
+      if (from < 0 || to < 0 || from === to) return;
+      items.splice(from, 1);
+      items.splice(to, 0, dragged);
+      this._setSolarPriority(items[0]);
+    });
     this._contentEl.addEventListener("focusout", (ev) => {
       const list = ev.target.closest && ev.target.closest(".picker") && ev.target.closest(".picker").querySelector(".picker-list");
       if (list) setTimeout(() => (list.hidden = true), 150);
@@ -666,7 +723,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       ${this._renderLiveRow()}
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvede felter = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
+        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, lyseblå felt med lodrette kanter = ladeperiode for en bil eller husbatteriet fra start til forventet slut (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d)}</div>
         <div class="legend">
           <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
@@ -674,6 +731,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${this._evPlanSeries()
             .map((c) => `<span class="l-car" style="--c:${c.color}">Ladeplan: ${esc(c.name)}</span>`)
             .join("")}
+          <span class="l-session">Ladeperiode: start → forventet slut</span>
           <span style="margin-left:auto">Lodret streg = nu · stiplet linje = dagens gennemsnit</span>
         </div>
       </div>
@@ -993,7 +1051,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const tEnd = t0 + points.length * slotMs;
     const xOf = (t) => padL + Math.min(innerW, Math.max(0, ((t - t0) / slotMs) * bw));
 
-    // planned EV charging: translucent overlay on the bars + a band per car below the bars
+    // planned EV charging: a band per car below the bars
     const series = this._evPlanSeries();
     const bandH = 5;
     const evPlan = series
@@ -1005,10 +1063,28 @@ class ElectricityOptimizerPanel extends HTMLElement {
             const x1 = xOf(sl.start), x2 = xOf(sl.end);
             const w = Math.max(1, x2 - x1);
             const label = `${c.name}: planlagt ladning ${fmtTime(new Date(sl.start))} – ${fmtTime(new Date(sl.end))}`;
-            return `<rect class="ev-plan" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}" fill="${c.color}"><title>${esc(label)}</title></rect>
-              <rect class="ev-band" x="${x1.toFixed(1)}" y="${bandY}" width="${w.toFixed(1)}" height="${bandH}" fill="${c.color}"><title>${esc(label)}</title></rect>`;
+            return `<rect class="ev-band" x="${x1.toFixed(1)}" y="${bandY}" width="${w.toFixed(1)}" height="${bandH}" fill="${c.color}"><title>${esc(label)}</title></rect>`;
           })
           .join("");
+      })
+      .join("");
+
+    // charging periods (car or battery): light blue box from start to expected end, with edge lines
+    const sessions = this._chargingSessions()
+      .filter((se) => se.end > t0 && se.start < tEnd)
+      .map((se, i) => {
+        const x1 = xOf(se.start), x2 = xOf(se.end);
+        const w = Math.max(2, x2 - x1);
+        const endTxt = `${se.estimated ? "ca. " : ""}${fmtTime(new Date(se.end))}`;
+        const label = `${se.name} ${fmtTime(new Date(se.start))} – ${endTxt}`;
+        const title = `${se.name}: ${se.source === "solar" ? "lader fra sol" : "netopladning"} ${fmtTime(new Date(se.start))} – ${endTxt}${
+          se.estimated ? " (forventet slut, ændrer sig med solproduktion og forbrug)" : ""
+        }`;
+        const ly = padT + 12 + i * 12;
+        return `<rect class="session" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}"><title>${esc(title)}</title></rect>
+          <line class="session-edge" x1="${x1.toFixed(1)}" x2="${x1.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
+          <line class="session-edge ${se.estimated ? "est" : ""}" x1="${x2.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
+          <text class="session-label" x="${(Math.min(x1, W - padR - 90) + 3).toFixed(1)}" y="${ly}">${esc(label)}</text>`;
       })
       .join("");
 
@@ -1029,6 +1105,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${yTicks.join("")}
       <line class="axis" x1="${padL}" x2="${W - padR}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}"/>
       ${bars}
+      ${sessions}
       ${evPlan}
       ${meanLine}
       ${ticks.join("")}
@@ -1037,6 +1114,23 @@ class ElectricityOptimizerPanel extends HTMLElement {
   }
 
   static EV_COLORS = ["#1e88e5", "#8e24aa", "#00acc1", "#f4511e", "#3949ab"];
+
+  /** Current/next charging periods for cars and the house battery (start → expected end). */
+  _chargingSessions() {
+    const out = [];
+    const push = (name, se) => {
+      if (!se || !se.start || !se.end) return;
+      const start = new Date(se.start).getTime(), end = new Date(se.end).getTime();
+      if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return;
+      out.push({ name, start, end, estimated: !!se.estimated, source: se.source || "grid" });
+    };
+    for (const car of this._cars || []) {
+      if (car.enabled === false) continue;
+      push(car.name || "Elbil", car.runtime && car.runtime.session);
+    }
+    if (this._battery && this._batteryRuntime) push("Husbatteri", this._batteryRuntime.session);
+    return out;
+  }
 
   /** Planned (chosen) charging slots per enabled car, for the price chart. */
   _evPlanSeries() {
@@ -1260,11 +1354,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       rows = `<div class="status-row"><ha-icon icon="mdi:timer-sand"></ha-icon><div class="t"><div class="d">Henter regler…</div></div></div>`;
     } else if (rules.solar_priority === "battery") {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? "Batteriet lader fra sol; bilen får kun det, der ellers sælges til nettet." : "Intet husbatteri sat op – reglen har ingen effekt."}</div></div></div>
-        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Får ren eksport. ${esc(carText)}.</div></div></div>`;
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Mens batteriet er ${rules.solar_priority_under}–${rules.solar_priority_over} %, får det al solstrømmen, og elbilen venter.` : "Intet husbatteri sat op – reglen har ingen effekt."}</div></div></div>
+        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Uden for intervallet får bilen den rene eksport. ${esc(carText)}.</div></div></div>`;
     } else {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Bilen får eksporten plus det, batteriet lader med. ${esc(carText)}.</div></div></div>
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Mens bilen er ${rules.solar_priority_under}–${rules.solar_priority_over} %, får den eksporten plus det, batteriet lader med; ellers kun eksporten. ${esc(carText)}.</div></div></div>
         <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${battery ? "Får det overskud, bilen ikke bruger, og bruges i de dyre timer." : "Intet husbatteri sat op."}</div></div></div>`;
     }
     const ctx = this._context || {};
@@ -1380,7 +1474,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     solar: ["Lader fra sol", "low"],
     solar_wait: ["Venter på sol-overskud", "mid"],
     solar_low: ["Venter på solproduktion", "mid"],
-    battery_first: ["Venter – husbatteri for lavt", "mid"],
+    battery_first: ["Venter – husbatteri har prioritet", "mid"],
     no_solar_sensor: ["Mangler solcelle-sensor", "neutral"],
     fuse_wait: ["Venter – hovedsikring", "mid"],
     no_grid_sensor: ["Mangler net-sensor til sol", "neutral"],
@@ -1425,17 +1519,28 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   /** One sentence describing what the current solar rules mean (shared by the rules card and the solar tab). */
   _solarPriorityText(rules) {
+    const band = `${rules.solar_priority_under}–${rules.solar_priority_over} %`;
     return rules.solar_priority === "battery"
-      ? "Husbatteri først: bilen får kun det, der ellers sælges til nettet."
-      : "Elbil først: bilen får eksporten plus det, husbatteriet ellers ville lade med.";
+      ? `Nr. 1 er husbatteriet: mens dets ladestand er ${band}, lader elbilen ikke fra sol. Uden for intervallet bruges solstrømmen normalt (bilen får den rene eksport).`
+      : `Nr. 1 er elbilen: mens bilens ladestand er ${band}, får den eksporten plus det, husbatteriet ellers ville lade med. Uden for intervallet bruges solstrømmen normalt (bilen får kun den rene eksport).`;
   }
 
   _solarConditionsText(rules) {
     const conds = [];
-    if (rules.battery_min_soc_for_ev_solar !== null && this._battery) conds.push(`husbatteriet er mindst ${rules.battery_min_soc_for_ev_solar} %`);
     if (rules.solar_min_w !== null) conds.push(`solcellerne har produceret mindst ${fmtNum(rules.solar_min_w, 0)} W i ${rules.solar_min_minutes} min`);
     conds.push(`der har været overskud nok i ${rules.solar_min_minutes} min (stopper efter ${rules.solar_min_minutes} min uden)`);
     return `Elbilen lader fra sol, når ${conds.join(", og ")}.`;
+  }
+
+  async _setSolarPriority(first) {
+    if (!this._rules || this._rules.solar_priority === first) return;
+    try {
+      await this._saveRules({ solar_priority: first });
+      this._rulesError = null;
+    } catch (err) {
+      this._rulesError = err && err.message ? err.message : String(err);
+    }
+    this._maybeRender(true);
   }
 
   _renderRulesCard() {
@@ -1463,14 +1568,25 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="card" data-rules>
         <h2><ha-icon icon="mdi:scale-balance"></ha-icon>Regler for opladning${I("Fælles regler for samspillet mellem elbiler og husbatteri. Hvert felt gemmes med det samme, og linjen under felterne viser, hvad de aktuelle valg betyder.")}</h2>
         <div class="controls">
+          <div class="field prio-field"><span class="fl">Sol prioritet${I(
+            "Træk rækkerne op og ned: nr. 1 får solstrømmen først, så længe dens ladestand er i intervallet ved siden af. Elbil som nr. 1: bilen får eksporten plus det, husbatteriet ellers ville lade med. Husbatteri som nr. 1: elbilen lader ikke fra sol. Flere biler får sol i den rækkefølge, de står i under Elbiler."
+          )}</span>
+            <ol class="prio-list" data-prio>
+              ${(r.solar_priority === "battery" ? ["battery", "ev"] : ["ev", "battery"])
+                .map(
+                  (k, i) => `<li draggable="true" data-prio-item="${k}" title="Træk for at ændre rækkefølgen"><span class="grip">⋮⋮</span><span class="num">${i + 1}.</span>${k === "ev" ? "Elbil" : "Husbatteri"}<button type="button" class="swap" data-raction="prio-swap" title="Byt rækkefølge">⇅</button></li>`
+                )
+                .join("")}
+            </ol>
+          </div>
           <label class="field">${head(
-            "Sol først til",
-            "Hvem der får solstrømmen først. Elbil: bilen får eksporten plus det, husbatteriet ellers ville lade med. Husbatteri: bilen får kun det, der ellers sælges til nettet. Flere biler får sol i den rækkefølge, de står i under Elbiler."
-          )}${sel("solar_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>
+            "Prioriter over (%)",
+            "Øvre grænse for nr. 1's ladestand. Når ladestanden er over denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
+          )}<input type="number" min="0" max="100" data-rfield="solar_priority_over" value="${r.solar_priority_over}"></label>
           <label class="field">${head(
-            "Elbil-sol: batteri ≥ (%)",
-            "Elbilen lader ikke fra sol, så længe husbatteriet er under denne ladestand. Falder batteriet under grænsen, mens bilen lader fra sol, stopper bilen. Tom = ingen grænse."
-          )}<input type="number" min="0" max="100" data-rfield="battery_min_soc_for_ev_solar" value="${r.battery_min_soc_for_ev_solar === null ? "" : r.battery_min_soc_for_ev_solar}" placeholder="fra"></label>
+            "Prioriter under (%)",
+            "Nedre grænse for nr. 1's ladestand. Når ladestanden er under denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
+          )}<input type="number" min="0" max="100" data-rfield="solar_priority_under" value="${r.solar_priority_under}"></label>
           <label class="field">${head(
             "Elbil-sol: sol ≥ (W)",
             "Elbilen lader kun fra sol, når solcellerne producerer mindst dette i mindst det antal minutter, der står ved siden af. Falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det."
@@ -1510,6 +1626,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   async _onRulesClick(btn, ev) {
     const action = btn.dataset.raction;
+    if (action === "prio-swap") {
+      await this._setSolarPriority(this._rules.solar_priority === "battery" ? "ev" : "battery");
+      return;
+    }
     try {
       if (action === "edit-sensor") {
         this._editingRulesSensor = true;
@@ -1604,7 +1724,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
     if (rt.status === "solar_wait" && rt.surplus_w !== undefined) meta.push(`Sol-overskud lige nu ${fmtNum(rt.surplus_w, 0)} W – kræver ${car.min_amps * 230 * car.phases} W`);
     if (rt.status === "solar_low" && rt.solar_w !== undefined && this._rules) meta.push(`Solproduktion ${fmtNum(rt.solar_w, 0)} W – kræver ${fmtNum(this._rules.solar_min_w, 0)} W i ${this._rules.solar_min_minutes} min`);
-    if (rt.status === "battery_first" && this._rules) meta.push(`Husbatteriet skal over ${this._rules.battery_min_soc_for_ev_solar} %`);
+    if (rt.status === "battery_first" && this._rules) meta.push(`Husbatteriet har prioritet, mens det er ${this._rules.solar_priority_under}–${this._rules.solar_priority_over} %`);
     if (rt.last_action) {
       const la = rt.last_action;
       meta.push(`Sidste kommando: ${la.action === "start" ? "start" : "stop"} kl. ${fmtTime(new Date(la.at))}${la.ok ? "" : ` – fejlede: ${la.error || ""}`}`);

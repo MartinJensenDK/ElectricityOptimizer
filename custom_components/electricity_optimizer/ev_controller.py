@@ -31,7 +31,8 @@ class Context:
     grid_w: float | None = None  # + = import
     battery_grid_charging: bool = False  # battery intends to charge from grid this slot
     solar_w: float | None = None  # current solar production
-    surplus_w: float | None = None  # solar surplus available for EVs (decremented as cars take it)
+    surplus_w: float | None = None  # solar export available for EVs (decremented as cars take it)
+    battery_charge_w: float = 0.0  # what the house battery is charging with; a prioritised EV may claim it
     solar_forecast_kwh: dict[Any, float] = field(default_factory=dict)  # date -> forecast kWh (today/tomorrow)
     ev_grid_charging: bool = False
     ev_amps_total: float = 0.0
@@ -219,6 +220,7 @@ class EvController:
         self.price_entity = price_entity
         self.runtime: dict[str, dict[str, Any]] = {}
         self._last_cmd: dict[str, bool] = {}
+        self._charging_since: dict[str, datetime] = {}
         self._last_amps: dict[str, float] = {}
         self._last_amps_at: dict[str, datetime] = {}
 
@@ -343,6 +345,7 @@ class EvController:
         await self._apply(car, desired)
         rt["charging"] = self._last_cmd.get(car["id"], False)
         rt["amps"] = self._last_amps.get(car["id"]) if desired else None
+        rt["session"] = self._session(ctx, car, rt, plan, desired, mode, car_w, amps)
         if desired and mode == "grid":
             ctx.ev_grid_charging = True
         if desired:
@@ -375,14 +378,35 @@ class EvController:
             rt[below] = since = now.isoformat()
         return (now - datetime.fromisoformat(since)).total_seconds() < window_s
 
+    @staticmethod
+    def _solar_priority(ctx: Context, car_soc: float | None) -> str | None:
+        """Who has solar priority right now: "ev", "battery" or None (used normally).
+
+        No. 1 in the rules only wins while its own SoC is inside [under, over].
+        """
+        rules = ctx.rules
+        first = rules["solar_priority"]
+        if first == "battery":
+            if ctx.battery_cfg is None or ctx.battery_soc is None:
+                return None
+            soc = ctx.battery_soc
+        else:
+            if car_soc is None:
+                return None
+            soc = car_soc
+        if rules["solar_priority_under"] <= soc <= rules["solar_priority_over"]:
+            return first
+        return None
+
     def _solar_decision(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], car_w: float | None) -> tuple[bool, int]:
         """Return (charge, amps) for solar surplus charging, with start/stop hysteresis."""
         rules = ctx.rules
         if ctx.surplus_w is None:
             rt["status"] = "no_grid_sensor"
             return False, car["max_amps"]
-        soc_limit = rules.get("battery_min_soc_for_ev_solar")
-        if soc_limit is not None and ctx.battery_cfg is not None and ctx.battery_soc is not None and ctx.battery_soc < soc_limit:
+        priority = self._solar_priority(ctx, rt.get("soc"))
+        rt["solar_priority"] = priority
+        if priority == "battery":
             rt["status"] = "battery_first"
             self._reset_solar_timers(rt)
             return False, car["max_amps"]
@@ -403,6 +427,10 @@ class EvController:
 
         per_amp = GRID_VOLTAGE * car["phases"]
         available = ctx.surplus_w  # may be negative when the house is importing
+        if priority == "ev" and ctx.battery_charge_w > 0:
+            # the car outranks the battery: what the battery is charging with is up for grabs
+            available += ctx.battery_charge_w
+            ctx.battery_charge_w = 0.0
         if currently_solar:
             # the car's own draw is already inside the house load; give it back
             own = car_w if car_w is not None else (self._last_amps.get(car["id"]) or car["min_amps"]) * per_amp
@@ -444,11 +472,42 @@ class EvController:
             self.runtime[cid]["last_action"] = {"at": ctx.now.isoformat(), "action": "set_amps", "ok": False, "error": str(err)}
             _LOGGER.warning("%s: could not set current limit: %s", car["name"], err)
 
+    def _session(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], plan: dict[str, Any] | None, desired: bool, mode: str | None, car_w: float | None, amps: int) -> dict[str, Any] | None:
+        """Charging period for the chart: when charging starts and is expected to finish.
+
+        Solar (and price-limit / manual) charging: from when it started until the remaining kWh are
+        in at the current power - an estimate that moves with production and house load.
+        Planned grid charging: first to last chosen slot.
+        """
+        now = ctx.now
+        cid = car["id"]
+        if desired and (mode == "solar" or rt["status"] in ("charge_now", "below_limit")):
+            since = self._charging_since.get(cid, now)
+            if mode == "solar":
+                power_w = car_w if car_w and car_w > 0 else amps * GRID_VOLTAGE * car["phases"]
+            else:
+                power_w = car["charge_power_kw"] * 1000
+            soc = rt.get("soc")
+            need_kwh = plan["need_kwh"] if plan else max(0.0, (rt["target_soc"] - (soc or 0)) / 100 * car["capacity_kwh"])
+            end = now + timedelta(hours=need_kwh * 1000 / power_w) if power_w > 0 else None
+            return {"start": since.isoformat(), "end": end.isoformat() if end else None, "source": mode, "estimated": True}
+        if plan and plan.get("plan"):
+            chosen = [sl for sl in plan["plan"] if sl["chosen"]]
+            if chosen:
+                start = self._charging_since.get(cid) if desired and mode == "grid" else None
+                start = start or datetime.fromisoformat(chosen[0]["start"])
+                end = datetime.fromisoformat(chosen[-1]["end"])
+                return {"start": start.isoformat(), "end": end.isoformat(), "source": "grid", "estimated": any(sl.get("estimated") for sl in chosen)}
+        return None
+
     async def _apply(self, car: dict[str, Any], desired: bool) -> None:
         cid = car["id"]
         if self._last_cmd.get(cid) is desired:
             return
-        if not desired:
+        if desired:
+            self._charging_since[cid] = dt_util.now()
+        else:
+            self._charging_since.pop(cid, None)
             self._last_amps.pop(cid, None)  # re-send the limit next time charging starts
             self._last_amps_at.pop(cid, None)
         try:

@@ -100,8 +100,9 @@ BATTERY_DEFAULTS = {
 STORAGE_KEY_RULES = f"{DOMAIN}.rules"
 AMPS_CHANGE_MIN_SECONDS = 30
 RULES_DEFAULTS = {
-    "solar_priority": "ev",  # ev | battery
-    "battery_min_soc_for_ev_solar": None,  # EV solar charging stops when the house battery is below this (None = off)
+    "solar_priority": "ev",  # ev | battery: who gets solar first (no. 1 in the panel's list)
+    "solar_priority_under": 0,  # no. 1 is only prioritised while its SoC is >= this ...
+    "solar_priority_over": 100,  # ... and <= this; outside the band solar is used normally
     "grid_priority": "ev",  # ev | battery
     "max_total_amps": None,  # main fuse, per phase
     "hold_battery_while_ev_grid_charging": True,

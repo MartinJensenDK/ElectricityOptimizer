@@ -299,9 +299,10 @@ class BatteryStore:
 
 RULES_NUMERIC = {
     "solar_min_minutes": float,
+    "solar_priority_under": int,
+    "solar_priority_over": int,
 }
 RULES_OPTIONAL_NUMERIC = {
-    "battery_min_soc_for_ev_solar": int,
     "solar_min_w": float,
     "max_total_amps": float,
 }
@@ -320,16 +321,19 @@ def _optional_number(value: Any, cast: Any) -> Any:
 def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
     rules: dict[str, Any] = {**RULES_DEFAULTS, **(existing or {})}
     if existing and "solar_min_minutes" not in existing:
-        # migrate from the start/stop minute pair; the SoC threshold used to apply only to battery priority
+        # migrate from the start/stop minute pair
         rules["solar_min_minutes"] = existing.get("solar_start_minutes", RULES_DEFAULTS["solar_min_minutes"])
-        if existing.get("solar_priority") != "battery":
-            rules["battery_min_soc_for_ev_solar"] = None
+    if existing and "solar_priority_over" not in existing:
+        # migrate the old "EV gets solar once the battery is above X %" threshold into the priority band
+        old_limit = existing.get("battery_min_soc_for_ev_solar")
+        if existing.get("solar_priority") == "battery" and old_limit not in (None, "", 0):
+            rules["solar_priority_over"] = old_limit
     for key in RULES_DEFAULTS:
         if key in raw:
             rules[key] = raw[key]
     if "solar_min_minutes" not in raw and ("solar_start_minutes" in raw or "solar_stop_minutes" in raw):
         rules["solar_min_minutes"] = raw.get("solar_start_minutes", raw.get("solar_stop_minutes"))
-    for key in ("solar_start_minutes", "solar_stop_minutes"):
+    for key in ("solar_start_minutes", "solar_stop_minutes", "battery_min_soc_for_ev_solar"):
         rules.pop(key, None)
     for key, cast in RULES_NUMERIC.items():
         try:
@@ -339,9 +343,10 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     for key, cast in RULES_OPTIONAL_NUMERIC.items():
         rules[key] = _optional_number(rules[key], cast)
     rules["hold_battery_while_ev_grid_charging"] = bool(rules["hold_battery_while_ev_grid_charging"])
-    if rules["battery_min_soc_for_ev_solar"] is not None:
-        rules["battery_min_soc_for_ev_solar"] = min(100, rules["battery_min_soc_for_ev_solar"])
     rules["solar_min_minutes"] = max(0.0, rules["solar_min_minutes"])
+    under = max(0, min(100, rules["solar_priority_under"]))
+    over = max(0, min(100, rules["solar_priority_over"]))
+    rules["solar_priority_under"], rules["solar_priority_over"] = min(under, over), max(under, over)
     if rules["solar_priority"] not in ("ev", "battery"):
         rules["solar_priority"] = "ev"
     if rules["grid_priority"] not in ("ev", "battery"):

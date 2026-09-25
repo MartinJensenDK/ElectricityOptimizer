@@ -103,8 +103,6 @@ class Optimizer:
         surplus = None
         if grid_w is not None:
             surplus = -grid_w  # export positive, import negative
-            if rules["solar_priority"] == "ev" and live["battery_w"] is not None and live["battery_w"] > 0:
-                surplus += live["battery_w"]
         return Context(
             now=dt_util.now(),
             slots=read_price_slots(self.hass, self.price_entity),
@@ -114,6 +112,7 @@ class Optimizer:
             battery_w=live["battery_w"],
             grid_w=grid_w,
             surplus_w=surplus,
+            battery_charge_w=max(0.0, live["battery_w"]) if live["battery_w"] is not None else 0.0,
             solar_forecast_kwh=self.solar_forecast(),
             solar_w=self.solar_w(),
         )

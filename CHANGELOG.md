@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.18.0
+
+- Regler: "Sol først til" er nu en sorterbar liste "Sol prioritet" (træk rækkerne eller tryk ⇅), hvor nr. 1 altid vinder. To nye felter, "Prioriter over (%)" og "Prioriter under (%)", afgrænser nr. 1's ladestand: uden for intervallet prioriteres der ikke, og solstrømmen bruges normalt. Feltet "Elbil-sol: batteri ≥ (%)" er erstattet af intervallet (gamle værdier migreres).
+- Forsiden: prisgrafen viser ladeperioder for biler og husbatteri som lyseblå felter med lodrette kanter fra start til forventet slut. Ved solopladning er slutningen et estimat, der flytter sig med solproduktion og husforbrug (stiplet kant).
+
 ## 0.17.0
 
 - (i)-ikoner med forklaring på alle faner: hvert kort, hver måler, hvert indstillingsfelt og hver kolonne i ugeplanerne har nu et ikon, man kan holde musen over (eller tabbe til) for at læse, hvad det betyder og hvordan det bruges.
