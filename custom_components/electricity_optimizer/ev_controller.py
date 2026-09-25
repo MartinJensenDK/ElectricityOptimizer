@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
 from typing import Any
@@ -31,6 +31,7 @@ class Context:
     grid_w: float | None = None  # + = import
     battery_grid_charging: bool = False  # battery intends to charge from grid this slot
     surplus_w: float | None = None  # solar surplus available for EVs (decremented as cars take it)
+    solar_forecast_kwh: dict[Any, float] = field(default_factory=dict)  # date -> forecast kWh (today/tomorrow)
     ev_grid_charging: bool = False
     ev_amps_total: float = 0.0
 

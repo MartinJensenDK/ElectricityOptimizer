@@ -205,6 +205,13 @@ def normalize_battery(raw: dict[str, Any], existing: dict[str, Any] | None = Non
     cfg["min_soc"] = max(0, min(100, cfg["min_soc"]))
     cfg["max_soc"] = max(cfg["min_soc"], min(100, cfg["max_soc"]))
     cfg["efficiency"] = max(0.5, min(1.0, cfg["efficiency"]))
+    if cfg["grid_charge_max_forecast_kwh"] in ("", None):
+        cfg["grid_charge_max_forecast_kwh"] = None
+    else:
+        try:
+            cfg["grid_charge_max_forecast_kwh"] = float(str(cfg["grid_charge_max_forecast_kwh"]).replace(",", "."))
+        except (TypeError, ValueError):
+            cfg["grid_charge_max_forecast_kwh"] = None
     if cfg["power_sign"] not in ("charge_positive", "discharge_positive"):
         cfg["power_sign"] = "charge_positive"
     if cfg["grid_sign"] not in ("import_positive", "export_positive"):

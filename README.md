@@ -114,6 +114,12 @@ Modus pr. tidsrum:
 Kommandoer sendes kun ved skift af modus (stop på den gamle modus før start på den nye). Knapperne
 Auto / Normal / Hold nu / Lad fra net nu tilsidesætter planen, indtil Auto vælges igen.
 
+**Solprognose-regel**: "Lad kun fra net hvis solprognose < X kWh" bruger prognose-sensorerne fra
+Konfigurer (i dag / i morgen). Er dagens prognose mindst X, springes netopladning over den dag, både
+for prisforskel-reglen og ugeplanens mål-SoC. Uden prognose-sensor har reglen ingen effekt.
+
+Alle klokkeslæt indtastes som TT:MM i 24-timers format (fx 06:30); "630" og "1830" rettes automatisk.
+
 **Ugeplan for batteriet**: pr. ugedag sættes *Til* (smart styring den dag), *Fra net* (må lade fra
 nettet den dag), og valgfrit *Mål-SoC* med *Fuldt senest*: batteriet fyldes til niveauet i de
 billigste timer inden klokkeslættet, fx 100 % senest kl. 17 før aftenens dyre timer. Uden mål-SoC

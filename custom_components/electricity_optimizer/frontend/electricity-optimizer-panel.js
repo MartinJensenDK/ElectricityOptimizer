@@ -5,7 +5,26 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.8.0"; // kept equal to manifest.json (checked by tests), not shown in the UI
+const PANEL_JS_VERSION = "0.9.0";
+
+// 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
+const timeInput = (attrs, value) =>
+  `<input type="text" inputmode="numeric" maxlength="5" placeholder="TT:MM" pattern="^([01]?\\d|2[0-3]):[0-5]\\d$" data-time ${attrs} value="${esc(value || "")}">`;
+
+const normalizeTime = (raw) => {
+  const digits = String(raw || "").replace(/[^\d]/g, "");
+  if (!digits) return null;
+  let h, m;
+  if (digits.length <= 2) {
+    h = parseInt(digits, 10);
+    m = 0;
+  } else {
+    h = parseInt(digits.slice(0, digits.length - 2), 10);
+    m = parseInt(digits.slice(-2), 10);
+  }
+  if (Number.isNaN(h) || Number.isNaN(m) || h > 23 || m > 59) return null;
+  return `${pad2(h)}:${pad2(m)}`;
+}; // kept equal to manifest.json (checked by tests), not shown in the UI
 
 const DAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const DAY_SHORT = ["man", "tirs", "ons", "tors", "fre", "lør", "søn"];
@@ -237,7 +256,7 @@ const STYLE = `
   h3 { font-size: 14px; font-weight: 500; margin: 14px 0 6px; color: var(--secondary-text-color); }
   table.sched { margin-top: 8px; }
   table.sched td, table.sched th { padding: 4px 4px; }
-  table.sched input[type=time], table.sched input[type=number] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); width: 100%; box-sizing: border-box; }
+  table.sched input[data-time], table.sched input[type=number] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); width: 100%; box-sizing: border-box; }
   table.sched tr.off td:not(:first-child) { opacity: 0.45; }
   table.sched tr.all td { border-bottom: 2px solid var(--divider-color); }
   table.sched tr.today td:first-child { font-weight: 600; color: var(--primary-color); }
@@ -1274,7 +1293,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <tr class="${cls}${e.enabled || cls === "all" ? "" : " off"}" data-day="${day}">
         <td>${label}</td>
         <td><input type="checkbox" data-sched="enabled" ${e.enabled ? "checked" : ""} title="Skal bilen være klar denne dag?"></td>
-        <td><input type="time" data-sched="ready_by" value="${esc(e.ready_by)}"></td>
+        <td>${timeInput('data-sched="ready_by"', e.ready_by)}</td>
         <td><input type="number" min="1" max="100" step="1" data-sched="target_soc" value="${e.target_soc}"></td>
       </tr>`;
     return `
@@ -1295,7 +1314,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const rows = [...card.querySelectorAll("table.sched tbody tr[data-day]")].filter((r) => r.dataset.day !== "all");
     return rows.map((r) => ({
       enabled: r.querySelector('[data-sched="enabled"]').checked,
-      ready_by: r.querySelector('[data-sched="ready_by"]').value || "07:00",
+      ready_by: normalizeTime(r.querySelector('[data-sched="ready_by"]').value) || "07:00",
       target_soc: Number(r.querySelector('[data-sched="target_soc"]').value) || 80,
     }));
   }
@@ -1343,7 +1362,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <form class="car-form" data-id="${v("id")}">
           <div class="fields">
             <label class="field">Navn<input name="name" value="${v("name")}" placeholder="fx Tesla" required></label>
-            ${isNew ? `<label class="field">Klar senest (alle dage, kan ændres pr. dag bagefter)<input name="ready_by" type="time" value="${v("ready_by", "07:00")}"></label>
+            ${isNew ? `<label class="field">Klar senest (alle dage, kan ændres pr. dag bagefter)${timeInput('name="ready_by"', car.ready_by || "07:00")}</label>
             <label class="field">Mål-SoC % (alle dage)<input name="target_soc" type="number" min="1" max="100" value="${v("target_soc", 80)}"></label>` : ""}
             <label class="field">SoC-sensor (%)<div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             ${this._cmdFields("Start opladning", "start_entity", "start_value", v)}
@@ -1395,6 +1414,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   async _onContentChange(ev) {
     const input = ev.target;
+    if (input.dataset && input.dataset.time !== undefined) {
+      const t = normalizeTime(input.value);
+      input.value = t || input.defaultValue; // invalid -> keep the previous value
+    }
     if (input.dataset && input.dataset.bsched) {
       const card = input.closest("[data-battery]");
       const tr = input.closest("tr");
@@ -1528,6 +1551,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         const form = btn.closest("form");
         const data = {};
         for (const el of form.querySelectorAll("input[name],select[name]")) data[el.name] = el.value;
+        if (data.ready_by !== undefined) data.ready_by = normalizeTime(data.ready_by) || "07:00";
         if (form.dataset.id) data.id = form.dataset.id;
         try {
           await this._saveCar(data);
@@ -1756,11 +1780,24 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <label class="field">Reserve-SoC (%)<input type="number" min="0" max="100" data-bfield="min_soc" value="${b.min_soc}"></label>
           <label class="field">Maks-SoC ved netopladning (%)<input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>
           <label class="field">Virkningsgrad (0–1)<input type="number" step="0.01" min="0.5" max="1" data-bfield="efficiency" value="${b.efficiency}"></label>
+          <label class="field">Lad kun fra net hvis solprognose &lt; (kWh)<input type="number" step="0.5" min="0" data-bfield="grid_charge_max_forecast_kwh" value="${b.grid_charge_max_forecast_kwh === null || b.grid_charge_max_forecast_kwh === undefined ? "" : b.grid_charge_max_forecast_kwh}" placeholder="fra"></label>
         </div>
+        ${this._renderForecastRuleHint(plan)}
         <div class="hint" style="margin-top:8px">Hold: prisen er under dagens gennemsnit, og en senere time er mindst prisforskellen dyrere. Lad fra nettet: kun på dage hvor det er tilladt, og kun når de dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu – eller når ugeplanens mål-SoC skal nås inden klokkeslættet.</div>
         ${this._renderBatterySchedule(b, plan)}
         ${this._batteryError ? `<div class="err">${esc(this._batteryError)}</div>` : ""}
       </div>`;
+  }
+
+  _renderForecastRuleHint(plan) {
+    const fc = plan && plan.forecast;
+    if (!fc || fc.limit === null || fc.limit === undefined) return "";
+    const hasEntity = !!(this._config.solar_forecast_today_entity || this._config.solar_forecast_tomorrow_entity);
+    if (!hasEntity) {
+      return `<div class="hint" style="margin-top:6px">Prognose-reglen er sat, men der er ikke valgt nogen solprognose-sensor under Indstillinger → Enheder og tjenester → Electricity Optimizer → Konfigurer. Reglen har derfor ingen effekt.</div>`;
+    }
+    const part = (label, v, blocked) => (v === null || v === undefined ? `${label}: ingen prognose` : `${label}: ${fmtNum(v, 1)} kWh → ${blocked ? "ingen netopladning" : "netopladning tilladt"}`);
+    return `<div class="hint" style="margin-top:6px">Solprognose-regel (grænse ${fmtNum(fc.limit, 1)} kWh): ${part("i dag", fc.today, fc.blocked_today)} · ${part("i morgen", fc.tomorrow, fc.blocked_tomorrow)}.</div>`;
   }
 
   _renderBatterySchedule(b, plan) {
@@ -1771,7 +1808,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <td>${label}</td>
         <td><input type="checkbox" data-bsched="enabled" ${e.enabled ? "checked" : ""} title="Smart styring denne dag"></td>
         <td><input type="checkbox" data-bsched="grid_charge" ${e.grid_charge ? "checked" : ""} title="Må lade fra nettet denne dag"></td>
-        <td><input type="time" data-bsched="ready_by" value="${esc(e.ready_by)}"></td>
+        <td>${timeInput('data-bsched="ready_by"', e.ready_by)}</td>
         <td><input type="number" min="1" max="100" step="1" data-bsched="target_soc" value="${e.target_soc === null || e.target_soc === undefined ? "" : e.target_soc}" placeholder="–"></td>
       </tr>`;
     const dl = plan && plan.deadline ? new Date(plan.deadline) : null;
@@ -1797,7 +1834,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return rows.map((r) => ({
       enabled: r.querySelector('[data-bsched="enabled"]').checked,
       grid_charge: r.querySelector('[data-bsched="grid_charge"]').checked,
-      ready_by: r.querySelector('[data-bsched="ready_by"]').value || "17:00",
+      ready_by: normalizeTime(r.querySelector('[data-bsched="ready_by"]').value) || "17:00",
       target_soc: r.querySelector('[data-bsched="target_soc"]').value === "" ? null : Number(r.querySelector('[data-bsched="target_soc"]').value),
     }));
   }

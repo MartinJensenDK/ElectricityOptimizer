@@ -7,6 +7,8 @@ import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from datetime import timedelta
+
 from .battery_controller import BatteryController
 from .ev_controller import Context, EvController, read_price_slots
 from .storage import RulesStore
@@ -22,9 +24,11 @@ class Optimizer:
         ev: EvController,
         battery: BatteryController,
         rules: RulesStore,
+        config: dict | None = None,
     ) -> None:
         self.hass = hass
         self.price_entity = price_entity
+        self.config = config or {}
         self.ev = ev
         self.battery = battery
         self.rules_store = rules
@@ -46,6 +50,34 @@ class Optimizer:
             v *= 1000
         return v * (-1 if rules["grid_sign"] == "export_positive" else 1)
 
+    def _kwh(self, entity_id: str | None) -> float | None:
+        if not entity_id:
+            return None
+        st = self.hass.states.get(entity_id)
+        if st is None or st.state in ("unknown", "unavailable"):
+            return None
+        try:
+            v = float(st.state)
+        except ValueError:
+            return None
+        unit = (st.attributes.get("unit_of_measurement") or "").lower()
+        if unit == "wh":
+            v /= 1000
+        elif unit == "mwh":
+            v *= 1000
+        return v
+
+    def solar_forecast(self) -> dict:
+        now = dt_util.now()
+        out = {}
+        today = self._kwh(self.config.get("solar_forecast_today_entity"))
+        tomorrow = self._kwh(self.config.get("solar_forecast_tomorrow_entity"))
+        if today is not None:
+            out[now.date()] = today
+        if tomorrow is not None:
+            out[(now + timedelta(days=1)).date()] = tomorrow
+        return out
+
     def build_context(self) -> Context:
         rules = self.rules_store.rules
         live = self.battery.read_live()
@@ -64,6 +96,7 @@ class Optimizer:
             battery_w=live["battery_w"],
             grid_w=grid_w,
             surplus_w=surplus,
+            solar_forecast_kwh=self.solar_forecast(),
         )
 
     async def async_evaluate(self) -> None:
@@ -81,6 +114,7 @@ class Optimizer:
         bat = self.battery.store.battery
         if bat:
             ids.update(v for k, v in bat.items() if k in ("soc_entity", "power_entity", "charge_power_entity", "discharge_power_entity", "grid_power_entity") and v)
+        ids.update(v for k, v in self.config.items() if k in ("solar_forecast_today_entity", "solar_forecast_tomorrow_entity") and v)
         if self.rules_store.rules.get("grid_power_entity"):
             ids.add(self.rules_store.rules["grid_power_entity"])
         return ids

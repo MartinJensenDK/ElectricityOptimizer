@@ -43,7 +43,13 @@ def next_battery_deadline(now: datetime, cfg: dict[str, Any]) -> tuple[datetime 
     return None, None
 
 
-def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, Any]) -> dict[str, Any] | None:
+def plan_battery(
+    now: datetime,
+    slots: list[Slot],
+    soc: float,
+    cfg: dict[str, Any],
+    forecast: dict[Any, float] | None = None,
+) -> dict[str, Any] | None:
     """Assign a mode to every known future slot.
 
     hold:   price below the day's mean and a later slot is at least `spread_threshold` dearer.
@@ -52,12 +58,27 @@ def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, An
             slots; or (b) the cheapest slots needed to reach the weekly schedule's target SoC before its
             deadline.
     normal: everything else, and every slot on a day that is switched off in the schedule.
+
+    Grid charging on a day is also skipped when a solar forecast for that day is known and at least
+    `grid_charge_max_forecast_kwh` (when that limit is set).
     """
     candidates = [s for s in slots if s.end > now]
     if not candidates:
         return None
     thr = cfg["spread_threshold"]
     eff = cfg["efficiency"]
+    forecast = forecast or {}
+    limit = cfg.get("grid_charge_max_forecast_kwh")
+
+    def grid_allowed(when: datetime) -> bool:
+        entry = _day_entry(cfg, when)
+        if not entry["enabled"] or not entry["grid_charge"]:
+            return False
+        if limit is not None:
+            fc = forecast.get(when.date())
+            if fc is not None and fc >= limit:
+                return False
+        return True
 
     by_day: dict[Any, list[float]] = {}
     for s in slots:
@@ -85,8 +106,7 @@ def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, An
         for s in sorted(candidates, key=lambda s: (s.price, s.start)):
             if remaining <= 0:
                 break
-            entry = _day_entry(cfg, s.start)
-            if not entry["enabled"] or not entry["grid_charge"]:
+            if not grid_allowed(s.start):
                 continue
             later = [x for x in candidates if x.start > s.start]
             if not later:
@@ -118,8 +138,7 @@ def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, An
         for s in sorted(pool, key=lambda s: (s.price, s.start)):
             if remaining <= 0:
                 break
-            entry = _day_entry(cfg, s.start)
-            if not entry["enabled"] or not entry["grid_charge"]:
+            if not grid_allowed(s.start):
                 continue
             avail = max(0.0, (min(s.end, deadline) - max(s.start, now)).total_seconds() / 3600)
             if avail <= 0:
@@ -133,10 +152,19 @@ def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, An
     if not today["enabled"]:
         auto_mode = "normal"
     later_max = max((s.price for s in candidates if current and s.start > current.start), default=None)
+    fc_today = forecast.get(now.date())
+    fc_tomorrow = forecast.get((now + timedelta(days=1)).date())
     return {
         "auto_mode": auto_mode,
         "day_enabled": bool(today["enabled"]),
         "grid_charge_today": bool(today["grid_charge"]),
+        "forecast": {
+            "limit": limit,
+            "today": fc_today,
+            "tomorrow": fc_tomorrow,
+            "blocked_today": limit is not None and fc_today is not None and fc_today >= limit,
+            "blocked_tomorrow": limit is not None and fc_tomorrow is not None and fc_tomorrow >= limit,
+        },
         "deadline": deadline.isoformat() if deadline else None,
         "target_soc": target,
         "target_hours": round(target_hours, 2),
@@ -214,7 +242,7 @@ class BatteryController:
             rt["status"] = "no_soc"
             rt["plan"] = None
             return None
-        plan = plan_battery(ctx.now, ctx.slots, soc, cfg) if ctx.slots else None
+        plan = plan_battery(ctx.now, ctx.slots, soc, cfg, ctx.solar_forecast_kwh) if ctx.slots else None
         rt["plan"] = plan
         if plan is None:
             rt["status"] = "no_prices"

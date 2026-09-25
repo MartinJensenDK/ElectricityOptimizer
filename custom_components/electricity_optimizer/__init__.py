@@ -101,7 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     rules_store = RulesStore(hass)
     await rules_store.async_load()
-    optimizer = Optimizer(hass, config[CONF_PRICE_ENTITY], controller, battery_controller, rules_store)
+    optimizer = Optimizer(hass, config[CONF_PRICE_ENTITY], controller, battery_controller, rules_store, config)
     domain_data["optimizer"] = optimizer
 
     if not domain_data.get("_ws_registered"):

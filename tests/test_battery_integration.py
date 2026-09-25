@@ -136,3 +136,25 @@ async def test_ev_select_and_number_commands(hass: HomeAssistant, hass_ws_client
     await client.send_json({"id": 2, "type": f"{DOMAIN}/evaluate"})
     await client.receive_json()
     assert [c.data["value"] for c in set_value] == [16.0, 0.0]
+
+
+async def test_forecast_entities_reach_the_battery_plan(hass: HomeAssistant, hass_ws_client) -> None:
+    now = dt_util.now()
+    _set_prices(hass, {now.hour: 0.3, (now.hour + 4) % 48: 3.0})
+    hass.states.async_set("sensor.bat_soc", "50")
+    hass.states.async_set("sensor.fc_today", "28.5", {"unit_of_measurement": "kWh"})
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"price_entity": PRICE_ENTITY, "solar_forecast_today_entity": "sensor.fc_today"},
+        unique_id=DOMAIN,
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc", "grid_charge_enabled": True, "grid_charge_max_forecast_kwh": "20"}})
+    msg = await client.receive_json()
+    assert msg["success"], msg
+    fc = msg["result"]["runtime"]["plan"]["forecast"]
+    assert fc["today"] == 28.5 and fc["limit"] == 20.0 and fc["blocked_today"] is True
+    assert msg["result"]["runtime"]["mode"] == "hold"

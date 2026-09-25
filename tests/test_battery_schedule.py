@@ -71,3 +71,33 @@ def test_next_battery_deadline_skips_days_without_target_or_grid():
     cfg = _cfg(_week(d5={"target_soc": 80, "grid_charge": False}, d6={"target_soc": 90, "ready_by": "06:00"}))
     deadline, target = next_battery_deadline(FRIDAY + timedelta(hours=20), cfg)
     assert deadline == datetime(2026, 9, 27, 6, 0, tzinfo=TZ) and target == 90
+
+
+def test_forecast_limit_blocks_grid_charging_on_sunny_days():
+    prices = [1.5] * 24
+    prices[2] = 0.3
+    prices[18] = 3.0
+    cfg = _cfg(_week(), grid_charge_max_forecast_kwh=20)
+    slots = _slots(prices)
+    now = FRIDAY + timedelta(hours=2)
+    # sunny day: forecast 25 kWh >= 20 -> no grid charging, cheap hour becomes hold
+    plan = plan_battery(now, slots, soc=50, cfg=cfg, forecast={FRIDAY.date(): 25.0})
+    assert plan["auto_mode"] == "hold"
+    assert plan["forecast"]["blocked_today"] is True and plan["forecast"]["today"] == 25.0
+    # cloudy day: 5 kWh < 20 -> charge
+    plan = plan_battery(now, slots, soc=50, cfg=cfg, forecast={FRIDAY.date(): 5.0})
+    assert plan["auto_mode"] == "charge" and plan["forecast"]["blocked_today"] is False
+    # no forecast known -> rule has no effect
+    plan = plan_battery(now, slots, soc=50, cfg=cfg, forecast={})
+    assert plan["auto_mode"] == "charge"
+    # limit not set -> charge even when sunny
+    plan = plan_battery(now, slots, soc=50, cfg=_cfg(_week()), forecast={FRIDAY.date(): 25.0})
+    assert plan["auto_mode"] == "charge"
+
+
+def test_forecast_limit_applies_to_schedule_target_too():
+    prices = [1.0] * 24
+    prices[5] = 0.8
+    cfg = _cfg(_week(d4={"ready_by": "08:00", "target_soc": 100}), grid_charge_max_forecast_kwh=10)
+    plan = plan_battery(FRIDAY + timedelta(hours=1), _slots(prices), soc=50, cfg=cfg, forecast={FRIDAY.date(): 30.0})
+    assert not any(p["mode"] == "charge" for p in plan["plan"])

@@ -92,6 +92,7 @@ BATTERY_DEFAULTS = {
     "hold_stop_entity": "",
     "hold_stop_value": "",
     "override": "auto",  # auto | normal | hold | charge
+    "grid_charge_max_forecast_kwh": None,  # only charge from grid when the solar forecast for that day is below this
     "schedule": None,  # 7 entries Mon..Sun: {enabled, grid_charge, ready_by, target_soc|None}
 }
 
