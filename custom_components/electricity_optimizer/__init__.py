@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_loaded_integration
 
+from . import websocket
 from .const import (
     CONF_PRICE_ENTITY,
     CONF_SOLAR_PEAK_KW,
@@ -25,6 +26,8 @@ from .const import (
     SOLAR_ENTITY_KEYS,
     STATIC_URL_BASE,
 )
+from .ev_controller import EvController
+from .storage import CarStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +78,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data[entry.entry_id] = config
     await _async_register_panel(hass, config)
 
+    store = CarStore(hass)
+    await store.async_load()
+    controller = EvController(hass, store, config[CONF_PRICE_ENTITY])
+    domain_data["ev"] = {"store": store, "controller": controller}
+    if not domain_data.get("_ws_registered"):
+        websocket.async_register(hass)
+        domain_data["_ws_registered"] = True
+    controller.async_start()
+    hass.async_create_task(controller.async_evaluate())
+
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
@@ -87,5 +100,8 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     hass.data[DOMAIN].pop(entry.entry_id, None)
+    ev = hass.data[DOMAIN].pop("ev", None)
+    if ev:
+        ev["controller"].async_stop()
     frontend.async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
     return True

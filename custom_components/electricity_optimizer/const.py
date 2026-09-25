@@ -30,3 +30,23 @@ PANEL_ICON = "mdi:lightning-bolt"
 PANEL_WEBCOMPONENT = "electricity-optimizer-panel"
 STATIC_URL_BASE = "/electricity_optimizer_static"
 PANEL_FILENAME = "electricity-optimizer-panel.js"
+
+# EV charging
+STORAGE_KEY_CARS = f"{DOMAIN}.cars"
+STORAGE_VERSION = 1
+EVALUATE_INTERVAL_SECONDS = 60
+ACTIVATE_DOMAINS = ("switch", "input_boolean", "button", "script", "automation")
+CAR_DEFAULTS = {
+    "name": "",
+    "soc_entity": "",
+    "start_entity": "",
+    "stop_entity": "",
+    "plugged_entity": "",
+    "capacity_kwh": 60.0,
+    "charge_power_kw": 11.0,
+    "enabled": True,
+    "target_soc": 80,
+    "ready_by": "07:00",
+    "price_limit": None,
+    "charge_now": False,
+}

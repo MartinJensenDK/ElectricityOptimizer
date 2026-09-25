@@ -10,7 +10,8 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
 - **Solceller** – produktion lige nu (og udnyttelse af kWp), produceret i dag mod prognosen,
   prognose for i dag/i morgen, solens højde og op-/nedgang samt dagens produktionskurve
   (hentet fra Home Assistants historik).
-- **Elbiler** – indstillinger for opladning af elbiler (kommer).
+- **Elbiler** – tilføj vilkårligt mange biler; hver bil lades automatisk i de billigste tidsrum inden
+  en deadline, styret via de start/stop-entiteter du vælger (lader eller bil).
 - **Hus batteri** – indstillinger for opladning/afladning af husbatteri (kommer).
 
 ## Krav
@@ -39,6 +40,35 @@ Sensorerne kan altid ændres under Indstillinger → Enheder og tjenester → El
 | Prognose i dag / i morgen | sensor i kWh | Solcast eller Forecast.Solar |
 | Installeret effekt | tal i kWp | 6,4 |
 
+## Elbiler
+
+Under fanen **Elbiler** tilføjer du en bil med:
+
+| Felt | Beskrivelse |
+| --- | --- |
+| SoC-sensor | Bilens batteriniveau i % |
+| Start opladning | `switch`, `button`, `script`, `input_boolean` eller `automation`. Tændes/trykkes når der skal lades |
+| Stop opladning | Samme domæner. Er det **samme switch** som start, slukkes den – ellers tændes/trykkes stop-entiteten. Har laderen kun én switch, vælges den begge steder |
+| Tilsluttet-sensor | Valgfri `binary_sensor`; er den `off`, startes der ikke |
+| Kapacitet / ladeeffekt | kWh og kW, bruges til at beregne hvor mange timer der skal lades |
+
+Pr. bil kan du løbende ændre **Smart opladning** til/fra, **mål-SoC**, **klar senest** (klokkeslæt),
+**prisgrænse** (lad altid under denne pris) og trykke **Lad nu**.
+
+Planen genberegnes hvert minut: de billigste tidsrum (EnergiDataService, 15 eller 60 min) inden
+deadline vælges, indtil behovet er dækket. Timer uden kendt pris (før kl. 13) estimeres til dagens
+gennemsnit. Der sendes kun start/stop, når den ønskede tilstand skifter.
+
+## Udvikling
+
+```bash
+python -m venv .venv && .venv/bin/pip install -r requirements_test.txt
+.venv/bin/python -m pytest -q
+```
+
+Nye versioner udgives ved at sætte `version` i `manifest.json` og pushe et tag `vX.Y.Z`;
+GitHub Actions opretter en release, som HACS viser som version.
+
 ## Manuel installation
 
 Kopiér mappen `custom_components/electricity_optimizer` til `config/custom_components/` i din
@@ -50,6 +80,9 @@ Home Assistant-installation og genstart.
 custom_components/electricity_optimizer/
 ├── __init__.py            # registrerer statisk sti og sidebar-panel
 ├── config_flow.py         # opsætning + Konfigurer: prissensor og solcelle-sensorer
+├── storage.py             # lagring af biler (HA Store)
+├── ev_controller.py       # ladeplan og start/stop-kommandoer
+├── websocket.py           # API som panelet bruger
 ├── const.py
 ├── manifest.json
 ├── strings.json

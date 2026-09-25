@@ -167,6 +167,49 @@ const STYLE = `
   .progress { height: 8px; border-radius: 4px; background: var(--secondary-background-color); overflow: hidden; margin-top: 6px; }
   .progress > div { height: 100%; background: var(--warning-color, #ffa600); border-radius: 4px; transition: width 300ms; }
   .setup-link { color: var(--primary-color); text-decoration: none; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row.between { justify-content: space-between; }
+  button.btn {
+    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color);
+  }
+  button.btn.primary { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+  button.btn.danger { color: var(--error-color, #db4437); }
+  button.btn.active { background: var(--warning-color, #ffa600); border-color: var(--warning-color, #ffa600); color: #fff; }
+  button.btn:disabled { opacity: 0.5; cursor: default; }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--secondary-text-color); }
+  .field input, .field select {
+    font: inherit; font-size: 14px; color: var(--primary-text-color); background: var(--card-background-color);
+    border: 1px solid var(--divider-color); border-radius: 8px; padding: 8px 10px; box-sizing: border-box; width: 100%;
+  }
+  .field input:focus { outline: 2px solid var(--primary-color); outline-offset: -1px; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .picker { position: relative; }
+  .picker-list {
+    position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-height: 220px; overflow: auto;
+    background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .picker-list div { padding: 8px 10px; cursor: pointer; font-size: 13px; color: var(--primary-text-color); }
+  .picker-list div small { display: block; color: var(--secondary-text-color); font-size: 11px; }
+  .picker-list div:hover { background: var(--secondary-background-color); }
+  .soc-bar { position: relative; height: 10px; border-radius: 5px; background: var(--secondary-background-color); margin: 8px 0 4px; overflow: visible; }
+  .soc-bar .fill { height: 100%; border-radius: 5px; background: var(--primary-color); }
+  .soc-bar .target { position: absolute; top: -3px; width: 2px; height: 16px; background: var(--primary-text-color); }
+  .soc-bar .fill.charging { background: var(--success-color, #43a047); }
+  .car-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+  .car-grid .card { margin-bottom: 0; }
+  .car-meta { font-size: 13px; color: var(--secondary-text-color); display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
+  .toggle input { width: auto; }
+  .plan-strip { width: 100%; height: 34px; display: block; margin-top: 8px; }
+  .slot { fill: var(--secondary-background-color); }
+  .slot.chosen { fill: var(--success-color, #43a047); }
+  .slot.est { opacity: 0.55; }
+  .slot.now { stroke: var(--primary-text-color); stroke-width: 1.5; }
+  .err { color: var(--error-color, #db4437); font-size: 13px; margin-top: 6px; }
+  .hint { font-size: 12px; color: var(--secondary-text-color); }
   @media (max-width: 600px) {
     .content { padding: 12px; }
     .tab { font-size: 12px; padding: 10px 4px; }
@@ -192,6 +235,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._tab = "home";
     this._lastKey = null;
+    this._cars = null;
+    this._carsStamp = 0;
+    this._editing = null; // null | {} (new) | car object being edited
+    this._formError = null;
     this._built = false;
     try {
       const saved = localStorage.getItem("electricity_optimizer_tab");
@@ -267,11 +314,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const solarKey = this._solarEntityIds
       .map((id) => (this._hass.states[id] ? this._hass.states[id].last_updated : "x"))
       .join(",");
+    if (this._editing && this._tab === "ev" && !force) return;
     const key = [
       this._tab,
       st ? st.last_updated : "missing",
       solarKey,
       this._solarHistoryStamp || 0,
+      this._carsStamp,
       now.getHours(),
       Math.floor(now.getMinutes() / 15),
       this._hass.language,
@@ -298,6 +347,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._menuButton.narrow = this._narrow;
     this._tabsEl = root.querySelector(".tabs");
     this._contentEl = root.querySelector(".content");
+    this._contentEl.addEventListener("click", (ev) => this._onContentClick(ev));
+    this._contentEl.addEventListener("change", (ev) => this._onContentChange(ev));
+    this._contentEl.addEventListener("input", (ev) => this._onContentInput(ev));
+    this._contentEl.addEventListener("focusin", (ev) => this._onContentInput(ev));
+    this._contentEl.addEventListener("focusout", (ev) => {
+      const list = ev.target.closest && ev.target.closest(".picker") && ev.target.closest(".picker").querySelector(".picker-list");
+      if (list) setTimeout(() => (list.hidden = true), 150);
+    });
     this._versionEl = root.querySelector(".version");
     this._tabsEl.innerHTML = TABS.map(
       (t) => `
@@ -331,6 +388,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (this._tab === "home") html = this._renderHome(data);
     else if (this._tab === "solar") html = this._renderSolar(this._readSolar());
     else if (this._tab === "ev") html = this._renderEv();
+    if (this._tab === "ev" || this._tab === "home") this._loadCars();
     else html = this._renderBattery();
     this._contentEl.innerHTML = html;
   }
@@ -517,7 +575,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="status-list">
             ${this._renderSolarStatusRow()}
             <div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">Ikke tilknyttet endnu</div></div><span class="badge neutral">Senere</span></div>
-            <div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">Ingen biler tilføjet</div></div><span class="badge neutral">Senere</span></div>
+            ${this._renderEvStatusRow()}
             <div class="status-row"><ha-icon icon="mdi:database-clock-outline"></ha-icon><div class="t"><div class="n">Prisdata</div><div class="d">${esc(d.attribution || "EnergiDataService")}${
               d.nextUpdate ? ` · næste opdatering ${fmtTime(new Date(d.nextUpdate))}` : ""
             }</div></div><span class="badge low">OK</span></div>
@@ -850,24 +908,288 @@ class ElectricityOptimizerPanel extends HTMLElement {
     </svg>`;
   }
 
+  /* ---------- EV ---------- */
+
+  async _loadCars(force = false) {
+    if (!this._hass || !this._hass.callWS) return;
+    const now = Date.now();
+    if (!force && this._carsLoadedAt && now - this._carsLoadedAt < 30000) return;
+    if (this._carsLoading) return;
+    this._carsLoading = true;
+    try {
+      const res = await this._hass.callWS({ type: "electricity_optimizer/cars/list" });
+      this._cars = res.cars || [];
+      this._carsLoadedAt = Date.now();
+      this._carsStamp = Date.now();
+      this._maybeRender();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("electricity-optimizer: cars/list failed", err);
+      this._cars = this._cars || [];
+      this._carsError = err && err.message ? err.message : String(err);
+    } finally {
+      this._carsLoading = false;
+    }
+  }
+
+  async _saveCar(car) {
+    const res = await this._hass.callWS({ type: "electricity_optimizer/cars/save", car });
+    await this._loadCars(true);
+    return res.car;
+  }
+
+  static STATUS_TEXT = {
+    no_soc: ["SoC ukendt", "neutral"],
+    no_prices: ["Ingen priser", "neutral"],
+    disabled: ["Smart opladning fra", "neutral"],
+    done: ["Klar", "low"],
+    not_plugged: ["Ikke tilsluttet", "neutral"],
+    charge_now: ["Lader nu (manuelt)", "mid"],
+    below_limit: ["Lader – under prisgrænse", "low"],
+    charging: ["Lader – planlagt", "low"],
+    waiting: ["Venter på billig strøm", "mid"],
+  };
+
+  _renderEvStatusRow() {
+    const cars = this._cars;
+    if (!cars || !cars.length) {
+      return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">Ingen biler tilføjet – se fanen Elbiler</div></div><span class="badge neutral">Ikke sat op</span></div>`;
+    }
+    const charging = cars.filter((c) => c.runtime && c.runtime.charging).length;
+    const desc = cars
+      .map((c) => `${c.name}: ${c.runtime && c.runtime.soc !== null && c.runtime.soc !== undefined ? fmtNum(c.runtime.soc, 0) + " %" : "–"}`)
+      .join(" · ");
+    return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${esc(desc)}</div></div><span class="badge ${charging ? "low" : "neutral"}">${charging ? `${charging} lader` : "Ingen lader"}</span></div>`;
+  }
+
   _renderEv() {
+    if (this._editing) return this._renderCarForm(this._editing);
+    const cars = this._cars;
+    let body;
+    if (cars === null) {
+      body = `<div class="card"><div class="empty"><ha-icon icon="mdi:timer-sand"></ha-icon>Henter biler…</div></div>`;
+    } else if (!cars.length) {
+      body = `<div class="card"><div class="empty"><ha-icon icon="mdi:car-electric-outline"></ha-icon>
+        <div>Ingen elbiler er tilføjet endnu.</div>
+        <div style="margin-top:12px"><button class="btn primary" data-action="add-car">Tilføj bil</button></div></div></div>`;
+    } else {
+      body = `<div class="car-grid">${cars.map((c) => this._renderCarCard(c)).join("")}</div>`;
+    }
+    return `
+      <div class="row between" style="margin-bottom:12px">
+        <div class="hint">Bilerne lades i de billigste tidsrum inden deadline. Kommandoer sendes til de valgte start/stop-entiteter.</div>
+        ${cars && cars.length ? '<button class="btn primary" data-action="add-car"><ha-icon icon="mdi:plus" style="--mdc-icon-size:18px"></ha-icon> Tilføj bil</button>' : ""}
+      </div>
+      ${this._carsError ? `<div class="err">${esc(this._carsError)}</div>` : ""}
+      ${body}`;
+  }
+
+  _renderCarCard(car) {
+    const rt = car.runtime || {};
+    const [statusText, statusCls] = ElectricityOptimizerPanel.STATUS_TEXT[rt.status] || ["Ukendt", "neutral"];
+    const soc = rt.soc !== null && rt.soc !== undefined ? Number(rt.soc) : null;
+    const plan = rt.plan || null;
+    const now = new Date();
+    const dayLabel = (d) => (d.getDate() === now.getDate() ? "i dag" : "i morgen");
+    const meta = [];
+    if (plan) {
+      if (plan.need_kwh > 0) meta.push(`Mangler ${fmtNum(plan.need_kwh, 1)} kWh · ca. ${fmtNum(plan.need_hours, 1)} t ved ${fmtNum(car.charge_power_kw, 1)} kW`);
+      const dl = new Date(plan.deadline);
+      meta.push(`Klar senest ${dayLabel(dl)} kl. ${fmtTime(dl)}${plan.enough_time ? "" : " – ikke nok tid, lader hele vejen"}`);
+      if (rt.charging) meta.push("Lader lige nu");
+      else if (plan.next_start) {
+        const ns = new Date(plan.next_start);
+        meta.push(`Næste planlagte ladning ${dayLabel(ns)} kl. ${fmtTime(ns)}`);
+      }
+    }
+    if (rt.plugged === false) meta.push("Bilen er ikke tilsluttet");
+    if (rt.last_action) {
+      const la = rt.last_action;
+      meta.push(`Sidste kommando: ${la.action === "start" ? "start" : "stop"} kl. ${fmtTime(new Date(la.at))}${la.ok ? "" : ` – fejlede: ${la.error || ""}`}`);
+    }
+    const socPct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
+    return `
+      <div class="card" data-car="${car.id}">
+        <h2><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span></h2>
+        <div class="kpi">
+          <div class="value">${soc === null ? "–" : fmtNum(soc, 0) + " %"}<small>mål ${car.target_soc} %</small></div>
+        </div>
+        <div class="soc-bar"><div class="fill ${rt.charging ? "charging" : ""}" style="width:${socPct}%"></div><div class="target" style="left:${car.target_soc}%"></div></div>
+        <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
+        ${plan ? this._renderPlanStrip(plan) : ""}
+        <div class="controls">
+          <label class="toggle"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}> Smart opladning</label>
+          <label class="field">Mål-SoC (%)<input type="number" min="1" max="100" step="1" data-field="target_soc" value="${car.target_soc}"></label>
+          <label class="field">Klar senest<input type="time" data-field="ready_by" value="${esc(car.ready_by)}"></label>
+          <label class="field">Prisgrænse (kr/kWh)<input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn ${car.charge_now ? "active" : ""}" data-action="charge-now">${car.charge_now ? "Stop 'Lad nu'" : "Lad nu"}</button>
+          <button class="btn" data-action="edit-car">Rediger</button>
+          <button class="btn danger" data-action="delete-car">Slet</button>
+        </div>
+      </div>`;
+  }
+
+  _renderPlanStrip(plan) {
+    const slots = plan.plan || [];
+    if (!slots.length) return "";
+    const t0 = Math.min(Date.now(), new Date(slots[0].start).getTime());
+    const t1 = new Date(slots[slots.length - 1].end).getTime();
+    const W = 600, H = 34, barH = 18;
+    const x = (t) => ((t - t0) / (t1 - t0)) * W;
+    const now = Date.now();
+    const rects = slots
+      .map((s) => {
+        const a = new Date(s.start).getTime(), b = new Date(s.end).getTime();
+        const isNow = a <= now && now < b;
+        return `<rect class="slot ${s.chosen ? "chosen" : ""} ${s.estimated ? "est" : ""} ${isNow ? "now" : ""}" x="${x(a).toFixed(1)}" y="0" width="${Math.max(0.5, x(b) - x(a) - 0.5).toFixed(1)}" height="${barH}" rx="2"><title>${fmtTime(new Date(a))} ${fmtNum(s.price)}${s.estimated ? " (estimat)" : ""}</title></rect>`;
+      })
+      .join("");
+    const labels = [];
+    for (const s of slots) {
+      const d = new Date(s.start);
+      if (d.getMinutes() === 0 && d.getHours() % 6 === 0) {
+        labels.push(`<text class="tick" x="${x(d.getTime()).toFixed(1)}" y="${H - 2}">${pad2(d.getHours())}</text>`);
+      }
+    }
+    return `<svg class="plan-strip" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${rects}${labels.join("")}</svg>
+      <div class="hint">Grøn = planlagt ladning · nedtonet = pris endnu ukendt (estimat)</div>`;
+  }
+
+  _renderCarForm(car) {
+    const v = (k, d = "") => esc(car[k] === undefined || car[k] === null ? d : car[k]);
+    const isNew = !car.id;
+    const errText = {
+      name_required: "Navn mangler.",
+      soc_required: "Vælg en SoC-sensor.",
+      start_stop_required: "Vælg både start- og stop-entitet.",
+      capacity_power_positive: "Kapacitet og ladeeffekt skal være større end 0.",
+      ready_by_invalid: "Ugyldigt klokkeslæt.",
+    };
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:car-electric"></ha-icon>Elbiler <span class="chip"><ha-icon icon="mdi:progress-wrench"></ha-icon>Kommer i næste trin</span></h2>
-        <div class="empty">
-          <ha-icon icon="mdi:car-electric-outline"></ha-icon>
-          <div>Ingen elbiler er tilføjet endnu.</div>
-        </div>
-      </div>
-      <div class="card">
-        <h2><ha-icon icon="mdi:tune"></ha-icon>Planlagte indstillinger pr. bil</h2>
-        <ul class="planned">
-          <li><ha-icon icon="mdi:ev-station"></ha-icon><div><div class="n">Lader og bil</div><div class="d">Vælg laderens tænd/sluk-kontakt, ladeeffekt (A/kW) og bilens SoC-sensor.</div></div></li>
-          <li><ha-icon icon="mdi:battery-charging-80"></ha-icon><div><div class="n">Ønsket opladning</div><div class="d">Mål-SoC eller antal kWh, og hvornår bilen skal være klar (fx kl. 07:00).</div></div></li>
-          <li><ha-icon icon="mdi:weather-sunny"></ha-icon><div><div class="n">Solcelle-prioritet</div><div class="d">Lad primært på overskudsstrøm fra solceller, og fyld op i de billigste timer.</div></div></li>
-          <li><ha-icon icon="mdi:cash-multiple"></ha-icon><div><div class="n">Prisgrænse</div><div class="d">Lad altid, når prisen er under en valgt grænse.</div></div></li>
-        </ul>
+        <h2><ha-icon icon="mdi:car-electric"></ha-icon>${isNew ? "Tilføj bil" : `Rediger ${esc(car.name)}`}</h2>
+        <form class="car-form" data-id="${v("id")}">
+          <div class="fields">
+            <label class="field">Navn<input name="name" value="${v("name")}" placeholder="fx Tesla" required></label>
+            <label class="field">SoC-sensor (%)<div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Start opladning (entitet)<div class="picker"><input name="start_entity" data-domains="switch,button,script,input_boolean,automation" value="${v("start_entity")}" placeholder="switch.… / button.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Stop opladning (entitet)<div class="picker"><input name="stop_entity" data-domains="switch,button,script,input_boolean,automation" value="${v("stop_entity")}" placeholder="samme switch eller anden entitet" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Tilsluttet-sensor (valgfri)<div class="picker"><input name="plugged_entity" data-domains="binary_sensor" value="${v("plugged_entity")}" placeholder="binary_sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Batterikapacitet (kWh)<input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
+            <label class="field">Ladeeffekt (kW)<input name="charge_power_kw" type="number" step="0.1" min="0.1" value="${v("charge_power_kw", 11)}"></label>
+          </div>
+          <div class="hint" style="margin-top:10px">Start: entiteten tændes/trykkes. Stop: er det samme switch som start, slukkes den – ellers tændes/trykkes stop-entiteten. Brug samme entitet begge steder, hvis din lader kun har én switch.</div>
+          ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}
+          <div class="row" style="margin-top:14px">
+            <button class="btn primary" type="submit" data-action="save-car">Gem</button>
+            <button class="btn" type="button" data-action="cancel-car">Annuller</button>
+          </div>
+        </form>
       </div>`;
+  }
+
+  _entityMatches(domains, query) {
+    const q = (query || "").toLowerCase();
+    const doms = domains.split(",");
+    const out = [];
+    for (const id of Object.keys(this._hass.states)) {
+      const dom = id.split(".")[0];
+      if (!doms.includes(dom)) continue;
+      const name = (this._hass.states[id].attributes.friendly_name || "").toLowerCase();
+      if (q && !id.toLowerCase().includes(q) && !name.includes(q)) continue;
+      out.push(id);
+      if (out.length >= 40) break;
+    }
+    return out.sort();
+  }
+
+  _onContentInput(ev) {
+    const input = ev.target;
+    if (!input.matches || !input.matches("input[data-domains]")) return;
+    const list = input.parentElement.querySelector(".picker-list");
+    const ids = this._entityMatches(input.dataset.domains, input.value);
+    list.innerHTML = ids
+      .map((id) => `<div data-pick="${esc(id)}">${esc(id)}<small>${esc(this._hass.states[id].attributes.friendly_name || "")}</small></div>`)
+      .join("");
+    list.hidden = ids.length === 0;
+  }
+
+  async _onContentChange(ev) {
+    const input = ev.target;
+    const card = input.closest && input.closest("[data-car]");
+    if (!card || !input.dataset.field) return;
+    const field = input.dataset.field;
+    let value;
+    if (input.type === "checkbox") value = input.checked;
+    else if (field === "price_limit") value = input.value === "" ? null : Number(input.value);
+    else if (field === "target_soc") value = Number(input.value);
+    else value = input.value;
+    try {
+      await this._saveCar({ id: card.dataset.car, [field]: value });
+    } catch (err) {
+      this._carsError = err && err.message ? err.message : String(err);
+      this._maybeRender(true);
+    }
+  }
+
+  async _onContentClick(ev) {
+    const pick = ev.target.closest && ev.target.closest("[data-pick]");
+    if (pick) {
+      const input = pick.closest(".picker").querySelector("input");
+      input.value = pick.dataset.pick;
+      pick.parentElement.hidden = true;
+      return;
+    }
+    const btn = ev.target.closest && ev.target.closest("[data-action]");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const card = btn.closest("[data-car]");
+    const carId = card ? card.dataset.car : null;
+    const car = carId && this._cars ? this._cars.find((c) => c.id === carId) : null;
+    try {
+      if (action === "add-car") {
+        this._editing = {};
+        this._formError = null;
+        this._maybeRender(true);
+      } else if (action === "edit-car" && car) {
+        this._editing = { ...car };
+        this._formError = null;
+        this._maybeRender(true);
+      } else if (action === "cancel-car") {
+        this._editing = null;
+        this._formError = null;
+        this._maybeRender(true);
+      } else if (action === "save-car") {
+        ev.preventDefault();
+        const form = btn.closest("form");
+        const data = {};
+        for (const el of form.querySelectorAll("input[name]")) data[el.name] = el.value;
+        if (form.dataset.id) data.id = form.dataset.id;
+        try {
+          await this._saveCar(data);
+          this._editing = null;
+          this._formError = null;
+        } catch (err) {
+          this._formError = (err && (err.message || err.code)) || String(err);
+          // keep the typed values
+          this._editing = { ...this._editing, ...data };
+        }
+        this._maybeRender(true);
+      } else if (action === "delete-car" && car) {
+        if (!window.confirm(`Slet ${car.name}?`)) return;
+        await this._hass.callWS({ type: "electricity_optimizer/cars/delete", car_id: car.id });
+        await this._loadCars(true);
+        this._maybeRender(true);
+      } else if (action === "charge-now" && car) {
+        await this._saveCar({ id: car.id, charge_now: !car.charge_now });
+        this._maybeRender(true);
+      }
+    } catch (err) {
+      this._carsError = err && err.message ? err.message : String(err);
+      this._maybeRender(true);
+    }
   }
 
   _renderBattery() {
