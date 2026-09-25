@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.15.0";
+const PANEL_JS_VERSION = "0.16.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -828,6 +828,24 @@ class ElectricityOptimizerPanel extends HTMLElement {
     });
   }
 
+  /** House consumption 0 → 5 kW. */
+  _renderHouseGauge(houseW) {
+    const K = ElectricityOptimizerPanel;
+    const limit = 5000;
+    return this._renderGauge({
+      value: houseW === null ? null : Math.abs(houseW),
+      min: 0,
+      max: limit,
+      color: "var(--primary-color, #03a9f4)",
+      valueText: houseW === null ? "–" : fmtNum(Math.abs(houseW), 0),
+      unit: "W",
+      sub: this._battery && this._battery.house_power_entity ? "lige nu" : "Ingen sensor – vælg under Hus batteri",
+      leftLabel: "0",
+      rightLabel: K._kwLabel(limit),
+      aria: `Husforbrug ${houseW === null ? "ukendt" : `${fmtNum(houseW, 0)} W`}`,
+    });
+  }
+
   /** Battery state of charge 0–100 %: red at/below the reserve, orange just above, green otherwise. */
   _renderSocGauge(soc) {
     const K = ElectricityOptimizerPanel;
@@ -866,7 +884,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const bat = this._battery ? this._readBatteryLive() : { soc: null, batW: null, gridW: null, houseW: null };
     const gridW = this._gridLiveW();
     const solarW = solar.powerKw === null ? null : Math.round(solar.powerKw * 1000);
-    const w = (v) => (v === null ? "–" : `${fmtNum(Math.abs(v), 0)}<small>W</small>`);
     return `
       <div class="grid">
         <div class="card kpi live">
@@ -875,8 +892,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Husforbrug</div>
-          <div class="value">${w(bat.houseW)}</div>
-          <div class="sub">${this._battery && this._battery.house_power_entity ? "lige nu" : "Ingen sensor – vælg under Hus batteri"}</div>
+          ${this._renderHouseGauge(bat.houseW)}
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet</div>
@@ -1237,19 +1253,25 @@ class ElectricityOptimizerPanel extends HTMLElement {
       rows = `<div class="status-row"><ha-icon icon="mdi:timer-sand"></ha-icon><div class="t"><div class="d">Henter regler…</div></div></div>`;
     } else if (rules.solar_priority === "battery") {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Batteriet lader fra sol, indtil det er over ${rules.battery_min_soc_for_ev_solar} %.` : "Intet husbatteri sat op – reglen har ingen effekt."}</div></div></div>
-        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Får kun ren eksport, og først når batteriet er over grænsen. ${esc(carText)}.</div></div></div>`;
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? "Batteriet lader fra sol; bilen får kun det, der ellers sælges til nettet." : "Intet husbatteri sat op – reglen har ingen effekt."}</div></div></div>
+        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Får ren eksport. ${esc(carText)}.</div></div></div>`;
     } else {
       rows = `
         <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Bilen får eksporten plus det, batteriet lader med. ${esc(carText)}.</div></div></div>
         <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${battery ? "Får det overskud, bilen ikke bruger, og bruges i de dyre timer." : "Intet husbatteri sat op."}</div></div></div>`;
+    }
+    const conds = [];
+    if (rules) {
+      if (rules.battery_min_soc_for_ev_solar !== null && battery) conds.push(`husbatteriet er mindst ${rules.battery_min_soc_for_ev_solar} %`);
+      if (rules.solar_min_w !== null) conds.push(`solcellerne har produceret mindst ${fmtNum(rules.solar_min_w, 0)} W i ${rules.solar_min_minutes} min`);
+      conds.push(`der har været overskud nok i ${rules.solar_min_minutes} min (stopper efter ${rules.solar_min_minutes} min uden)`);
     }
     const ctx = this._context || {};
     return `
       <div class="card">
         <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen <a class="setup-link hint" href="#" data-goto="home" style="margin-left:auto">Regler</a></h2>
         <div class="status-list">${rows}</div>
-        ${rules ? `<div class="hint" style="margin-top:8px">Sol starter efter ${rules.solar_start_minutes} min overskud og stopper efter ${rules.solar_stop_minutes} min underskud.${ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""}</div>` : ""}
+        ${rules ? `<div class="hint" style="margin-top:8px">Elbilen lader fra sol, når ${conds.join(", og ")}.${ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""}</div>` : ""}
       </div>`;
   }
 
@@ -1356,7 +1378,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
     waiting: ["Venter på billig strøm", "mid"],
     solar: ["Lader fra sol", "low"],
     solar_wait: ["Venter på sol-overskud", "mid"],
-    battery_first: ["Venter – husbatteri først", "mid"],
+    solar_low: ["Venter på solproduktion", "mid"],
+    battery_first: ["Venter – husbatteri for lavt", "mid"],
+    no_solar_sensor: ["Mangler solcelle-sensor", "neutral"],
     fuse_wait: ["Venter – hovedsikring", "mid"],
     no_grid_sensor: ["Mangler net-sensor til sol", "neutral"],
     no_deadline: ["Ingen planlagt dag", "neutral"],
@@ -1425,16 +1449,20 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="controls">
           <label class="field">${head(
             "Sol først til",
-            "Hvem der får solstrømmen først. Elbil: bilen får eksporten plus det, husbatteriet ellers ville lade med. Husbatteri: bilen får kun det, der ellers sælges til nettet, og først når batteriet er over grænsen ved siden af. Flere biler får sol i den rækkefølge, de står i under Elbiler."
+            "Hvem der får solstrømmen først. Elbil: bilen får eksporten plus det, husbatteriet ellers ville lade med. Husbatteri: bilen får kun det, der ellers sælges til nettet. Flere biler får sol i den rækkefølge, de står i under Elbiler."
           )}${sel("solar_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>
-          ${
-            r.solar_priority === "battery"
-              ? `<label class="field">${head(
-                  "Elbil får sol fra (%)",
-                  "Husbatteriets ladestand, hvorfra elbilen må bruge sol-overskuddet, når husbatteriet har førsteret. Under denne grænse går alt overskud til husbatteriet."
-                )}<input type="number" min="0" max="100" data-rfield="battery_min_soc_for_ev_solar" value="${r.battery_min_soc_for_ev_solar}"></label>`
-              : ""
-          }
+          <label class="field">${head(
+            "Elbil-sol: batteri ≥ (%)",
+            "Elbilen lader ikke fra sol, så længe husbatteriet er under denne ladestand. Falder batteriet under grænsen, mens bilen lader fra sol, stopper bilen. Tom = ingen grænse."
+          )}<input type="number" min="0" max="100" data-rfield="battery_min_soc_for_ev_solar" value="${r.battery_min_soc_for_ev_solar === null ? "" : r.battery_min_soc_for_ev_solar}" placeholder="fra"></label>
+          <label class="field">${head(
+            "Elbil-sol: sol ≥ (W)",
+            "Elbilen lader kun fra sol, når solcellerne producerer mindst dette i mindst det antal minutter, der står ved siden af. Falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det."
+          )}<input type="number" min="0" step="100" data-rfield="solar_min_w" value="${r.solar_min_w === null ? "" : r.solar_min_w}" placeholder="fra"></label>
+          <label class="field">${head(
+            "… i mindst (min)",
+            "Hvor længe produktionen og sol-overskuddet skal være over grænsen, før bilen starter, og under grænsen, før den stopper. Forhindrer tænd/sluk, når skyer passerer."
+          )}<input type="number" min="0" step="0.5" data-rfield="solar_min_minutes" value="${r.solar_min_minutes}"></label>
           <label class="field">${head(
             "Hovedsikring (A)",
             "Maks. strøm pr. fase, som elbiler og husbatteri må trække fra nettet tilsammen. Tom = ingen grænse. Kun med en grænse har rækkefølgen ved sikringen betydning."
@@ -1447,14 +1475,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
                 )}${sel("grid_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>`
               : ""
           }
-          <label class="field">${head(
-            "Sol: start efter (min)",
-            "Hvor længe der skal være sol-overskud nok, før elbilen starter. Forhindrer tænd/sluk, når skyer passerer."
-          )}<input type="number" min="0" step="0.5" data-rfield="solar_start_minutes" value="${r.solar_start_minutes}"></label>
-          <label class="field">${head(
-            "Sol: stop efter (min)",
-            "Hvor længe sol-overskuddet skal mangle, før elbilen stopper igen."
-          )}<input type="number" min="0" step="0.5" data-rfield="solar_stop_minutes" value="${r.solar_stop_minutes}"></label>
         </div>
         <label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri ved net-ladning${info(
           "Når en elbil lader fra nettet, sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer."
@@ -1462,7 +1482,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         ${sensorForm}
         ${
           ctx.surplus_w !== undefined && ctx.surplus_w !== null
-            ? `<div class="hint" style="margin-top:8px">Sol-overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.</div>`
+            ? `<div class="hint" style="margin-top:8px">Ved sidste beregning: sol-overskud ${fmtNum(ctx.surplus_w, 0)} W${ctx.solar_w !== undefined && ctx.solar_w !== null ? ` · solproduktion ${fmtNum(ctx.solar_w, 0)} W` : ""}.</div>`
             : ""
         }
         ${this._rulesError ? `<div class="err">${esc(this._rulesError)}</div>` : ""}
@@ -1564,6 +1584,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
       meta.push(`Bilen trækker ${fmtNum(liveW, 0)} W`);
     }
     if (rt.status === "solar_wait" && rt.surplus_w !== undefined) meta.push(`Sol-overskud lige nu ${fmtNum(rt.surplus_w, 0)} W – kræver ${car.min_amps * 230 * car.phases} W`);
+    if (rt.status === "solar_low" && rt.solar_w !== undefined && this._rules) meta.push(`Solproduktion ${fmtNum(rt.solar_w, 0)} W – kræver ${fmtNum(this._rules.solar_min_w, 0)} W i ${this._rules.solar_min_minutes} min`);
+    if (rt.status === "battery_first" && this._rules) meta.push(`Husbatteriet skal over ${this._rules.battery_min_soc_for_ev_solar} %`);
     if (rt.last_action) {
       const la = rt.last_action;
       meta.push(`Sidste kommando: ${la.action === "start" ? "start" : "stop"} kl. ${fmtTime(new Date(la.at))}${la.ok ? "" : ` – fejlede: ${la.error || ""}`}`);

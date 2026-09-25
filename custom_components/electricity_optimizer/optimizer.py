@@ -67,6 +67,24 @@ class Optimizer:
             v *= 1000
         return v
 
+    def solar_w(self) -> float | None:
+        entity_id = self.config.get("solar_power_entity")
+        if not entity_id:
+            return None
+        st = self.hass.states.get(entity_id)
+        if st is None or st.state in ("unknown", "unavailable"):
+            return None
+        try:
+            v = float(st.state)
+        except ValueError:
+            return None
+        unit = (st.attributes.get("unit_of_measurement") or "W").lower()
+        if unit == "kw":
+            v *= 1000
+        elif unit == "mw":
+            v *= 1_000_000
+        return v
+
     def solar_forecast(self) -> dict:
         now = dt_util.now()
         out = {}
@@ -97,6 +115,7 @@ class Optimizer:
             grid_w=grid_w,
             surplus_w=surplus,
             solar_forecast_kwh=self.solar_forecast(),
+            solar_w=self.solar_w(),
         )
 
     async def async_evaluate(self) -> None:
@@ -114,7 +133,7 @@ class Optimizer:
         bat = self.battery.store.battery
         if bat:
             ids.update(v for k, v in bat.items() if k in ("soc_entity", "power_entity", "charge_power_entity", "discharge_power_entity", "grid_power_entity") and v)
-        ids.update(v for k, v in self.config.items() if k in ("solar_forecast_today_entity", "solar_forecast_tomorrow_entity") and v)
+        ids.update(v for k, v in self.config.items() if k in ("solar_forecast_today_entity", "solar_forecast_tomorrow_entity", "solar_power_entity") and v)
         if self.rules_store.rules.get("grid_power_entity"):
             ids.add(self.rules_store.rules["grid_power_entity"])
         return ids
@@ -127,6 +146,7 @@ class Optimizer:
             "grid_w": ctx.grid_w,
             "battery_w": ctx.battery_w,
             "surplus_w": ctx.surplus_w,
+            "solar_w": ctx.solar_w,
             "ev_grid_charging": ctx.ev_grid_charging,
             "ev_amps_total": ctx.ev_amps_total,
             "evaluated_at": ctx.now.isoformat(),

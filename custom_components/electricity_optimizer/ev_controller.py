@@ -30,6 +30,7 @@ class Context:
     battery_w: float | None = None  # + = charging
     grid_w: float | None = None  # + = import
     battery_grid_charging: bool = False  # battery intends to charge from grid this slot
+    solar_w: float | None = None  # current solar production
     surplus_w: float | None = None  # solar surplus available for EVs (decremented as cars take it)
     solar_forecast_kwh: dict[Any, float] = field(default_factory=dict)  # date -> forecast kWh (today/tomorrow)
     ev_grid_charging: bool = False
@@ -318,7 +319,7 @@ class EvController:
         else:
             rt["status"] = "no_prices" if plan is None else ("no_deadline" if plan["deadline"] is None else "waiting")
 
-        if mode != "solar" and rt["status"] not in ("solar_wait",):
+        if mode != "solar" and rt["status"] not in ("solar_wait", "solar_low"):
             self._reset_solar_timers(rt)
 
         # Main fuse: battery charging from grid has priority -> reduce or postpone the car.
@@ -351,8 +352,28 @@ class EvController:
 
     @staticmethod
     def _reset_solar_timers(rt: dict[str, Any]) -> None:
-        rt["solar_above_since"] = None
-        rt["solar_below_since"] = None
+        for key in ("solar_above_since", "solar_below_since", "prod_above_since", "prod_below_since"):
+            rt[key] = None
+
+    @staticmethod
+    def _debounced(rt: dict[str, Any], key: str, condition: bool, active: bool, window_s: float, now: datetime) -> bool:
+        """Start once `condition` has held for window_s; while active, stop once it has failed for window_s."""
+        above, below = f"{key}_above_since", f"{key}_below_since"
+        if condition:
+            rt[below] = None
+            if active:
+                return True
+            since = rt.get(above)
+            if since is None:
+                rt[above] = since = now.isoformat()
+            return (now - datetime.fromisoformat(since)).total_seconds() >= window_s
+        rt[above] = None
+        if not active:
+            return False
+        since = rt.get(below)
+        if since is None:
+            rt[below] = since = now.isoformat()
+        return (now - datetime.fromisoformat(since)).total_seconds() < window_s
 
     def _solar_decision(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], car_w: float | None) -> tuple[bool, int]:
         """Return (charge, amps) for solar surplus charging, with start/stop hysteresis."""
@@ -360,17 +381,27 @@ class EvController:
         if ctx.surplus_w is None:
             rt["status"] = "no_grid_sensor"
             return False, car["max_amps"]
-        if (
-            rules["solar_priority"] == "battery"
-            and ctx.battery_cfg is not None
-            and ctx.battery_soc is not None
-            and ctx.battery_soc < rules["battery_min_soc_for_ev_solar"]
-        ):
+        soc_limit = rules.get("battery_min_soc_for_ev_solar")
+        if soc_limit is not None and ctx.battery_cfg is not None and ctx.battery_soc is not None and ctx.battery_soc < soc_limit:
             rt["status"] = "battery_first"
+            self._reset_solar_timers(rt)
             return False, car["max_amps"]
 
-        per_amp = GRID_VOLTAGE * car["phases"]
+        now = ctx.now
+        window_s = rules["solar_min_minutes"] * 60
         currently_solar = rt.get("mode") == "solar" and self._last_cmd.get(car["id"], False)
+        min_w = rules.get("solar_min_w")
+        if min_w:
+            if ctx.solar_w is None:
+                rt["status"] = "no_solar_sensor"
+                return False, car["max_amps"]
+            rt["solar_w"] = round(ctx.solar_w)
+            if not self._debounced(rt, "prod", ctx.solar_w >= min_w, currently_solar, window_s, now):
+                rt["status"] = "solar_low"
+                rt["solar_above_since"] = rt["solar_below_since"] = None
+                return False, car["max_amps"]
+
+        per_amp = GRID_VOLTAGE * car["phases"]
         available = ctx.surplus_w  # may be negative when the house is importing
         if currently_solar:
             # the car's own draw is already inside the house load; give it back
@@ -380,32 +411,7 @@ class EvController:
         need_w = (car["min_amps"] if modulating else car["max_amps"]) * per_amp
         rt["surplus_w"] = round(available)
 
-        now = ctx.now
-        start_s = rules["solar_start_minutes"] * 60
-        stop_s = rules["solar_stop_minutes"] * 60
-        charge = False
-        if available >= need_w:
-            rt["solar_below_since"] = None
-            if currently_solar:
-                charge = True
-            else:
-                since = rt.get("solar_above_since")
-                if since is None:
-                    rt["solar_above_since"] = now.isoformat()
-                    since = rt["solar_above_since"]
-                elapsed = (now - datetime.fromisoformat(since)).total_seconds()
-                charge = elapsed >= start_s
-        else:
-            rt["solar_above_since"] = None
-            if currently_solar:
-                since = rt.get("solar_below_since")
-                if since is None:
-                    rt["solar_below_since"] = now.isoformat()
-                    since = rt["solar_below_since"]
-                elapsed = (now - datetime.fromisoformat(since)).total_seconds()
-                charge = elapsed < stop_s
-
-        if not charge:
+        if not self._debounced(rt, "solar", available >= need_w, currently_solar, window_s, now):
             rt["status"] = "solar_wait"
             return False, car["max_amps"]
         amps = int(available // per_amp) if modulating else car["max_amps"]

@@ -59,7 +59,7 @@ async def test_solar_surplus_charging_modulates_amps(hass: HomeAssistant, hass_w
     set_value = async_mock_service(hass, "number", "set_value")
     await _setup(hass)
     client = await hass_ws_client(hass)
-    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_start_minutes": 0, "solar_stop_minutes": 0}})
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0}})
     res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": CAR})
     rt = res["car"]["runtime"]
     assert rt["status"] == "solar" and rt["mode"] == "solar"
@@ -75,7 +75,7 @@ async def test_solar_surplus_charging_modulates_amps(hass: HomeAssistant, hass_w
     # available = 500 + 7*690 = 5330 W -> still charging at 7 A
     assert rt["status"] == "solar" and rt["amps"] == 7
 
-    # now importing: available = 7*690 - 2000 = 2830 W < 4140 -> stop (stop_minutes = 0)
+    # now importing: available = 7*690 - 2000 = 2830 W < 4140 -> stop (solar_min_minutes = 0)
     hass.states.async_set("sensor.grid", "2000", {"unit_of_measurement": "W"})
     res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["status"] == "solar_wait"
@@ -89,7 +89,7 @@ async def test_solar_start_hysteresis(hass: HomeAssistant, hass_ws_client, freez
     turn_on = async_mock_service(hass, "switch", "turn_on")
     await _setup(hass)
     client = await hass_ws_client(hass)
-    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_start_minutes": 2}})
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 2}})
     res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": CAR})
     assert res["car"]["runtime"]["status"] == "solar_wait"
     assert len(turn_on) == 0
@@ -110,7 +110,7 @@ async def test_battery_first_blocks_ev_solar_until_soc(hass: HomeAssistant, hass
     await _setup(hass)
     client = await hass_ws_client(hass)
     await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc", "power_entity": "sensor.bat_power", "grid_power_entity": "sensor.grid"}})
-    await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "battery", "battery_min_soc_for_ev_solar": 90, "solar_start_minutes": 0}})
+    await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "battery", "battery_min_soc_for_ev_solar": 90, "solar_min_minutes": 0}})
     res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": CAR})
     assert res["car"]["runtime"]["status"] == "battery_first"
 
@@ -195,7 +195,7 @@ async def test_today_source_controls_grid_and_solar(hass: HomeAssistant, hass_ws
     async_mock_service(hass, "number", "set_value")
     await _setup(hass)
     client = await hass_ws_client(hass)
-    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_start_minutes": 0}})
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0}})
     today = now.weekday()
     schedule = [{"enabled": True, "source": "plan", "ready_by": (now + timedelta(hours=2)).strftime("%H:%M"), "target_soc": 80} for _ in range(7)]
     schedule[today]["source"] = "solar"  # today: solar only, even though the hour is cheap
@@ -206,3 +206,91 @@ async def test_today_source_controls_grid_and_solar(hass: HomeAssistant, hass_ws
     res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": res["car"]["id"], "schedule": schedule}})
     assert res["car"]["runtime"]["status"] == "charging" and res["car"]["runtime"]["mode"] == "grid"
     assert len(turn_on) >= 1
+
+
+async def test_ev_solar_stops_when_house_battery_below_limit(hass: HomeAssistant, hass_ws_client) -> None:
+    """The SoC limit applies with EV priority too, and stops an ongoing solar charge."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.bat_soc", "40")
+    hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.grid", "-6000", {"unit_of_measurement": "W"})
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc", "power_entity": "sensor.bat_power", "grid_power_entity": "sensor.grid"}})
+    rules = await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "ev", "battery_min_soc_for_ev_solar": 30, "solar_min_minutes": 0}})
+    assert rules["rules"]["battery_min_soc_for_ev_solar"] == 30
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": CAR})
+    assert res["car"]["runtime"]["status"] == "solar"
+    assert len(turn_on) == 1
+
+    hass.states.async_set("sensor.bat_soc", "25")
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "battery_first"
+    assert len(turn_off) == 1
+
+    # empty field = no limit
+    rules = await _ws(hass, client, 5, {"type": f"{DOMAIN}/rules/save", "rules": {"battery_min_soc_for_ev_solar": ""}})
+    assert rules["rules"]["battery_min_soc_for_ev_solar"] is None
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar"
+
+
+async def test_ev_solar_requires_minimum_production(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """With solar_min_w set, production must exceed it for solar_min_minutes before starting, and stop after the same window."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.grid", "-6000", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.pv", "1.0", {"unit_of_measurement": "kW"})
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    entry = MockConfigEntry(domain=DOMAIN, data={"price_entity": PRICE_ENTITY, "solar_power_entity": "sensor.pv"}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+    rules = await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_w": "2000", "solar_min_minutes": 2}})
+    assert rules["rules"]["solar_min_w"] == 2000
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": CAR})
+    rt = res["car"]["runtime"]
+    assert rt["status"] == "solar_low" and rt["solar_w"] == 1000
+    assert len(turn_on) == 0
+
+    # production above the limit, but not for long enough yet
+    hass.states.async_set("sensor.pv", "3.0", {"unit_of_measurement": "kW"})
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar_low"
+    freezer.tick(timedelta(minutes=2, seconds=1))
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar_wait"  # production ok, surplus timer starts now
+    freezer.tick(timedelta(minutes=2, seconds=1))
+    res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar"
+    assert len(turn_on) == 1
+    stops_before = len(turn_off)  # the first evaluation sends a stop to sync the charger
+
+    # production drops: keep charging until the window has passed, then stop
+    hass.states.async_set("sensor.pv", "500", {"unit_of_measurement": "W"})
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar"
+    freezer.tick(timedelta(minutes=2, seconds=1))
+    res = await _ws(hass, client, 7, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar_low"
+    assert len(turn_off) == stops_before + 1
+
+
+def test_rules_migrate_from_start_stop_minutes() -> None:
+    from custom_components.electricity_optimizer.storage import normalize_rules
+
+    old = {"solar_priority": "ev", "battery_min_soc_for_ev_solar": 90, "solar_start_minutes": 3, "solar_stop_minutes": 5}
+    rules = normalize_rules({}, old)
+    assert rules["solar_min_minutes"] == 3
+    assert rules["battery_min_soc_for_ev_solar"] is None  # was ignored with EV priority
+    assert "solar_start_minutes" not in rules and "solar_stop_minutes" not in rules
+
+    old_battery_first = {**old, "solar_priority": "battery"}
+    assert normalize_rules({}, old_battery_first)["battery_min_soc_for_ev_solar"] == 90

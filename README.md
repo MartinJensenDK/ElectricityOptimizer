@@ -5,7 +5,7 @@ timer på elmarkedet til hus og elbil, og bruger husbatteriet når prisen er hø
 
 Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants sidebar med tre faner:
 
-- **Forsiden** – live-række med gauges for solproduktion, elnet, batteri-effekt og batteri-% samt husforbrug,
+- **Forsiden** – live-række med gauges for solproduktion, husforbrug, elnet, batteri-effekt og batteri-%,
   prisgraf for i dag og i morgen med lodret nu-streg (prisen lige nu står i toppen) og elbilernes
   planlagte ladetimer indtegnet, billigste og dyreste timer fremover, status for solceller,
   batteri og elbiler samt reglerne for opladning.
@@ -84,11 +84,13 @@ Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem el
 
 | Regel | Betydning |
 | --- | --- |
-| Sol først til | *Elbil*: bilen får eksport + batteriets ladeeffekt. *Husbatteri*: bilen får kun eksporten, og først når batteriet er over grænsen *Elbil får sol fra (%)* (feltet vises kun ved husbatteri først) |
+| Sol først til | *Elbil*: bilen får eksport + batteriets ladeeffekt. *Husbatteri*: bilen får kun eksporten |
+| Elbil-sol: batteri ≥ (%) | Elbilen lader kun fra sol, når husbatteriet er mindst så fuldt; falder det under grænsen, stopper bilen. Tom = ingen grænse |
+| Elbil-sol: sol ≥ (W) | Elbilen lader kun fra sol, når solcellerne (effekt-sensoren fra opsætningen) har produceret mindst så meget i det valgte antal minutter; falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det |
+| … i mindst (min) | Hvor længe produktion og overskud skal være over grænsen, før der startes, og under, før der stoppes |
 | Hovedsikring (A) | Valgfri øvre grænse pr. fase for elbiler + batteri-opladning fra nettet. Tom = ingen grænse |
 | Ved sikring først til | Vises kun når hovedsikringen er sat: *Elbil* holder batteriet tilbage, *Husbatteri* begrænser eller udsætter bilen |
 | Hold husbatteri ved net-ladning | Standard til: batteriet tømmes ikke ned i bilen om natten |
-| Sol: start/stop efter | Minutter overskuddet skal være over/under grænsen, før der startes/stoppes |
 | Net-sensor | Import/eksport-sensor til sol-overskud, hvis husbatteriet ikke har én |
 
 ## Hus batteri
@@ -167,3 +169,5 @@ custom_components/electricity_optimizer/
 └── frontend/
     └── electricity-optimizer-panel.js   # panelet (web component, ingen build-step)
 ```
+
+Release notes for hver version står i [CHANGELOG.md](CHANGELOG.md) og vises i HACS ved opdatering.

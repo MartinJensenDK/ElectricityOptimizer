@@ -101,12 +101,12 @@ STORAGE_KEY_RULES = f"{DOMAIN}.rules"
 AMPS_CHANGE_MIN_SECONDS = 30
 RULES_DEFAULTS = {
     "solar_priority": "ev",  # ev | battery
-    "battery_min_soc_for_ev_solar": 90,
+    "battery_min_soc_for_ev_solar": None,  # EV solar charging stops when the house battery is below this (None = off)
     "grid_priority": "ev",  # ev | battery
     "max_total_amps": None,  # main fuse, per phase
     "hold_battery_while_ev_grid_charging": True,
-    "solar_start_minutes": 2,
-    "solar_stop_minutes": 5,
+    "solar_min_w": None,  # EV solar charging requires production >= this (None = off)
+    "solar_min_minutes": 2,  # how long production/surplus must be above (start) or below (stop)
     "grid_power_entity": "",  # used when the battery has none
     "grid_sign": "import_positive",
 }

@@ -298,33 +298,50 @@ class BatteryStore:
 
 
 RULES_NUMERIC = {
-    "battery_min_soc_for_ev_solar": int,
-    "solar_start_minutes": float,
-    "solar_stop_minutes": float,
+    "solar_min_minutes": float,
 }
+RULES_OPTIONAL_NUMERIC = {
+    "battery_min_soc_for_ev_solar": int,
+    "solar_min_w": float,
+    "max_total_amps": float,
+}
+
+
+def _optional_number(value: Any, cast: Any) -> Any:
+    if value in ("", None):
+        return None
+    try:
+        out = cast(float(str(value).replace(",", ".")))
+    except (TypeError, ValueError):
+        return None
+    return out if out > 0 else None
 
 
 def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
     rules: dict[str, Any] = {**RULES_DEFAULTS, **(existing or {})}
+    if existing and "solar_min_minutes" not in existing:
+        # migrate from the start/stop minute pair; the SoC threshold used to apply only to battery priority
+        rules["solar_min_minutes"] = existing.get("solar_start_minutes", RULES_DEFAULTS["solar_min_minutes"])
+        if existing.get("solar_priority") != "battery":
+            rules["battery_min_soc_for_ev_solar"] = None
     for key in RULES_DEFAULTS:
         if key in raw:
             rules[key] = raw[key]
+    if "solar_min_minutes" not in raw and ("solar_start_minutes" in raw or "solar_stop_minutes" in raw):
+        rules["solar_min_minutes"] = raw.get("solar_start_minutes", raw.get("solar_stop_minutes"))
+    for key in ("solar_start_minutes", "solar_stop_minutes"):
+        rules.pop(key, None)
     for key, cast in RULES_NUMERIC.items():
         try:
             rules[key] = cast(float(str(rules[key]).replace(",", ".")))
         except (TypeError, ValueError):
             rules[key] = RULES_DEFAULTS[key]
-    if rules["max_total_amps"] in ("", None):
-        rules["max_total_amps"] = None
-    else:
-        try:
-            rules["max_total_amps"] = float(str(rules["max_total_amps"]).replace(",", "."))
-        except (TypeError, ValueError):
-            rules["max_total_amps"] = None
+    for key, cast in RULES_OPTIONAL_NUMERIC.items():
+        rules[key] = _optional_number(rules[key], cast)
     rules["hold_battery_while_ev_grid_charging"] = bool(rules["hold_battery_while_ev_grid_charging"])
-    rules["battery_min_soc_for_ev_solar"] = max(0, min(100, rules["battery_min_soc_for_ev_solar"]))
-    rules["solar_start_minutes"] = max(0.0, rules["solar_start_minutes"])
-    rules["solar_stop_minutes"] = max(0.0, rules["solar_stop_minutes"])
+    if rules["battery_min_soc_for_ev_solar"] is not None:
+        rules["battery_min_soc_for_ev_solar"] = min(100, rules["battery_min_soc_for_ev_solar"])
+    rules["solar_min_minutes"] = max(0.0, rules["solar_min_minutes"])
     if rules["solar_priority"] not in ("ev", "battery"):
         rules["solar_priority"] = "ev"
     if rules["grid_priority"] not in ("ev", "battery"):
@@ -344,7 +361,7 @@ class RulesStore:
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
-        self.rules = normalize_rules(data.get("rules") or {})
+        self.rules = normalize_rules({}, data.get("rules") or {})
 
     async def async_update(self, raw: dict[str, Any]) -> dict[str, Any]:
         self.rules = normalize_rules(raw, self.rules)
