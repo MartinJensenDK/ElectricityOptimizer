@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.16.0";
+const PANEL_JS_VERSION = "0.16.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -285,6 +285,8 @@ const STYLE = `
   table.sched tr.today td:first-child { font-weight: 600; color: var(--primary-color); }
   .sched-wrap h3 { margin-top: 12px; }
   .hint { font-size: 12px; color: var(--secondary-text-color); }
+  .rules-now { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--secondary-background-color); font-size: 13px; line-height: 1.4; }
+  .rules-now strong { color: var(--primary-text-color); font-weight: 500; }
   .fl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   .info {
     position: relative; display: inline-flex; align-items: center; justify-content: center;
@@ -1260,18 +1262,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Bilen får eksporten plus det, batteriet lader med. ${esc(carText)}.</div></div></div>
         <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${battery ? "Får det overskud, bilen ikke bruger, og bruges i de dyre timer." : "Intet husbatteri sat op."}</div></div></div>`;
     }
-    const conds = [];
-    if (rules) {
-      if (rules.battery_min_soc_for_ev_solar !== null && battery) conds.push(`husbatteriet er mindst ${rules.battery_min_soc_for_ev_solar} %`);
-      if (rules.solar_min_w !== null) conds.push(`solcellerne har produceret mindst ${fmtNum(rules.solar_min_w, 0)} W i ${rules.solar_min_minutes} min`);
-      conds.push(`der har været overskud nok i ${rules.solar_min_minutes} min (stopper efter ${rules.solar_min_minutes} min uden)`);
-    }
     const ctx = this._context || {};
     return `
       <div class="card">
         <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen <a class="setup-link hint" href="#" data-goto="home" style="margin-left:auto">Regler</a></h2>
         <div class="status-list">${rows}</div>
-        ${rules ? `<div class="hint" style="margin-top:8px">Elbilen lader fra sol, når ${conds.join(", og ")}.${ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""}</div>` : ""}
+        ${rules ? `<div class="hint" style="margin-top:8px">${this._solarConditionsText(rules)}${ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""}</div>` : ""}
       </div>`;
   }
 
@@ -1422,6 +1418,21 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return res;
   }
 
+  /** One sentence describing what the current solar rules mean (shared by the rules card and the solar tab). */
+  _solarPriorityText(rules) {
+    return rules.solar_priority === "battery"
+      ? "Husbatteri først: bilen får kun det, der ellers sælges til nettet."
+      : "Elbil først: bilen får eksporten plus det, husbatteriet ellers ville lade med.";
+  }
+
+  _solarConditionsText(rules) {
+    const conds = [];
+    if (rules.battery_min_soc_for_ev_solar !== null && this._battery) conds.push(`husbatteriet er mindst ${rules.battery_min_soc_for_ev_solar} %`);
+    if (rules.solar_min_w !== null) conds.push(`solcellerne har produceret mindst ${fmtNum(rules.solar_min_w, 0)} W i ${rules.solar_min_minutes} min`);
+    conds.push(`der har været overskud nok i ${rules.solar_min_minutes} min (stopper efter ${rules.solar_min_minutes} min uden)`);
+    return `Elbilen lader fra sol, når ${conds.join(", og ")}.`;
+  }
+
   _renderRulesCard() {
     const r = this._rules;
     if (!r) return "";
@@ -1476,6 +1487,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
               : ""
           }
         </div>
+        <div class="hint rules-now"><strong>${esc(this._solarPriorityText(r))}</strong> ${esc(this._solarConditionsText(r))}${
+          hasFuse ? ` Ved fuld hovedsikring (${fmtNum(r.max_total_amps, 0)} A) får ${r.grid_priority === "battery" ? "husbatteriet" : "elbilen"} strømmen først.` : ""
+        }</div>
         <label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri ved net-ladning${info(
           "Når en elbil lader fra nettet, sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer."
         )}</label>

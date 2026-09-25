@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.16.1
+
+- Regler for opladning: en fremhævet linje under felterne viser nu med det samme, hvad valget i "Sol først til" og de øvrige felter betyder, så det er tydeligt, at ændringen er gemt.
+
 ## 0.16.0
 
 - Regler: "Sol: start/stop efter (min)" er erstattet af tre enkle felter. "Elbil-sol: batteri ≥ (%)" stopper elbilens sol-ladning, når husbatteriet falder under grænsen (gælder nu uanset hvem der har sol først). "Elbil-sol: sol ≥ (W)" kræver, at solcellerne producerer mindst X W "… i mindst (min)", før bilen starter, og stopper igen efter samme tid under grænsen. Minut-feltet bruges også som start/stop-forsinkelse for sol-overskuddet.
