@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.11.0";
+const PANEL_JS_VERSION = "0.11.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -724,14 +724,19 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="sub">${this._battery && this._battery.house_power_entity ? "lige nu" : "Ingen sensor – vælg under Hus batteri"}</div>
         </div>
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri</div>
-          <div class="value ${bat.batW > 0 ? "out" : bat.batW < 0 ? "in" : ""}">${bat.soc === null ? "–" : `${fmtNum(bat.soc, 0)}<small>%</small>`}</div>
-          <div class="sub">${bat.batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : bat.batW >= 0 ? `lader ${fmtNum(bat.batW, 0)} W` : `aflader ${fmtNum(-bat.batW, 0)} W`}</div>
-        </div>
-        <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet</div>
           <div class="value ${gridW > 0 ? "in" : gridW < 0 ? "out" : ""}">${w(gridW)}</div>
           <div class="sub">${gridW === null ? "Ingen net-sensor" : gridW > 0 ? "køber fra nettet" : gridW < 0 ? "sælger til nettet" : "i balance"}</div>
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt</div>
+          <div class="value ${bat.batW > 0 ? "out" : bat.batW < 0 ? "in" : ""}">${w(bat.batW)}</div>
+          <div class="sub">${bat.batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : bat.batW > 0 ? "lader" : bat.batW < 0 ? "aflader" : "hviler"}</div>
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri</div>
+          <div class="value">${bat.soc === null ? "–" : `${fmtNum(bat.soc, 0)}<small>%</small>`}</div>
+          <div class="sub">${this._battery ? `${fmtNum(this._battery.capacity_kwh, 1)} kWh · reserve ${this._battery.min_soc} %` : "Ikke sat op"}</div>
         </div>
       </div>`;
   }
