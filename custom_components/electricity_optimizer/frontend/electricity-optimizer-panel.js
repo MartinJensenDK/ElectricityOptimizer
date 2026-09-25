@@ -5,6 +5,8 @@
  * EV charging and house battery settings.
  */
 
+const PANEL_JS_VERSION = "0.6.1";
+
 const TABS = [
   { id: "home", label: "Forsiden", icon: "mdi:view-dashboard" },
   { id: "solar", label: "Solceller", icon: "mdi:solar-power-variant" },
@@ -36,6 +38,11 @@ const STYLE = `
   .toolbar ha-menu-button { margin-right: 8px; }
   .toolbar .title { font-size: 20px; font-weight: 400; flex: 1; }
   .toolbar .version { font-size: 12px; opacity: 0.7; }
+  .stale {
+    background: var(--warning-color, #ffa600); color: #fff; padding: 10px 16px; font-size: 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .stale button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid #fff; background: transparent; color: #fff; cursor: pointer; }
   .tabs {
     display: flex;
     background: var(--app-header-background-color, var(--primary-color));
@@ -402,8 +409,15 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="version"></div>
       </div>
       <div class="tabs" role="tablist"></div>
+      <div class="stale" hidden>
+        <ha-icon icon="mdi:refresh-circle"></ha-icon>
+        <span class="stale-text"></span>
+        <button type="button" class="stale-reload">Genindlæs</button>
+      </div>
       <div class="content"></div>
     `;
+    this._staleEl = root.querySelector(".stale");
+    this._staleEl.querySelector(".stale-reload").addEventListener("click", () => window.location.reload(true));
     this._menuButton = root.querySelector("ha-menu-button");
     this._menuButton.hass = this._hass;
     this._menuButton.narrow = this._narrow;
@@ -441,7 +455,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _render() {
     if (!this._built) this._buildShell();
     this._menuButton.hass = this._hass;
-    this._versionEl.textContent = this._config.version ? `v${this._config.version}` : "";
+    this._versionEl.textContent = this._config.version ? `v${this._config.version}` : `v${PANEL_JS_VERSION}`;
+    const stale = !!this._config.version && this._config.version !== PANEL_JS_VERSION;
+    this._staleEl.hidden = !stale;
+    if (stale) {
+      this._staleEl.querySelector(".stale-text").textContent = `Panelet viser v${PANEL_JS_VERSION}, men integrationen er v${this._config.version}. Genindlæs siden (Ctrl+F5 / Cmd+Shift+R).`;
+    }
     for (const b of this._tabsEl.querySelectorAll("button.tab")) {
       b.setAttribute("aria-selected", String(b.dataset.tab === this._tab));
     }
@@ -1273,7 +1292,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             <label class="field">Kilde<select name="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([val, l]) => `<option value="${val}" ${(car.source || "solar_plan") === val ? "selected" : ""}>${l}</option>`).join("")}</select></label>
             <label class="field">Ladeeffekt-sensor (W, valgfri)<div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… bilens/laderens effekt" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field">Faser<select name="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
-            <label class="field">Strømgrænse-entitet (number, valgfri)<div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… sættes til ladestrømmen" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Laderens strøm-entitet (number, valgfri) – ladestrømmen i A sendes hertil<div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… fx laderens 'charger current limit'" autocomplete="off"><div class="picker-list" hidden></div></div></label>
           </div>
           <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Maks. ladestrøm × 230 V × faser er effekten, planen regner med. Ved solopladning justeres strømgrænse-entiteten løbende mellem min. og maks. efter overskuddet; uden strømgrænse-entitet startes solopladning kun, når overskuddet dækker maks. ladestrøm. Ladeeffekt-sensoren bruges til at vise og regne med bilens faktiske forbrug.</div>
           ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}

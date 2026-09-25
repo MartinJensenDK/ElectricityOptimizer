@@ -21,6 +21,11 @@ jobs:
             echo "Tag $TAG does not match manifest version $MANIFEST" >&2
             exit 1
           fi
+          JS=$(grep -oE 'PANEL_JS_VERSION = "[^"]+"' custom_components/electricity_optimizer/frontend/electricity-optimizer-panel.js | cut -d'"' -f2)
+          if [ "$TAG" != "$JS" ]; then
+            echo "Tag $TAG does not match PANEL_JS_VERSION $JS" >&2
+            exit 1
+          fi
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
