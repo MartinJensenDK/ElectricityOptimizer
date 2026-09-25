@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.7.1";
+const PANEL_JS_VERSION = "0.7.2";
 
 const cmpVersion = (a, b) => {
   const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);

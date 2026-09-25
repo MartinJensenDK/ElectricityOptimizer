@@ -53,8 +53,20 @@ def effective_config(entry: ConfigEntry) -> dict[str, Any]:
 
 
 async def _async_register_panel(hass: HomeAssistant, config: dict[str, Any]) -> None:
-    """(Re)register the sidebar panel with the current config."""
+    """(Re)register the sidebar panel with the current config.
+
+    The script is served under a version-specific path (not a query string) so
+    reverse proxies and CDNs that ignore query strings never serve a stale panel.
+    """
     version = str(async_get_loaded_integration(hass, DOMAIN).version or "0")
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    registered: set[str] = domain_data.setdefault("_static_versions", set())
+    if version not in registered:
+        frontend_dir = Path(__file__).parent / "frontend"
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(f"{STATIC_URL_BASE}/{version}", str(frontend_dir), cache_headers=True)]
+        )
+        registered.add(version)
     if PANEL_URL_PATH in hass.data.get(frontend.DATA_PANELS, {}):
         frontend.async_remove_panel(hass, PANEL_URL_PATH)
     await panel_custom.async_register_panel(
@@ -63,7 +75,7 @@ async def _async_register_panel(hass: HomeAssistant, config: dict[str, Any]) -> 
         webcomponent_name=PANEL_WEBCOMPONENT,
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
-        module_url=f"{STATIC_URL_BASE}/{PANEL_FILENAME}?v={version}",
+        module_url=f"{STATIC_URL_BASE}/{version}/{PANEL_FILENAME}",
         require_admin=False,
         config={**config, "version": version},
     )
@@ -72,13 +84,6 @@ async def _async_register_panel(hass: HomeAssistant, config: dict[str, Any]) -> 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Electricity Optimizer from a config entry."""
     domain_data = hass.data.setdefault(DOMAIN, {})
-
-    if not domain_data.get("_static_registered"):
-        frontend_dir = Path(__file__).parent / "frontend"
-        await hass.http.async_register_static_paths(
-            [StaticPathConfig(STATIC_URL_BASE, str(frontend_dir), cache_headers=False)]
-        )
-        domain_data["_static_registered"] = True
 
     config = effective_config(entry)
     domain_data[entry.entry_id] = config

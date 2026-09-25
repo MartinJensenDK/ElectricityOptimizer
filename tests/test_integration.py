@@ -55,6 +55,11 @@ async def test_setup_registers_panel(hass: HomeAssistant) -> None:
     panels = hass.data["frontend_panels"]
     assert "electricity-optimizer" in panels
     assert panels["electricity-optimizer"].sidebar_title == "Electricity Optimizer"
+    # versioned path, no query string (proxies that ignore query strings must not serve stale scripts)
+    module_url = panels["electricity-optimizer"].config["_panel_custom"]["module_url"]
+    version = panels["electricity-optimizer"].config["version"]
+    assert module_url == f"/electricity_optimizer_static/{version}/electricity-optimizer-panel.js"
+    assert "?" not in module_url
 
 
 async def test_websocket_cars_and_charging(hass: HomeAssistant, hass_ws_client) -> None:
