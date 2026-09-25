@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.10.0";
+const PANEL_JS_VERSION = "0.10.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -206,7 +206,7 @@ const STYLE = `
   button.btn.danger { color: var(--error-color, #db4437); }
   button.btn.active { background: var(--warning-color, #ffa600); border-color: var(--warning-color, #ffa600); color: #fff; }
   button.btn:disabled { opacity: 0.5; cursor: default; }
-  .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--secondary-text-color); }
+  .field { display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; font-size: 13px; color: var(--secondary-text-color); height: 100%; }
   .field input, .field select {
     font: inherit; font-size: 14px; color: var(--primary-text-color); background: var(--card-background-color);
     border: 1px solid var(--divider-color); border-radius: 8px; padding: 8px 10px; box-sizing: border-box; width: 100%;
@@ -229,8 +229,8 @@ const STYLE = `
   .car-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
   .car-grid .card { margin-bottom: 0; }
   .car-meta { font-size: 13px; color: var(--secondary-text-color); display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
-  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
-  .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; align-items: end; }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; min-height: 36px; }
   .toggle input { width: auto; }
   .plan-strip { width: 100%; height: 34px; display: block; margin-top: 8px; }
   .slot { fill: var(--secondary-background-color); }
@@ -260,7 +260,8 @@ const STYLE = `
   h3 { font-size: 14px; font-weight: 500; margin: 14px 0 6px; color: var(--secondary-text-color); }
   table.sched { margin-top: 8px; }
   table.sched td, table.sched th { padding: 4px 4px; }
-  table.sched input[data-time], table.sched input[type=number] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); width: 100%; box-sizing: border-box; }
+  table.sched input[data-time], table.sched input[type=number] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); width: 100%; max-width: 110px; box-sizing: border-box; }
+  table.sched th:first-child, table.sched td:first-child { width: 30%; }
   table.sched tr.off td:not(:first-child) { opacity: 0.45; }
   table.sched tr.all td { border-bottom: 2px solid var(--divider-color); }
   table.sched tr.today td:first-child { font-weight: 600; color: var(--primary-color); }
