@@ -1,0 +1,13 @@
+{
+  "domain": "electricity_optimizer",
+  "name": "Electricity Optimizer",
+  "codeowners": ["@MartinJensenDK"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "panel_custom"],
+  "documentation": "https://github.com/MartinJensenDK/ElectricityOptimizer",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/MartinJensenDK/ElectricityOptimizer/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

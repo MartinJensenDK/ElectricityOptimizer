@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Electricity Optimizer",
+        "description": "Select the EnergiDataService price sensor.",
+        "data": {
+          "price_entity": "Electricity price sensor"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "The entity was not found.",
+      "not_energidataservice": "The sensor does not look like an EnergiDataService price sensor (missing raw_today attribute)."
+    },
+    "abort": {
+      "already_configured": "Electricity Optimizer is already configured."
+    }
+  }
+}
