@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.11.2";
+const PANEL_JS_VERSION = "0.12.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -160,6 +160,12 @@ const STYLE = `
   .legend .l-mid::before { background: var(--warning-color, #ffa600); }
   .legend .l-high::before { background: var(--error-color, #db4437); }
   .legend .l-tmr::before { background: var(--secondary-text-color); opacity: 0.55; }
+  .legend .l-car::before { background: var(--c); }
+  .ev-plan { opacity: 0.2; pointer-events: none; }
+  .ev-band { opacity: 0.95; }
+  .now-mark { stroke: var(--primary-text-color); stroke-width: 1.5; }
+  .now-pill { fill: var(--primary-text-color); }
+  .now-pill-text { font-size: 11px; font-weight: 600; fill: var(--card-background-color, #fff); }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th { text-align: left; font-weight: 500; color: var(--secondary-text-color); padding: 6px 4px; border-bottom: 1px solid var(--divider-color); font-size: 12px; text-transform: uppercase; }
   td { padding: 8px 4px; border-bottom: 1px solid var(--divider-color); }
@@ -594,17 +600,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
         this._priceEntityId
       )}…</div></div>`;
     }
-    const sortedToday = d.today.map((p) => p.price).sort((a, b) => a - b);
-    const nowLevel = d.currentPrice !== null ? ElectricityOptimizerPanel._level(d.currentPrice, sortedToday) : "neutral";
-    const levelText = { low: "Billig", mid: "Normal", high: "Dyr", neutral: "Ukendt" }[nowLevel];
-    const mean = typeof d.todayMean === "number" ? d.todayMean : sortedToday.reduce((a, b) => a + b, 0) / sortedToday.length;
-    const diffPct = d.currentPrice !== null && mean ? Math.round(((d.currentPrice - mean) / Math.abs(mean)) * 100) : null;
-    const diffText =
-      diffPct === null ? "" : diffPct === 0 ? "På niveau med dagens gennemsnit" : `${Math.abs(diffPct)} % ${diffPct < 0 ? "under" : "over"} dagens gennemsnit`;
-
-    const minH = d.todayMin && d.todayMin.hour ? fmtTime(new Date(d.todayMin.hour)) : null;
-    const maxH = d.todayMax && d.todayMax.hour ? fmtTime(new Date(d.todayMax.hour)) : null;
-
     // Cheapest hours: rest of today + tomorrow if available
     const now = new Date();
     const hourly = ElectricityOptimizerPanel._hourly(d.all).filter((h) => h.time.getTime() + 3600000 > now.getTime());
@@ -614,38 +609,16 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
     return `
       ${this._renderLiveRow()}
-      <div class="grid">
-        <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:flash"></ha-icon>Pris lige nu</div>
-          <div class="value">${fmtNum(d.currentPrice)}<small>${esc(d.unit)}</small></div>
-          <div class="sub"><span class="badge ${nowLevel}">${levelText}</span> ${esc(diffText)}</div>
-        </div>
-        <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:arrow-down-bold-circle-outline"></ha-icon>Laveste i dag</div>
-          <div class="value">${fmtNum(d.todayMin && d.todayMin.price)}<small>${esc(d.unit)}</small></div>
-          <div class="sub">${minH ? `kl. ${minH}` : ""}</div>
-        </div>
-        <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:arrow-up-bold-circle-outline"></ha-icon>Højeste i dag</div>
-          <div class="value">${fmtNum(d.todayMax && d.todayMax.price)}<small>${esc(d.unit)}</small></div>
-          <div class="sub">${maxH ? `kl. ${maxH}` : ""}</div>
-        </div>
-        <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:chart-line"></ha-icon>Gennemsnit i dag</div>
-          <div class="value">${fmtNum(mean)}<small>${esc(d.unit)}</small></div>
-          <div class="sub">${
-            d.tomorrowValid ? `I morgen: ${fmtNum(d.tomorrowMean)} (${fmtNum(d.tomorrowMin && d.tomorrowMin.price)} – ${fmtNum(d.tomorrowMax && d.tomorrowMax.price)})` : "Morgendagens priser kommer ca. kl. 13"
-          }</div>
-        </div>
-      </div>
-
       <div class="card">
         <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}</h2>
         <div class="chart-wrap">${this._renderChart(d)}</div>
         <div class="legend">
           <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
           ${d.tomorrowValid ? '<span class="l-tmr">I morgen (nedtonet)</span>' : ""}
-          <span style="margin-left:auto">Stiplet linje = dagens gennemsnit</span>
+          ${this._evPlanSeries()
+            .map((c) => `<span class="l-car" style="--c:${c.color}">Ladeplan: ${esc(c.name)}</span>`)
+            .join("")}
+          <span style="margin-left:auto">Lodret streg = nu · stiplet linje = dagens gennemsnit</span>
         </div>
       </div>
 
@@ -759,8 +732,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const points = d.all;
     if (!points.length) return "";
     const W = Math.max(320, Math.floor(this._chartWidth || (this._contentEl && this._contentEl.clientWidth - 34) || 640));
-    const H = 240;
-    const padL = 44, padR = 8, padT = 10, padB = 28;
+    const H = 250;
+    const padL = 44, padR = 8, padT = 24, padB = 28;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
     const prices = points.map((p) => p.price);
@@ -814,13 +787,78 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const meanLine =
       mean !== null ? `<line class="mean" x1="${padL}" x2="${W - padR}" y1="${y(mean).toFixed(1)}" y2="${y(mean).toFixed(1)}"/>` : "";
 
+    // time → x (points are equidistant in time)
+    const t0 = points[0].time.getTime();
+    const slotMs = points.length > 1 ? points[1].time.getTime() - t0 : 3600000;
+    const tEnd = t0 + points.length * slotMs;
+    const xOf = (t) => padL + Math.min(innerW, Math.max(0, ((t - t0) / slotMs) * bw));
+
+    // planned EV charging: translucent overlay on the bars + a band per car below the bars
+    const series = this._evPlanSeries();
+    const bandH = 5;
+    const evPlan = series
+      .map((c, si) => {
+        const bandY = padT + innerH - bandH * (si + 1);
+        return c.slots
+          .filter((sl) => sl.end > t0 && sl.start < tEnd)
+          .map((sl) => {
+            const x1 = xOf(sl.start), x2 = xOf(sl.end);
+            const w = Math.max(1, x2 - x1);
+            const label = `${c.name}: planlagt ladning ${fmtTime(new Date(sl.start))} – ${fmtTime(new Date(sl.end))}`;
+            return `<rect class="ev-plan" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}" fill="${c.color}"><title>${esc(label)}</title></rect>
+              <rect class="ev-band" x="${x1.toFixed(1)}" y="${bandY}" width="${w.toFixed(1)}" height="${bandH}" fill="${c.color}"><title>${esc(label)}</title></rect>`;
+          })
+          .join("");
+      })
+      .join("");
+
+    // now marker: vertical line with the current price on top
+    let nowMark = "";
+    const nowT = Date.now();
+    if (nowT >= t0 && nowT <= tEnd) {
+      const nx = xOf(nowT);
+      const txt = d.currentPrice === null ? "–" : `${fmtNum(d.currentPrice)} ${d.unit}`;
+      const pw = txt.length * 6.2 + 12;
+      const px = Math.min(W - padR - pw, Math.max(padL, nx - pw / 2));
+      nowMark = `<line class="now-mark" x1="${nx.toFixed(1)}" x2="${nx.toFixed(1)}" y1="${padT - 2}" y2="${padT + innerH}"/>
+        <rect class="now-pill" x="${px.toFixed(1)}" y="2" width="${pw.toFixed(1)}" height="18" rx="9"/>
+        <text class="now-pill-text" x="${(px + pw / 2).toFixed(1)}" y="15" text-anchor="middle">${esc(txt)}</text>`;
+    }
+
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
       ${yTicks.join("")}
       <line class="axis" x1="${padL}" x2="${W - padR}" y1="${zeroY.toFixed(1)}" y2="${zeroY.toFixed(1)}"/>
       ${bars}
+      ${evPlan}
       ${meanLine}
       ${ticks.join("")}
+      ${nowMark}
     </svg>`;
+  }
+
+  static EV_COLORS = ["#1e88e5", "#8e24aa", "#00acc1", "#f4511e", "#3949ab"];
+
+  /** Planned (chosen) charging slots per enabled car, for the price chart. */
+  _evPlanSeries() {
+    const out = [];
+    for (const car of this._cars || []) {
+      const rt = car.runtime || {};
+      const plan = rt.plan && Array.isArray(rt.plan.plan) ? rt.plan.plan : null;
+      if (!plan || car.enabled === false) continue;
+      const slots = [];
+      for (const s of plan) {
+        if (!s.chosen) continue;
+        const start = new Date(s.start).getTime();
+        const end = new Date(s.end).getTime();
+        if (Number.isNaN(start) || Number.isNaN(end)) continue;
+        const last = slots[slots.length - 1];
+        if (last && last.end === start) last.end = end;
+        else slots.push({ start, end });
+      }
+      if (!slots.length) continue;
+      out.push({ name: car.name || "Elbil", color: ElectricityOptimizerPanel.EV_COLORS[out.length % ElectricityOptimizerPanel.EV_COLORS.length], slots });
+    }
+    return out;
   }
 
   /* ---------- solar ---------- */
