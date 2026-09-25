@@ -5,7 +5,14 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.7.2";
+const PANEL_JS_VERSION = "0.7.3";
+const SCRIPT_URL = (() => {
+  try {
+    return import.meta.url;
+  } catch (_) {
+    return "";
+  }
+})();
 
 const cmpVersion = (a, b) => {
   const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);
@@ -485,10 +492,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._staleEl.hidden = diff === 0;
     if (diff > 0) {
       // Script is newer than the running integration: HACS has downloaded the files, HA not restarted.
-      this._staleEl.querySelector(".stale-text").textContent = `Filerne er opdateret til v${PANEL_JS_VERSION}, men Home Assistant kører stadig v${backend}. Genstart Home Assistant (Indstillinger → System → Genstart).`;
+      this._staleEl.querySelector(".stale-text").textContent = `Filerne er opdateret til v${PANEL_JS_VERSION}, men Home Assistant kører stadig v${backend}. Genstart Home Assistant (Indstillinger → System → Genstart). Script hentet fra: ${SCRIPT_URL || "ukendt"}`;
       this._staleEl.querySelector(".stale-reload").textContent = "Genindlæs efter genstart";
     } else if (diff < 0) {
-      this._staleEl.querySelector(".stale-text").textContent = `Browseren viser det gamle panel v${PANEL_JS_VERSION}, men integrationen er v${backend}. Genindlæs siden (Ctrl+F5 / Cmd+Shift+R). I companion-appen: Indstillinger → Companion app → Ryd frontend-cache.`;
+      this._staleEl.querySelector(".stale-text").textContent = `Browseren viser det gamle panel v${PANEL_JS_VERSION}, men integrationen er v${backend}. Genindlæs siden (Ctrl+F5 / Cmd+Shift+R). I companion-appen: Indstillinger → Companion app → Ryd frontend-cache. Script hentet fra: ${SCRIPT_URL || "ukendt"}`;
       this._staleEl.querySelector(".stale-reload").textContent = "Genindlæs";
     }
     for (const b of this._tabsEl.querySelectorAll("button.tab")) {
