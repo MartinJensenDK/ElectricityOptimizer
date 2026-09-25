@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.14.0";
+const PANEL_JS_VERSION = "0.15.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -131,14 +131,9 @@ const STYLE = `
   .gauge { display: block; width: 100%; max-width: 230px; margin: 0 auto; }
   .gauge .track { fill: none; stroke: var(--secondary-background-color, #eee); stroke-width: 13; stroke-linecap: round; }
   .gauge .arc { fill: none; stroke-width: 13; stroke-linecap: round; transition: d 300ms; }
-  .gauge .arc.in, .gauge .dot.in { stroke: var(--error-color, #db4437); fill: var(--error-color, #db4437); }
-  .gauge .arc.out, .gauge .dot.out { stroke: var(--success-color, #43a047); fill: var(--success-color, #43a047); }
-  .gauge .arc { fill: none; }
   .gauge .dot { stroke: var(--card-background-color, #fff); stroke-width: 2.5; }
   .gauge .zero { stroke: var(--secondary-text-color); stroke-width: 1.5; opacity: 0.6; }
   .gauge .gv { font-size: 26px; font-weight: 500; fill: var(--primary-text-color); }
-  .gauge .gv.in { fill: var(--error-color, #db4437); }
-  .gauge .gv.out { fill: var(--success-color, #43a047); }
   .gauge .gu { font-size: 12px; font-weight: 400; fill: var(--secondary-text-color); }
   .gauge .gs { font-size: 12px; fill: var(--secondary-text-color); }
   .gauge .gt { font-size: 9px; fill: var(--secondary-text-color); }
@@ -721,39 +716,136 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${this._renderRulesCard()}`;
   }
 
-  /** Half-circle gauge: discharge (red) sweeps left, charge (green) sweeps right. */
+  /**
+   * Half-circle gauge. Bipolar (min < 0 < max): zero on top, negative sweeps left, positive right.
+   * Unipolar (min >= 0): sweeps from the left end to the right end.
+   */
+  _renderGauge(o) {
+    const cx = 100, cy = 92, r = 74, sw = 13;
+    const pt = (deg) => {
+      const a = (deg * Math.PI) / 180;
+      return [cx + r * Math.cos(a), cy - r * Math.sin(a)];
+    };
+    const P = (deg) => pt(deg).map((v) => v.toFixed(2)).join(" ");
+    const bipolar = o.min < 0;
+    const v = o.value;
+    let arc = "";
+    if (v !== null && v !== undefined && !Number.isNaN(v)) {
+      let startDeg, endDeg, sweep;
+      if (bipolar) {
+        const frac = Math.max(-1, Math.min(1, v / (v >= 0 ? o.max : -o.min)));
+        startDeg = 90;
+        endDeg = 90 - frac * 90;
+        sweep = frac >= 0 ? 1 : 0;
+      } else {
+        const frac = Math.max(0, Math.min(1, (v - o.min) / (o.max - o.min || 1)));
+        startDeg = 180;
+        endDeg = 180 - frac * 180;
+        sweep = 1;
+      }
+      if (Math.abs(endDeg - startDeg) > 0.3) {
+        const [ex, ey] = pt(endDeg);
+        arc = `<path class="arc" style="stroke:${o.color}" d="M ${P(startDeg)} A ${r} ${r} 0 0 ${sweep} ${P(endDeg)}"/>
+           <circle class="dot" style="fill:${o.color}" cx="${ex.toFixed(2)}" cy="${ey.toFixed(2)}" r="${sw / 2 + 2}"/>`;
+      }
+    }
+    const zero = bipolar ? `<line class="zero" x1="${cx}" x2="${cx}" y1="${cy - r - sw / 2 - 2}" y2="${cy - r + sw / 2 + 2}"/>` : "";
+    return `<svg class="gauge" viewBox="0 0 200 128" role="img" aria-label="${esc(o.aria || "")}">
+      <path class="track" d="M ${P(180)} A ${r} ${r} 0 0 1 ${P(0)}"/>
+      ${zero}
+      ${arc}
+      <text class="gt" x="${cx - r - sw / 2}" y="${cy + 12}" text-anchor="start">${esc(o.leftLabel || "")}</text>
+      <text class="gt" x="${cx + r + sw / 2}" y="${cy + 12}" text-anchor="end">${esc(o.rightLabel || "")}</text>
+      <text class="gv" style="fill:${o.color || "var(--primary-text-color)"}" x="${cx}" y="${cy - 2}" text-anchor="middle">${esc(o.valueText)}<tspan class="gu"> ${esc(o.unit || "")}</tspan></text>
+      <text class="gs" x="${cx}" y="${cy + 28}" text-anchor="middle">${esc(o.sub || "")}</text>
+    </svg>`;
+  }
+
+  static COLOR_IN = "var(--error-color, #db4437)";
+  static COLOR_OUT = "var(--success-color, #43a047)";
+  static COLOR_SUN = "var(--warning-color, #ffa600)";
+
+  static _kwLabel(w) {
+    return `${fmtNum(w / 1000, w % 1000 ? 1 : 0)} kW`;
+  }
+
+  /** Battery power: discharge (negative, red) sweeps left, charge (positive, green) sweeps right. */
   _renderBatteryGauge(batW) {
     const b = this._battery || {};
     const maxCharge = Math.max(100, (Number(b.max_charge_kw) || 5) * 1000);
     const maxDischarge = Math.max(100, (Number(b.max_discharge_kw) || 5) * 1000);
-    const cx = 100, cy = 92, r = 74, sw = 13;
-    const pt = (deg) => {
-      const a = (deg * Math.PI) / 180;
-      return `${(cx + r * Math.cos(a)).toFixed(2)} ${(cy - r * Math.sin(a)).toFixed(2)}`;
-    };
-    const dir = batW === null || batW === 0 ? "" : batW > 0 ? "out" : "in";
-    const frac = batW === null ? 0 : Math.max(-1, Math.min(1, batW / (batW > 0 ? maxCharge : maxDischarge)));
-    const endDeg = 90 - frac * 90;
-    const sweep = frac > 0 ? 1 : 0;
-    const large = 0;
-    const arc =
-      Math.abs(frac) > 0.005
-        ? `<path class="arc ${dir}" d="M ${pt(90)} A ${r} ${r} 0 ${large} ${sweep} ${pt(endDeg)}"/>
-           <circle class="dot ${dir}" cx="${pt(endDeg).split(" ")[0]}" cy="${pt(endDeg).split(" ")[1]}" r="${sw / 2 + 2}"/>`
-        : "";
-    const valueText = batW === null ? "–" : fmtNum(Math.abs(batW), 0);
-    const subText =
-      batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : batW > 0 ? "lader" : batW < 0 ? "aflader" : "hviler";
-    const kw = (v) => `${fmtNum(v / 1000, v % 1000 ? 1 : 0)} kW`;
-    return `<svg class="gauge" viewBox="0 0 200 118" role="img" aria-label="Batteri effekt ${esc(valueText)} W ${esc(subText)}">
-      <path class="track" d="M ${pt(180)} A ${r} ${r} 0 0 1 ${pt(0)}"/>
-      <line class="zero" x1="${cx}" x2="${cx}" y1="${cy - r - sw / 2 - 2}" y2="${cy - r + sw / 2 + 2}"/>
-      ${arc}
-      <text class="gt" x="${cx - r - sw / 2}" y="${cy + 14}" text-anchor="start">−${kw(maxDischarge)}</text>
-      <text class="gt" x="${cx + r + sw / 2}" y="${cy + 14}" text-anchor="end">+${kw(maxCharge)}</text>
-      <text class="gv ${dir}" x="${cx}" y="${cy - 6}" text-anchor="middle">${esc(valueText)}<tspan class="gu"> W</tspan></text>
-      <text class="gs" x="${cx}" y="${cy + 12}" text-anchor="middle">${esc(subText)}</text>
-    </svg>`;
+    const K = ElectricityOptimizerPanel;
+    const sub = batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : batW > 0 ? "lader" : batW < 0 ? "aflader" : "hviler";
+    return this._renderGauge({
+      value: batW,
+      min: -maxDischarge,
+      max: maxCharge,
+      color: batW > 0 ? K.COLOR_OUT : batW < 0 ? K.COLOR_IN : "var(--primary-text-color)",
+      valueText: batW === null ? "–" : `${batW < 0 ? "−" : ""}${fmtNum(Math.abs(batW), 0)}`,
+      unit: "W",
+      sub,
+      leftLabel: `−${K._kwLabel(maxDischarge)}`,
+      rightLabel: `+${K._kwLabel(maxCharge)}`,
+      aria: `Batteri effekt ${batW === null ? "ukendt" : `${fmtNum(batW, 0)} W`} ${sub}`,
+    });
+  }
+
+  /** Grid power: buying (red) sweeps left, selling (green) sweeps right. */
+  _renderGridGauge(gridW) {
+    const K = ElectricityOptimizerPanel;
+    const limit = 10000;
+    const sub = gridW === null ? "Ingen net-sensor" : gridW > 0 ? "køber fra nettet" : gridW < 0 ? "sælger til nettet" : "i balance";
+    return this._renderGauge({
+      value: gridW === null ? null : -gridW,
+      min: -limit,
+      max: limit,
+      color: gridW > 0 ? K.COLOR_IN : gridW < 0 ? K.COLOR_OUT : "var(--primary-text-color)",
+      valueText: gridW === null ? "–" : `${gridW > 0 ? "−" : ""}${fmtNum(Math.abs(gridW), 0)}`,
+      unit: "W",
+      sub,
+      leftLabel: `Køb ${K._kwLabel(limit)}`,
+      rightLabel: `Salg ${K._kwLabel(limit)}`,
+      aria: `Elnet ${gridW === null ? "ukendt" : `${fmtNum(gridW, 0)} W`} ${sub}`,
+    });
+  }
+
+  /** Solar production: 0 → peak, always yellow/orange like the chart. */
+  _renderSolarGauge(solar, solarW) {
+    const K = ElectricityOptimizerPanel;
+    const peak = solar.peakKw ? Math.max(500, solar.peakKw * 1000) : 10000;
+    const sub = solar.configured ? (solar.todayKwh !== null ? `${fmtNum(solar.todayKwh, 1)} kWh i dag` : "") : "Ingen sensor – se Konfigurer";
+    return this._renderGauge({
+      value: solarW,
+      min: 0,
+      max: peak,
+      color: K.COLOR_SUN,
+      valueText: solarW === null ? "–" : fmtNum(solarW, 0),
+      unit: "W",
+      sub,
+      leftLabel: "0",
+      rightLabel: K._kwLabel(peak),
+      aria: `Solceller ${solarW === null ? "ukendt" : `${fmtNum(solarW, 0)} W`}`,
+    });
+  }
+
+  /** Battery state of charge 0–100 %: red at/below the reserve, orange just above, green otherwise. */
+  _renderSocGauge(soc) {
+    const K = ElectricityOptimizerPanel;
+    const b = this._battery;
+    const minSoc = b ? Number(b.min_soc) || 0 : 0;
+    const color = soc === null ? "var(--primary-text-color)" : soc <= minSoc ? K.COLOR_IN : soc <= minSoc + 10 ? K.COLOR_SUN : K.COLOR_OUT;
+    return this._renderGauge({
+      value: soc,
+      min: 0,
+      max: 100,
+      color,
+      valueText: soc === null ? "–" : fmtNum(soc, 0),
+      unit: "%",
+      sub: b ? `${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %` : "Ikke sat op",
+      leftLabel: "0 %",
+      rightLabel: "100 %",
+      aria: `Hus batteri ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}`,
+    });
   }
 
   _gridLiveW() {
@@ -779,8 +871,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="grid">
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu</div>
-          <div class="value ${solarW ? "sun" : ""}">${w(solarW)}</div>
-          <div class="sub">${solar.configured ? (solar.todayKwh !== null ? `${fmtNum(solar.todayKwh, 1)} kWh i dag` : "") : "Ingen sensor – se Konfigurer"}</div>
+          ${this._renderSolarGauge(solar, solarW)}
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Husforbrug</div>
@@ -789,8 +880,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet</div>
-          <div class="value ${gridW > 0 ? "in" : gridW < 0 ? "out" : ""}">${w(gridW)}</div>
-          <div class="sub">${gridW === null ? "Ingen net-sensor" : gridW > 0 ? "køber fra nettet" : gridW < 0 ? "sælger til nettet" : "i balance"}</div>
+          ${this._renderGridGauge(gridW)}
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt</div>
@@ -798,8 +888,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri</div>
-          <div class="value">${bat.soc === null ? "–" : `${fmtNum(bat.soc, 0)}<small>%</small>`}</div>
-          <div class="sub">${this._battery ? `${fmtNum(this._battery.capacity_kwh, 1)} kWh · reserve ${this._battery.min_soc} %` : "Ikke sat op"}</div>
+          ${this._renderSocGauge(bat.soc)}
         </div>
       </div>`;
   }
