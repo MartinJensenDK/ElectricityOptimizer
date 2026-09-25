@@ -12,7 +12,8 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
   (hentet fra Home Assistants historik).
 - **Elbiler** – tilføj vilkårligt mange biler; hver bil lades automatisk i de billigste tidsrum inden
   en deadline, styret via de start/stop-entiteter du vælger (lader eller bil).
-- **Hus batteri** – indstillinger for opladning/afladning af husbatteri (kommer).
+- **Hus batteri** – live SoC, batteri-, net- og husforbrugs-effekt, modus lige nu (Normal / Hold /
+  Lad fra nettet), planstrimmel, manuel styring og indstillinger.
 
 ## Krav
 
@@ -59,6 +60,35 @@ Planen genberegnes hvert minut: de billigste tidsrum (EnergiDataService, 15 elle
 deadline vælges, indtil behovet er dækket. Timer uden kendt pris (før kl. 13) estimeres til dagens
 gennemsnit. Der sendes kun start/stop, når den ønskede tilstand skifter.
 
+## Hus batteri
+
+Under fanen **Hus batteri** vælger du sensorer (SoC, batteri-effekt med fortegn eller separate
+lade/aflade-sensorer, net import/eksport, husforbrug), batteriets kapacitet og maks. effekter, og
+valgfrit to styringer med hver en start- og stop-kommando:
+
+| Styring | Betydning |
+| --- | --- |
+| Lad fra nettet | Tving opladning fra elnettet (fx switch "force charge" eller select "Charge") |
+| Hold batteriet | Ingen afladning – batteriet spares (fx switch "stop discharge" eller select "Hold") |
+
+En kommando er en entitet plus evt. en værdi: `switch`/`input_boolean` tændes (slukkes hvis samme
+entitet bruges til stop), `button` trykkes, `script`/`automation` køres, `select` får valgt værdien,
+`number` sættes til værdien. Uden kommandoer vises planen kun.
+
+Modus pr. tidsrum:
+
+- **Hold**: prisen er under dagens gennemsnit, og en senere time er mindst *prisforskellen* dyrere.
+- **Lad fra nettet**: kun hvis "Må lade fra nettet" er slået til, der er plads op til maks-SoC, og de
+  dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu.
+  De billigste timer vælges, indtil batteriet kan fyldes.
+- **Normal**: alt andet – batteriet lader fra sol og forsyner huset.
+
+Kommandoer sendes kun ved skift af modus (stop på den gamle modus før start på den nye). Knapperne
+Auto / Normal / Hold nu / Lad fra net nu tilsidesætter planen, indtil Auto vælges igen.
+
+Alle tal i panelet er live fra Home Assistants states; plan og status hentes hvert 3. sekund, og
+planen genberegnes hvert minut samt straks efter ændringer i pris- og SoC-sensorer.
+
 ## Udvikling
 
 ```bash
@@ -83,7 +113,9 @@ custom_components/electricity_optimizer/
 ├── __init__.py            # registrerer statisk sti og sidebar-panel
 ├── config_flow.py         # opsætning + Konfigurer: prissensor og solcelle-sensorer
 ├── storage.py             # lagring af biler (HA Store)
-├── ev_controller.py       # ladeplan og start/stop-kommandoer
+├── ev_controller.py       # ladeplan for elbiler
+├── battery_controller.py  # modus-plan for husbatteri
+├── commands.py            # generiske start/stop-kommandoer (switch/button/script/select/number)
 ├── websocket.py           # API som panelet bruger
 ├── const.py
 ├── manifest.json

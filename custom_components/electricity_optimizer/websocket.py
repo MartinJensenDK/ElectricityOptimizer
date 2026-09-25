@@ -71,7 +71,8 @@ async def ws_cars_delete(hass: HomeAssistant, connection: websocket_api.ActiveCo
 @websocket_api.async_response
 async def ws_evaluate(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     await _runtime(hass)["controller"].async_evaluate()
-    connection.send_result(msg["id"], _serialize(hass))
+    await hass.data[DOMAIN]["battery"]["controller"].async_evaluate()
+    connection.send_result(msg["id"], {**_serialize(hass), **_battery_payload(hass)})
 
 
 @callback
@@ -80,3 +81,54 @@ def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_cars_save)
     websocket_api.async_register_command(hass, ws_cars_delete)
     websocket_api.async_register_command(hass, ws_evaluate)
+    async_register_battery(hass)
+
+
+def _battery_payload(hass: HomeAssistant) -> dict[str, Any]:
+    bat = hass.data[DOMAIN]["battery"]
+    return {"battery": bat["store"].battery, "runtime": bat["controller"].runtime}
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/battery/get"})
+@websocket_api.async_response
+async def ws_battery_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    connection.send_result(msg["id"], _battery_payload(hass))
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/battery/save", vol.Required("battery"): dict}
+)
+@websocket_api.async_response
+async def ws_battery_save(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    from .storage import normalize_battery, validate_battery
+
+    bat = hass.data[DOMAIN]["battery"]
+    candidate = normalize_battery(dict(msg["battery"]), bat["store"].battery)
+    error = validate_battery(candidate)
+    if error:
+        connection.send_error(msg["id"], "invalid_battery", error)
+        return
+    entity_keys = [k for k in candidate if k.endswith("_entity") or k.endswith("_value")]
+    old = bat["store"].battery or {}
+    if any(candidate.get(k) != old.get(k) for k in entity_keys):
+        bat["controller"].reset()
+    await bat["store"].async_update(msg["battery"])
+    await bat["controller"].async_evaluate()
+    connection.send_result(msg["id"], _battery_payload(hass))
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/battery/delete"})
+@websocket_api.async_response
+async def ws_battery_delete(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    bat = hass.data[DOMAIN]["battery"]
+    await bat["store"].async_delete()
+    bat["controller"].reset()
+    await bat["controller"].async_evaluate()
+    connection.send_result(msg["id"], _battery_payload(hass))
+
+
+@callback
+def async_register_battery(hass: HomeAssistant) -> None:
+    websocket_api.async_register_command(hass, ws_battery_get)
+    websocket_api.async_register_command(hass, ws_battery_save)
+    websocket_api.async_register_command(hass, ws_battery_delete)

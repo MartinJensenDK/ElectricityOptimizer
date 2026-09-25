@@ -40,7 +40,9 @@ CAR_DEFAULTS = {
     "name": "",
     "soc_entity": "",
     "start_entity": "",
+    "start_value": "",
     "stop_entity": "",
+    "stop_value": "",
     "plugged_entity": "",
     "capacity_kwh": 60.0,
     "charge_power_kw": 11.0,
@@ -49,4 +51,37 @@ CAR_DEFAULTS = {
     "ready_by": "07:00",
     "price_limit": None,
     "charge_now": False,
+}
+
+# House battery
+STORAGE_KEY_BATTERY = f"{DOMAIN}.battery"
+COMMAND_DOMAINS = ACTIVATE_DOMAINS + ("select", "input_select", "number", "input_number")
+BATTERY_MODES = ("normal", "hold", "charge")
+BATTERY_DEFAULTS = {
+    "enabled": True,
+    "soc_entity": "",
+    "power_entity": "",  # signed battery power, W
+    "power_sign": "charge_positive",  # or discharge_positive
+    "charge_power_entity": "",  # alternative: two unsigned sensors
+    "discharge_power_entity": "",
+    "grid_power_entity": "",  # signed grid power, W
+    "grid_sign": "import_positive",  # or export_positive
+    "house_power_entity": "",
+    "capacity_kwh": 10.0,
+    "max_charge_kw": 5.0,
+    "max_discharge_kw": 5.0,
+    "min_soc": 10,
+    "max_soc": 100,
+    "grid_charge_enabled": False,
+    "spread_threshold": 0.5,  # price difference needed (currency/kWh)
+    "efficiency": 0.9,  # round trip
+    "charge_start_entity": "",
+    "charge_start_value": "",
+    "charge_stop_entity": "",
+    "charge_stop_value": "",
+    "hold_start_entity": "",
+    "hold_start_value": "",
+    "hold_stop_entity": "",
+    "hold_stop_value": "",
+    "override": "auto",  # auto | normal | hold | charge
 }

@@ -209,6 +209,26 @@ const STYLE = `
   .slot.est { opacity: 0.55; }
   .slot.now { stroke: var(--primary-text-color); stroke-width: 1.5; }
   .err { color: var(--error-color, #db4437); font-size: 13px; margin-top: 6px; }
+  .slot.hold { fill: var(--info-color, #039be5); }
+  .slot.charge { fill: var(--success-color, #43a047); }
+  .slot.normal { fill: var(--secondary-background-color); }
+  .legend .l-hold::before { background: var(--info-color, #039be5); }
+  .legend .l-charge::before { background: var(--success-color, #43a047); }
+  .legend .l-normal::before { background: var(--secondary-background-color); border: 1px solid var(--divider-color); }
+  .badge.info { background: var(--info-color, #039be5); }
+  .seg { display: inline-flex; border: 1px solid var(--divider-color); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-right: 1px solid var(--divider-color); border-radius: 0; }
+  .seg button:last-child { border-right: 0; }
+  .seg button.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+  .cmd { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; align-items: end; }
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .flow .item { display: flex; gap: 10px; align-items: center; }
+  .flow .item ha-icon { --mdc-icon-size: 28px; color: var(--secondary-text-color); }
+  .flow .item .v { font-size: 20px; font-weight: 500; line-height: 1.1; }
+  .flow .item .l { font-size: 12px; color: var(--secondary-text-color); }
+  .flow .item.in .v { color: var(--error-color, #db4437); }
+  .flow .item.out .v { color: var(--success-color, #43a047); }
+  h3 { font-size: 14px; font-weight: 500; margin: 14px 0 6px; color: var(--secondary-text-color); }
   .hint { font-size: 12px; color: var(--secondary-text-color); }
   @media (max-width: 600px) {
     .content { padding: 12px; }
@@ -237,6 +257,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._lastKey = null;
     this._cars = null;
     this._carsStamp = 0;
+    this._battery = undefined; // undefined = not loaded, null = not configured
+    this._batteryRuntime = {};
+    this._batteryStamp = 0;
+    this._editingBattery = false;
+    this._batteryError = null;
     this._editing = null; // null | {} (new) | car object being edited
     this._formError = null;
     this._built = false;
@@ -274,6 +299,21 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return this._config.price_entity || "sensor.energi_data_service";
   }
 
+  get _liveEntityIds() {
+    const ids = [];
+    for (const c of this._cars || []) {
+      if (c.soc_entity) ids.push(c.soc_entity);
+      if (c.plugged_entity) ids.push(c.plugged_entity);
+    }
+    const b = this._battery;
+    if (b) {
+      for (const k of ["soc_entity", "power_entity", "charge_power_entity", "discharge_power_entity", "grid_power_entity", "house_power_entity"]) {
+        if (b[k]) ids.push(b[k]);
+      }
+    }
+    return ids;
+  }
+
   get _solarEntityIds() {
     const c = this._config;
     return [
@@ -287,7 +327,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   connectedCallback() {
     this._maybeRender(true);
-    this._timer = setInterval(() => this._maybeRender(), 30000);
+    this._timer = setInterval(() => {
+      if (this._tab === "ev" || this._tab === "home") this._loadCars();
+      if (this._tab === "battery" || this._tab === "home") this._loadBattery();
+      this._maybeRender();
+    }, 3000);
     if (typeof ResizeObserver !== "undefined") {
       this._ro = new ResizeObserver(() => {
         const wrap = this.shadowRoot.querySelector(".chart-wrap");
@@ -315,7 +359,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
       .map((id) => (this._hass.states[id] ? this._hass.states[id].last_updated : "x"))
       .join(",");
     if (this._editing && this._tab === "ev" && !force) return;
+    if (this._editingBattery && this._tab === "battery" && !force) return;
+    if (!force) {
+      const active = this.shadowRoot.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "SELECT")) return;
+    }
+    const liveKey = this._liveEntityIds
+      .map((id) => (this._hass.states[id] ? this._hass.states[id].last_updated : "x"))
+      .join(",");
     const key = [
+      liveKey,
+      this._batteryStamp,
       this._tab,
       st ? st.last_updated : "missing",
       solarKey,
@@ -388,7 +442,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (this._tab === "home") html = this._renderHome(data);
     else if (this._tab === "solar") html = this._renderSolar(this._readSolar());
     else if (this._tab === "ev") html = this._renderEv();
+    else if (this._tab === "battery") html = this._renderBattery();
     if (this._tab === "ev" || this._tab === "home") this._loadCars();
+    if (this._tab === "battery" || this._tab === "home") this._loadBattery();
     else html = this._renderBattery();
     this._contentEl.innerHTML = html;
   }
@@ -574,7 +630,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status</h2>
           <div class="status-list">
             ${this._renderSolarStatusRow()}
-            <div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">Ikke tilknyttet endnu</div></div><span class="badge neutral">Senere</span></div>
+            ${this._renderBatteryStatusRow()}
             ${this._renderEvStatusRow()}
             <div class="status-row"><ha-icon icon="mdi:database-clock-outline"></ha-icon><div class="t"><div class="n">Prisdata</div><div class="d">${esc(d.attribution || "EnergiDataService")}${
               d.nextUpdate ? ` · næste opdatering ${fmtTime(new Date(d.nextUpdate))}` : ""
@@ -846,7 +902,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen</h2>
           <div class="status-list">
             <div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Overskud fra solceller går først til bilen (indstilles under Elbiler).</div></div></div>
-            <div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">Resten lagres til de dyre timer (indstilles under Hus batteri).</div></div></div>
+            <div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">Resten lagres og bruges i de dyre timer (styres under Hus batteri).</div></div></div>
           </div>
         </div>
       </div>`;
@@ -913,7 +969,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
   async _loadCars(force = false) {
     if (!this._hass || !this._hass.callWS) return;
     const now = Date.now();
-    if (!force && this._carsLoadedAt && now - this._carsLoadedAt < 30000) return;
+    if (!force && this._carsLoadedAt && now - this._carsLoadedAt < 2500) return;
     if (this._carsLoading) return;
     this._carsLoading = true;
     try {
@@ -957,7 +1013,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
     const charging = cars.filter((c) => c.runtime && c.runtime.charging).length;
     const desc = cars
-      .map((c) => `${c.name}: ${c.runtime && c.runtime.soc !== null && c.runtime.soc !== undefined ? fmtNum(c.runtime.soc, 0) + " %" : "–"}`)
+      .map((c) => {
+        const v = this._numState(c.soc_entity).value;
+        return `${c.name}: ${v !== null ? fmtNum(v, 0) + " %" : "–"}`;
+      })
       .join(" · ");
     return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${esc(desc)}</div></div><span class="badge ${charging ? "low" : "neutral"}">${charging ? `${charging} lader` : "Ingen lader"}</span></div>`;
   }
@@ -987,7 +1046,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderCarCard(car) {
     const rt = car.runtime || {};
     const [statusText, statusCls] = ElectricityOptimizerPanel.STATUS_TEXT[rt.status] || ["Ukendt", "neutral"];
-    const soc = rt.soc !== null && rt.soc !== undefined ? Number(rt.soc) : null;
+    const liveSoc = this._numState(car.soc_entity).value;
+    const soc = liveSoc !== null ? liveSoc : rt.soc !== null && rt.soc !== undefined ? Number(rt.soc) : null;
     const plan = rt.plan || null;
     const now = new Date();
     const dayLabel = (d) => (d.getDate() === now.getDate() ? "i dag" : "i morgen");
@@ -1074,13 +1134,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="fields">
             <label class="field">Navn<input name="name" value="${v("name")}" placeholder="fx Tesla" required></label>
             <label class="field">SoC-sensor (%)<div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">Start opladning (entitet)<div class="picker"><input name="start_entity" data-domains="switch,button,script,input_boolean,automation" value="${v("start_entity")}" placeholder="switch.… / button.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">Stop opladning (entitet)<div class="picker"><input name="stop_entity" data-domains="switch,button,script,input_boolean,automation" value="${v("stop_entity")}" placeholder="samme switch eller anden entitet" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            ${this._cmdFields("Start opladning", "start_entity", "start_value", v)}
+            ${this._cmdFields("Stop opladning", "stop_entity", "stop_value", v)}
             <label class="field">Tilsluttet-sensor (valgfri)<div class="picker"><input name="plugged_entity" data-domains="binary_sensor" value="${v("plugged_entity")}" placeholder="binary_sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field">Batterikapacitet (kWh)<input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
             <label class="field">Ladeeffekt (kW)<input name="charge_power_kw" type="number" step="0.1" min="0.1" value="${v("charge_power_kw", 11)}"></label>
           </div>
-          <div class="hint" style="margin-top:10px">Start: entiteten tændes/trykkes. Stop: er det samme switch som start, slukkes den – ellers tændes/trykkes stop-entiteten. Brug samme entitet begge steder, hvis din lader kun har én switch.</div>
+          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT}</div>
           ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}
           <div class="row" style="margin-top:14px">
             <button class="btn primary" type="submit" data-action="save-car">Gem</button>
@@ -1118,6 +1178,18 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   async _onContentChange(ev) {
     const input = ev.target;
+    if (input.dataset && input.dataset.bfield) {
+      const field = input.dataset.bfield;
+      const value = input.type === "checkbox" ? input.checked : input.value;
+      try {
+        await this._saveBattery({ [field]: value });
+        this._batteryError = null;
+      } catch (err) {
+        this._batteryError = err && err.message ? err.message : String(err);
+      }
+      this._maybeRender(true);
+      return;
+    }
     const card = input.closest && input.closest("[data-car]");
     if (!card || !input.dataset.field) return;
     const field = input.dataset.field;
@@ -1140,6 +1212,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const input = pick.closest(".picker").querySelector("input");
       input.value = pick.dataset.pick;
       pick.parentElement.hidden = true;
+      return;
+    }
+    const bbtn = ev.target.closest && ev.target.closest("[data-baction]");
+    if (bbtn) {
+      await this._onBatteryClick(bbtn, ev);
       return;
     }
     const btn = ev.target.closest && ev.target.closest("[data-action]");
@@ -1192,25 +1269,319 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
   }
 
-  _renderBattery() {
+  static CMD_HINT =
+    "Start: switch/input_boolean tændes, button trykkes, script/automation køres, select får valgt værdien, number sættes til værdien. " +
+    "Stop: er det samme switch som start, slukkes den – ellers udføres stop-kommandoen på samme måde. Brug samme entitet begge steder, hvis der kun er én switch.";
+
+  static CMD_DOMAINS = "switch,button,script,input_boolean,automation,select,input_select,number,input_number";
+
+  _cmdFields(label, entityKey, valueKey, v) {
     return `
-      <div class="card">
-        <h2><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri <span class="chip"><ha-icon icon="mdi:progress-wrench"></ha-icon>Kommer i næste trin</span></h2>
-        <div class="empty">
-          <ha-icon icon="mdi:home-battery-outline"></ha-icon>
-          <div>Intet husbatteri er tilknyttet endnu.</div>
+      <div class="field">${label}
+        <div class="cmd">
+          <div class="picker"><input name="${entityKey}" data-domains="${ElectricityOptimizerPanel.CMD_DOMAINS}" value="${v(entityKey)}" placeholder="entitet" autocomplete="off"><div class="picker-list" hidden></div></div>
+          <input name="${valueKey}" value="${v(valueKey)}" placeholder="værdi (select/number)">
         </div>
-      </div>
-      <div class="card">
-        <h2><ha-icon icon="mdi:tune"></ha-icon>Planlagte indstillinger</h2>
-        <ul class="planned">
-          <li><ha-icon icon="mdi:battery"></ha-icon><div><div class="n">Batteri</div><div class="d">Kapacitet (kWh), maks. lade-/afladeeffekt og SoC-sensor.</div></div></li>
-          <li><ha-icon icon="mdi:battery-arrow-down-outline"></ha-icon><div><div class="n">Reserve</div><div class="d">Minimum SoC som batteriet aldrig aflades under.</div></div></li>
-          <li><ha-icon icon="mdi:transmission-tower-import"></ha-icon><div><div class="n">Lad fra nettet</div><div class="d">Fyld batteriet i de billigste timer, når solen ikke rækker.</div></div></li>
-          <li><ha-icon icon="mdi:transmission-tower-export"></ha-icon><div><div class="n">Aflad ved høj pris</div><div class="d">Brug batteriet til huset i de dyreste timer på dagen.</div></div></li>
-        </ul>
       </div>`;
   }
+
+  /* ---------- battery ---------- */
+
+  async _loadBattery(force = false) {
+    if (!this._hass || !this._hass.callWS) return;
+    const now = Date.now();
+    if (!force && this._batteryLoadedAt && now - this._batteryLoadedAt < 2500) return;
+    if (this._batteryLoading) return;
+    this._batteryLoading = true;
+    try {
+      const res = await this._hass.callWS({ type: "electricity_optimizer/battery/get" });
+      this._battery = res.battery || null;
+      this._batteryRuntime = res.runtime || {};
+      this._batteryLoadedAt = Date.now();
+      this._batteryStamp = Date.now();
+      this._batteryError = null;
+      this._maybeRender();
+    } catch (err) {
+      this._batteryError = err && err.message ? err.message : String(err);
+      if (this._battery === undefined) this._battery = null;
+    } finally {
+      this._batteryLoading = false;
+    }
+  }
+
+  async _saveBattery(patch) {
+    const res = await this._hass.callWS({ type: "electricity_optimizer/battery/save", battery: patch });
+    this._battery = res.battery;
+    this._batteryRuntime = res.runtime || {};
+    this._batteryLoadedAt = Date.now();
+    this._batteryStamp = Date.now();
+    return res;
+  }
+
+  _readBatteryLive() {
+    const b = this._battery || {};
+    const soc = this._numState(b.soc_entity).value;
+    let batW = null;
+    if (b.power_entity) {
+      const p = this._numState(b.power_entity);
+      batW = ElectricityOptimizerPanel._toKw(p.value, p.unit);
+      if (batW !== null) batW = batW * 1000 * (b.power_sign === "discharge_positive" ? -1 : 1);
+    } else if (b.charge_power_entity || b.discharge_power_entity) {
+      const c = this._numState(b.charge_power_entity), d = this._numState(b.discharge_power_entity);
+      const ck = ElectricityOptimizerPanel._toKw(c.value, c.unit), dk = ElectricityOptimizerPanel._toKw(d.value, d.unit);
+      if (ck !== null || dk !== null) batW = ((ck || 0) - (dk || 0)) * 1000;
+    }
+    let gridW = null;
+    if (b.grid_power_entity) {
+      const g = this._numState(b.grid_power_entity);
+      gridW = ElectricityOptimizerPanel._toKw(g.value, g.unit);
+      if (gridW !== null) gridW = gridW * 1000 * (b.grid_sign === "export_positive" ? -1 : 1);
+    }
+    let houseW = null;
+    if (b.house_power_entity) {
+      const h = this._numState(b.house_power_entity);
+      houseW = ElectricityOptimizerPanel._toKw(h.value, h.unit);
+      if (houseW !== null) houseW *= 1000;
+    }
+    return { soc, batW, gridW, houseW };
+  }
+
+  static MODE_TEXT = {
+    normal: ["Normal", "neutral", "Batteriet lader fra sol og forsyner huset"],
+    hold: ["Hold", "info", "Batteriet spares til dyrere timer senere"],
+    charge: ["Lader fra nettet", "low", "Strømmen er billig nu i forhold til senere"],
+  };
+
+  _renderBatteryStatusRow() {
+    const b = this._battery;
+    if (!b) {
+      return `<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">Ikke sat op – se fanen Hus batteri</div></div><span class="badge neutral">Ikke sat op</span></div>`;
+    }
+    const live = this._readBatteryLive();
+    const rt = this._batteryRuntime || {};
+    const [modeText, modeCls] = ElectricityOptimizerPanel.MODE_TEXT[rt.mode] || ["–", "neutral"];
+    const parts = [];
+    if (live.soc !== null) parts.push(`${fmtNum(live.soc, 0)} %`);
+    if (live.batW !== null) parts.push(live.batW >= 0 ? `lader ${fmtNum(live.batW, 0)} W` : `aflader ${fmtNum(-live.batW, 0)} W`);
+    let grid = "";
+    if (live.gridW !== null) {
+      grid = `<div class="status-row"><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t"><div class="n">Elnet</div><div class="d">${
+        live.gridW >= 0 ? `Køber ${fmtNum(live.gridW, 0)} W` : `Sælger ${fmtNum(-live.gridW, 0)} W`
+      }${live.houseW !== null ? ` · huset bruger ${fmtNum(live.houseW, 0)} W` : ""}</div></div><span class="badge ${live.gridW > 0 ? "mid" : "low"}">${live.gridW > 0 ? "Import" : "Eksport"}</span></div>`;
+    }
+    return `<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${esc(parts.join(" · ") || "Ingen data")}</div></div><span class="badge ${modeCls}">${modeText}</span></div>${grid}`;
+  }
+
+  _renderBattery() {
+    if (this._battery === undefined) {
+      return `<div class="card"><div class="empty"><ha-icon icon="mdi:timer-sand"></ha-icon>Henter batteri…</div></div>`;
+    }
+    if (this._editingBattery || this._battery === null) return this._renderBatteryForm(this._battery || {});
+    const b = this._battery;
+    const rt = this._batteryRuntime || {};
+    const live = this._readBatteryLive();
+    const plan = rt.plan || null;
+    const mode = rt.mode || "normal";
+    const [modeText, modeCls, modeWhy] = ElectricityOptimizerPanel.MODE_TEXT[mode] || ["–", "neutral", ""];
+    const statusNote = {
+      no_soc: "SoC-sensoren har ingen værdi",
+      no_prices: "Ingen priser fra EnergiDataService",
+      disabled: "Smart styring er slået fra",
+      override: "Manuel styring – tryk Auto for at følge planen",
+      full: "Batteriet er fyldt til maks-SoC",
+      auto: modeWhy,
+    }[rt.status] || "";
+    const cmds = rt.commands_configured || {};
+    const socPct = live.soc === null ? 0 : Math.max(0, Math.min(100, live.soc));
+    const why = plan
+      ? [
+          plan.current_price !== null ? `Pris nu ${fmtNum(plan.current_price)}` : "",
+          plan.day_mean !== null && plan.day_mean !== undefined ? `dagens gennemsnit ${fmtNum(plan.day_mean)}` : "",
+          plan.later_max !== null && plan.later_max !== undefined ? `dyreste senere ${fmtNum(plan.later_max)}` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
+    const la = rt.last_action;
+    const laText = la
+      ? `Sidste kommando kl. ${fmtTime(new Date(la.at))}: ${la.ok ? (la.sent && la.sent.length ? la.sent.join(", ") : "ingen entiteter at sende til") : `fejlede – ${la.error || ""}`}`
+      : "";
+
+    return `
+      <div class="grid">
+        <div class="card kpi">
+          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Batteri</div>
+          <div class="value">${live.soc === null ? "–" : fmtNum(live.soc, 0) + " %"}<small>${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %</small></div>
+          <div class="soc-bar"><div class="fill ${live.batW > 0 ? "charging" : ""}" style="width:${socPct}%"></div><div class="target" style="left:${b.min_soc}%"></div></div>
+          <div class="sub">${live.batW === null ? "Ingen effekt-sensor" : live.batW >= 0 ? `Lader med ${fmtNum(live.batW, 0)} W` : `Aflader med ${fmtNum(-live.batW, 0)} W`}</div>
+        </div>
+        <div class="card kpi">
+          <div class="label"><ha-icon icon="mdi:state-machine"></ha-icon>Modus lige nu</div>
+          <div class="value"><span class="badge ${modeCls}" style="font-size:16px;padding:4px 14px">${modeText}</span></div>
+          <div class="sub">${esc(statusNote)}</div>
+          <div class="sub">${esc(why)}</div>
+        </div>
+        <div class="card">
+          <h2><ha-icon icon="mdi:swap-vertical"></ha-icon>Energiflow</h2>
+          <div class="flow">
+            <div class="item ${live.gridW > 0 ? "in" : "out"}"><ha-icon icon="mdi:transmission-tower"></ha-icon><div><div class="v">${live.gridW === null ? "–" : fmtNum(Math.abs(live.gridW), 0) + " W"}</div><div class="l">${live.gridW === null ? "Elnet" : live.gridW > 0 ? "Køber fra nettet" : "Sælger til nettet"}</div></div></div>
+            <div class="item"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon><div><div class="v">${live.houseW === null ? "–" : fmtNum(live.houseW, 0) + " W"}</div><div class="l">Husforbrug</div></div></div>
+            <div class="item ${live.batW > 0 ? "out" : live.batW < 0 ? "in" : ""}"><ha-icon icon="mdi:battery-charging"></ha-icon><div><div class="v">${live.batW === null ? "–" : fmtNum(Math.abs(live.batW), 0) + " W"}</div><div class="l">${live.batW === null ? "Batteri" : live.batW >= 0 ? "Batteri lader" : "Batteri aflader"}</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><ha-icon icon="mdi:chart-timeline"></ha-icon>Plan</h2>
+        ${plan ? this._renderBatteryPlanStrip(plan) : '<div class="hint">Ingen plan endnu.</div>'}
+        <div class="legend"><span class="l-normal">Normal</span><span class="l-hold">Hold</span><span class="l-charge">Lad fra nettet</span></div>
+        <div class="row" style="margin-top:12px">
+          <span class="hint">Manuel:</span>
+          <span class="seg">
+            <button class="btn ${b.override === "auto" ? "active" : ""}" data-baction="override" data-value="auto">Auto</button>
+            <button class="btn ${b.override === "normal" ? "active" : ""}" data-baction="override" data-value="normal">Normal</button>
+            <button class="btn ${b.override === "hold" ? "active" : ""}" data-baction="override" data-value="hold" ${cmds.hold ? "" : "disabled"}>Hold nu</button>
+            <button class="btn ${b.override === "charge" ? "active" : ""}" data-baction="override" data-value="charge" ${cmds.charge ? "" : "disabled"}>Lad fra net nu</button>
+          </span>
+        </div>
+        ${!cmds.hold && !cmds.charge ? '<div class="hint" style="margin-top:8px">Ingen styringskommandoer er sat op – planen vises kun. Tryk Rediger for at tilføje.</div>' : ""}
+        ${laText ? `<div class="hint" style="margin-top:8px">${esc(laText)}</div>` : ""}
+      </div>
+
+      <div class="card" data-battery>
+        <h2><ha-icon icon="mdi:tune"></ha-icon>Indstillinger <button class="btn" style="margin-left:auto" data-baction="edit">Rediger sensorer og kommandoer</button></h2>
+        <div class="controls">
+          <label class="toggle"><input type="checkbox" data-bfield="enabled" ${b.enabled ? "checked" : ""}> Smart styring</label>
+          <label class="toggle"><input type="checkbox" data-bfield="grid_charge_enabled" ${b.grid_charge_enabled ? "checked" : ""}> Må lade fra nettet</label>
+          <label class="field">Prisforskel (kr/kWh)<input type="number" step="0.05" min="0" data-bfield="spread_threshold" value="${b.spread_threshold}"></label>
+          <label class="field">Reserve-SoC (%)<input type="number" min="0" max="100" data-bfield="min_soc" value="${b.min_soc}"></label>
+          <label class="field">Maks-SoC ved netopladning (%)<input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>
+          <label class="field">Virkningsgrad (0–1)<input type="number" step="0.01" min="0.5" max="1" data-bfield="efficiency" value="${b.efficiency}"></label>
+        </div>
+        <div class="hint" style="margin-top:8px">Hold: prisen er under dagens gennemsnit, og en senere time er mindst prisforskellen dyrere. Lad fra nettet: kun når de dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu.</div>
+        ${this._batteryError ? `<div class="err">${esc(this._batteryError)}</div>` : ""}
+      </div>`;
+  }
+
+  _renderBatteryPlanStrip(plan) {
+    const slots = plan.plan || [];
+    if (!slots.length) return "";
+    const t0 = Math.min(Date.now(), new Date(slots[0].start).getTime());
+    const t1 = new Date(slots[slots.length - 1].end).getTime();
+    const W = 600, H = 34, barH = 18;
+    const x = (t) => ((t - t0) / (t1 - t0)) * W;
+    const now = Date.now();
+    const rects = slots
+      .map((s) => {
+        const a = new Date(s.start).getTime(), b = new Date(s.end).getTime();
+        const isNow = a <= now && now < b;
+        const label = { normal: "Normal", hold: "Hold", charge: "Lad fra nettet" }[s.mode] || s.mode;
+        return `<rect class="slot ${s.mode} ${isNow ? "now" : ""}" x="${x(a).toFixed(1)}" y="0" width="${Math.max(0.5, x(b) - x(a) - 0.5).toFixed(1)}" height="${barH}" rx="2"><title>${fmtTime(new Date(a))} ${fmtNum(s.price)} – ${label}</title></rect>`;
+      })
+      .join("");
+    const labels = [];
+    for (const s of slots) {
+      const d = new Date(s.start);
+      if (d.getMinutes() === 0 && d.getHours() % 6 === 0) labels.push(`<text class="tick" x="${x(d.getTime()).toFixed(1)}" y="${H - 2}">${pad2(d.getHours())}</text>`);
+    }
+    return `<svg class="plan-strip" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${rects}${labels.join("")}</svg>`;
+  }
+
+  _renderBatteryForm(b) {
+    const v = (k, d = "") => esc(b[k] === undefined || b[k] === null ? d : b[k]);
+    const sel = (k, opts, d) => `<select name="${k}">${opts.map(([val, lab]) => `<option value="${val}" ${(b[k] || d) === val ? "selected" : ""}>${lab}</option>`).join("")}</select>`;
+    const errText = {
+      soc_required: "Vælg en SoC-sensor.",
+      capacity_power_positive: "Kapacitet og effekter skal være større end 0.",
+      charge_start_stop_both: "Angiv både start og stop for 'Lad fra nettet' (eller ingen af dem).",
+      hold_start_stop_both: "Angiv både start og stop for 'Hold' (eller ingen af dem).",
+    };
+    const isNew = !this._battery;
+    return `
+      <div class="card">
+        <h2><ha-icon icon="mdi:home-battery"></ha-icon>${isNew ? "Sæt husbatteri op" : "Rediger husbatteri"}</h2>
+        <form class="battery-form">
+          <h3>Sensorer</h3>
+          <div class="fields">
+            <label class="field">Batteri-SoC (%)<div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Batteri-effekt (W, fortegn)<div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Fortegn for batteri-effekt${sel("power_sign", [["charge_positive", "Positiv = lader"], ["discharge_positive", "Positiv = aflader"]], "charge_positive")}</label>
+            <label class="field">…eller ladeeffekt (W)<div class="picker"><input name="charge_power_entity" data-domains="sensor" value="${v("charge_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">…og afladeeffekt (W)<div class="picker"><input name="discharge_power_entity" data-domains="sensor" value="${v("discharge_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Net import/eksport (W)<div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${v("grid_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field">Fortegn for net${sel("grid_sign", [["import_positive", "Positiv = køber"], ["export_positive", "Positiv = sælger"]], "import_positive")}</label>
+            <label class="field">Husforbrug (W)<div class="picker"><input name="house_power_entity" data-domains="sensor" value="${v("house_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+          </div>
+          <h3>Batteri</h3>
+          <div class="fields">
+            <label class="field">Kapacitet (kWh)<input name="capacity_kwh" type="number" step="0.1" min="0.1" value="${v("capacity_kwh", 10)}"></label>
+            <label class="field">Maks. ladeeffekt (kW)<input name="max_charge_kw" type="number" step="0.1" min="0.1" value="${v("max_charge_kw", 5)}"></label>
+            <label class="field">Maks. afladeeffekt (kW)<input name="max_discharge_kw" type="number" step="0.1" min="0.1" value="${v("max_discharge_kw", 5)}"></label>
+          </div>
+          <h3>Lad fra nettet (valgfri)</h3>
+          <div class="fields">
+            ${this._cmdFields("Start", "charge_start_entity", "charge_start_value", v)}
+            ${this._cmdFields("Stop", "charge_stop_entity", "charge_stop_value", v)}
+          </div>
+          <h3>Hold batteriet – ingen afladning (valgfri)</h3>
+          <div class="fields">
+            ${this._cmdFields("Start", "hold_start_entity", "hold_start_value", v)}
+            ${this._cmdFields("Stop", "hold_stop_entity", "hold_stop_value", v)}
+          </div>
+          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Eksempel med select: start = select.inverter_mode / "Charge", stop = select.inverter_mode / "Self-use".</div>
+          ${this._batteryFormError ? `<div class="err">${esc(errText[this._batteryFormError] || this._batteryFormError)}</div>` : ""}
+          <div class="row" style="margin-top:14px">
+            <button class="btn primary" type="submit" data-baction="save">Gem</button>
+            ${isNew ? "" : '<button class="btn" type="button" data-baction="cancel">Annuller</button>'}
+            ${isNew ? "" : '<button class="btn danger" type="button" data-baction="delete">Fjern batteri</button>'}
+          </div>
+        </form>
+      </div>`;
+  }
+
+  async _onBatteryClick(btn, ev) {
+    const action = btn.dataset.baction;
+    try {
+      if (action === "edit") {
+        this._editingBattery = true;
+        this._batteryFormError = null;
+        this._maybeRender(true);
+      } else if (action === "cancel") {
+        this._editingBattery = false;
+        this._batteryFormError = null;
+        this._maybeRender(true);
+      } else if (action === "save") {
+        ev.preventDefault();
+        const form = btn.closest("form");
+        const data = {};
+        for (const el of form.querySelectorAll("input[name],select[name]")) data[el.name] = el.value;
+        try {
+          await this._saveBattery(data);
+          this._editingBattery = false;
+          this._batteryFormError = null;
+        } catch (err) {
+          this._batteryFormError = (err && (err.message || err.code)) || String(err);
+          this._battery = this._battery ? { ...this._battery, ...data } : this._battery;
+          if (!this._battery) this._pendingBatteryForm = data;
+        }
+        this._maybeRender(true);
+      } else if (action === "delete") {
+        if (!window.confirm("Fjern husbatteriet fra Electricity Optimizer?")) return;
+        const res = await this._hass.callWS({ type: "electricity_optimizer/battery/delete" });
+        this._battery = res.battery || null;
+        this._batteryRuntime = {};
+        this._editingBattery = false;
+        this._maybeRender(true);
+      } else if (action === "override") {
+        await this._saveBattery({ override: btn.dataset.value });
+        this._maybeRender(true);
+      }
+    } catch (err) {
+      this._batteryError = err && err.message ? err.message : String(err);
+      this._maybeRender(true);
+    }
+  }
+
 }
 
 if (!customElements.get("electricity-optimizer-panel")) {

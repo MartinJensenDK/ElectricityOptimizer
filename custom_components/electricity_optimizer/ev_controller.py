@@ -12,7 +12,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
-from .const import ACTIVATE_DOMAINS, EVALUATE_INTERVAL_SECONDS
+from .commands import async_run_command
+from .const import EVALUATE_INTERVAL_SECONDS
 from .storage import CarStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -254,9 +255,9 @@ class EvController:
             return
         try:
             if desired:
-                await self._activate(car["start_entity"])
+                await self._activate(car)
             else:
-                await self._deactivate(car["start_entity"], car["stop_entity"])
+                await self._deactivate(car)
             self._last_cmd[cid] = desired
             self.runtime[cid]["last_action"] = {
                 "at": dt_util.now().isoformat(),
@@ -273,23 +274,14 @@ class EvController:
             }
             _LOGGER.warning("%s: could not send %s: %s", car["name"], "start" if desired else "stop", err)
 
-    async def _call(self, domain: str, service: str, entity_id: str) -> None:
-        await self.hass.services.async_call(domain, service, {"entity_id": entity_id}, blocking=True)
+    async def _activate(self, car: dict[str, Any]) -> None:
+        await async_run_command(self.hass, car["start_entity"], car.get("start_value") or None)
 
-    async def _activate(self, entity_id: str) -> None:
-        domain = entity_id.split(".", 1)[0]
-        if domain not in ACTIVATE_DOMAINS:
-            raise HomeAssistantError(f"Unsupported domain for {entity_id}")
-        if domain == "button":
-            await self._call("button", "press", entity_id)
-        elif domain == "automation":
-            await self._call("automation", "trigger", entity_id)
-        else:
-            await self._call(domain, "turn_on", entity_id)
-
-    async def _deactivate(self, start_entity: str, stop_entity: str) -> None:
-        domain = stop_entity.split(".", 1)[0]
-        if stop_entity == start_entity and domain in ("switch", "input_boolean"):
-            await self._call(domain, "turn_off", stop_entity)
-        else:
-            await self._activate(stop_entity)
+    async def _deactivate(self, car: dict[str, Any]) -> None:
+        await async_run_command(
+            self.hass,
+            car["stop_entity"],
+            car.get("stop_value") or None,
+            is_stop=True,
+            start_entity=car["start_entity"],
+        )

@@ -9,7 +9,9 @@ from typing import Any
 from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.loader import async_get_loaded_integration
 
 from . import websocket
@@ -26,8 +28,9 @@ from .const import (
     SOLAR_ENTITY_KEYS,
     STATIC_URL_BASE,
 )
+from .battery_controller import BatteryController
 from .ev_controller import EvController
-from .storage import CarStore
+from .storage import BatteryStore, CarStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,11 +85,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await store.async_load()
     controller = EvController(hass, store, config[CONF_PRICE_ENTITY])
     domain_data["ev"] = {"store": store, "controller": controller}
+
+    battery_store = BatteryStore(hass)
+    await battery_store.async_load()
+    battery_controller = BatteryController(hass, battery_store, config[CONF_PRICE_ENTITY])
+    domain_data["battery"] = {"store": battery_store, "controller": battery_controller}
+
     if not domain_data.get("_ws_registered"):
         websocket.async_register(hass)
         domain_data["_ws_registered"] = True
     controller.async_start()
-    hass.async_create_task(controller.async_evaluate())
+
+    async def _evaluate_all() -> None:
+        await controller.async_evaluate()
+        await battery_controller.async_evaluate()
+
+    hass.async_create_task(_evaluate_all())
+
+    # Re-evaluate shortly after a relevant sensor changes (prices, SoC, plugged state).
+    pending: dict[str, Any] = {"handle": None}
+
+    def _watched_entities() -> set[str]:
+        ids = {config[CONF_PRICE_ENTITY]}
+        for car in store.cars:
+            ids.update(v for k, v in car.items() if k in ("soc_entity", "plugged_entity") and v)
+        if battery_store.battery:
+            ids.add(battery_store.battery["soc_entity"])
+        return ids
+
+    @callback
+    def _on_state_changed(event: Event) -> None:
+        if event.data.get("entity_id") not in _watched_entities() or pending["handle"]:
+            return
+
+        async def _run(_now: Any) -> None:
+            pending["handle"] = None
+            await _evaluate_all()
+
+        pending["handle"] = async_call_later(hass, 2, _run)
+
+    entry.async_on_unload(hass.bus.async_listen(EVENT_STATE_CHANGED, _on_state_changed))
+
+    @callback
+    def _cancel_pending() -> None:
+        if pending["handle"]:
+            pending["handle"]()
+            pending["handle"] = None
+
+    entry.async_on_unload(_cancel_pending)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
@@ -103,5 +149,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ev = hass.data[DOMAIN].pop("ev", None)
     if ev:
         ev["controller"].async_stop()
+    hass.data[DOMAIN].pop("battery", None)
     frontend.async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
     return True
