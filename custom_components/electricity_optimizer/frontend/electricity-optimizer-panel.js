@@ -445,7 +445,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
     else if (this._tab === "battery") html = this._renderBattery();
     if (this._tab === "ev" || this._tab === "home") this._loadCars();
     if (this._tab === "battery" || this._tab === "home") this._loadBattery();
-    else html = this._renderBattery();
     this._contentEl.innerHTML = html;
   }
 
