@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.12.0";
+const PANEL_JS_VERSION = "0.13.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -128,6 +128,20 @@ const STYLE = `
   .kpi.live .value.in { color: var(--error-color, #db4437); }
   .kpi.live .value.out { color: var(--success-color, #43a047); }
   .kpi.live .value.sun { color: var(--warning-color, #ffa600); }
+  .gauge { display: block; width: 100%; max-width: 230px; margin: 0 auto; }
+  .gauge .track { fill: none; stroke: var(--secondary-background-color, #eee); stroke-width: 13; stroke-linecap: round; }
+  .gauge .arc { fill: none; stroke-width: 13; stroke-linecap: round; transition: d 300ms; }
+  .gauge .arc.in, .gauge .dot.in { stroke: var(--error-color, #db4437); fill: var(--error-color, #db4437); }
+  .gauge .arc.out, .gauge .dot.out { stroke: var(--success-color, #43a047); fill: var(--success-color, #43a047); }
+  .gauge .arc { fill: none; }
+  .gauge .dot { stroke: var(--card-background-color, #fff); stroke-width: 2.5; }
+  .gauge .zero { stroke: var(--secondary-text-color); stroke-width: 1.5; opacity: 0.6; }
+  .gauge .gv { font-size: 26px; font-weight: 500; fill: var(--primary-text-color); }
+  .gauge .gv.in { fill: var(--error-color, #db4437); }
+  .gauge .gv.out { fill: var(--success-color, #43a047); }
+  .gauge .gu { font-size: 12px; font-weight: 400; fill: var(--secondary-text-color); }
+  .gauge .gs { font-size: 12px; fill: var(--secondary-text-color); }
+  .gauge .gt { font-size: 9px; fill: var(--secondary-text-color); }
   .badge {
     display: inline-block;
     padding: 2px 10px;
@@ -667,6 +681,41 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${this._renderRulesCard()}`;
   }
 
+  /** Half-circle gauge: discharge (red) sweeps left, charge (green) sweeps right. */
+  _renderBatteryGauge(batW) {
+    const b = this._battery || {};
+    const maxCharge = Math.max(100, (Number(b.max_charge_kw) || 5) * 1000);
+    const maxDischarge = Math.max(100, (Number(b.max_discharge_kw) || 5) * 1000);
+    const cx = 100, cy = 92, r = 74, sw = 13;
+    const pt = (deg) => {
+      const a = (deg * Math.PI) / 180;
+      return `${(cx + r * Math.cos(a)).toFixed(2)} ${(cy - r * Math.sin(a)).toFixed(2)}`;
+    };
+    const dir = batW === null || batW === 0 ? "" : batW > 0 ? "out" : "in";
+    const frac = batW === null ? 0 : Math.max(-1, Math.min(1, batW / (batW > 0 ? maxCharge : maxDischarge)));
+    const endDeg = 90 - frac * 90;
+    const sweep = frac > 0 ? 1 : 0;
+    const large = 0;
+    const arc =
+      Math.abs(frac) > 0.005
+        ? `<path class="arc ${dir}" d="M ${pt(90)} A ${r} ${r} 0 ${large} ${sweep} ${pt(endDeg)}"/>
+           <circle class="dot ${dir}" cx="${pt(endDeg).split(" ")[0]}" cy="${pt(endDeg).split(" ")[1]}" r="${sw / 2 + 2}"/>`
+        : "";
+    const valueText = batW === null ? "–" : fmtNum(Math.abs(batW), 0);
+    const subText =
+      batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : batW > 0 ? "lader" : batW < 0 ? "aflader" : "hviler";
+    const kw = (v) => `${fmtNum(v / 1000, v % 1000 ? 1 : 0)} kW`;
+    return `<svg class="gauge" viewBox="0 0 200 118" role="img" aria-label="Batteri effekt ${esc(valueText)} W ${esc(subText)}">
+      <path class="track" d="M ${pt(180)} A ${r} ${r} 0 0 1 ${pt(0)}"/>
+      <line class="zero" x1="${cx}" x2="${cx}" y1="${cy - r - sw / 2 - 2}" y2="${cy - r + sw / 2 + 2}"/>
+      ${arc}
+      <text class="gt" x="${cx - r - sw / 2}" y="${cy + 14}" text-anchor="start">−${kw(maxDischarge)}</text>
+      <text class="gt" x="${cx + r + sw / 2}" y="${cy + 14}" text-anchor="end">+${kw(maxCharge)}</text>
+      <text class="gv ${dir}" x="${cx}" y="${cy - 6}" text-anchor="middle">${esc(valueText)}<tspan class="gu"> W</tspan></text>
+      <text class="gs" x="${cx}" y="${cy + 12}" text-anchor="middle">${esc(subText)}</text>
+    </svg>`;
+  }
+
   _gridLiveW() {
     // battery's grid sensor first, then the rules' house-level sensor
     const live = this._battery ? this._readBatteryLive() : { gridW: null, houseW: null };
@@ -705,8 +754,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt</div>
-          <div class="value ${bat.batW > 0 ? "out" : bat.batW < 0 ? "in" : ""}">${w(bat.batW)}</div>
-          <div class="sub">${bat.batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : bat.batW > 0 ? "lader" : bat.batW < 0 ? "aflader" : "hviler"}</div>
+          ${this._renderBatteryGauge(bat.batW)}
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri</div>

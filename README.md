@@ -5,7 +5,7 @@ timer på elmarkedet til hus og elbil, og bruger husbatteriet når prisen er hø
 
 Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants sidebar med tre faner:
 
-- **Forsiden** – live-række med solproduktion, husforbrug, elnet, batteri-effekt og batteri-%,
+- **Forsiden** – live-række med solproduktion, husforbrug, elnet, batteri-effekt (gauge) og batteri-%,
   prisgraf for i dag og i morgen med lodret nu-streg (prisen lige nu står i toppen) og elbilernes
   planlagte ladetimer indtegnet, billigste og dyreste timer fremover, status for solceller,
   batteri og elbiler samt reglerne for opladning.
