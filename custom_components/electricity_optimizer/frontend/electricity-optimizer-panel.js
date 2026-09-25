@@ -5,7 +5,17 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.7.0";
+const PANEL_JS_VERSION = "0.7.1";
+
+const cmpVersion = (a, b) => {
+  const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+};
 
 const DAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const DAY_SHORT = ["man", "tirs", "ons", "tors", "fre", "lør", "søn"];
@@ -427,7 +437,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="content"></div>
     `;
     this._staleEl = root.querySelector(".stale");
-    this._staleEl.querySelector(".stale-reload").addEventListener("click", () => window.location.reload(true));
+    this._staleEl.querySelector(".stale-reload").addEventListener("click", () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("eo_reload", String(Date.now()));
+      window.location.replace(url.toString());
+    });
     this._menuButton = root.querySelector("ha-menu-button");
     this._menuButton.hass = this._hass;
     this._menuButton.narrow = this._narrow;
@@ -466,10 +480,16 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (!this._built) this._buildShell();
     this._menuButton.hass = this._hass;
     this._versionEl.textContent = this._config.version ? `v${this._config.version}` : `v${PANEL_JS_VERSION}`;
-    const stale = !!this._config.version && this._config.version !== PANEL_JS_VERSION;
-    this._staleEl.hidden = !stale;
-    if (stale) {
-      this._staleEl.querySelector(".stale-text").textContent = `Panelet viser v${PANEL_JS_VERSION}, men integrationen er v${this._config.version}. Genindlæs siden (Ctrl+F5 / Cmd+Shift+R).`;
+    const backend = this._config.version;
+    const diff = backend ? cmpVersion(PANEL_JS_VERSION, backend) : 0;
+    this._staleEl.hidden = diff === 0;
+    if (diff > 0) {
+      // Script is newer than the running integration: HACS has downloaded the files, HA not restarted.
+      this._staleEl.querySelector(".stale-text").textContent = `Filerne er opdateret til v${PANEL_JS_VERSION}, men Home Assistant kører stadig v${backend}. Genstart Home Assistant (Indstillinger → System → Genstart).`;
+      this._staleEl.querySelector(".stale-reload").textContent = "Genindlæs efter genstart";
+    } else if (diff < 0) {
+      this._staleEl.querySelector(".stale-text").textContent = `Browseren viser det gamle panel v${PANEL_JS_VERSION}, men integrationen er v${backend}. Genindlæs siden (Ctrl+F5 / Cmd+Shift+R). I companion-appen: Indstillinger → Companion app → Ryd frontend-cache.`;
+      this._staleEl.querySelector(".stale-reload").textContent = "Genindlæs";
     }
     for (const b of this._tabsEl.querySelectorAll("button.tab")) {
       b.setAttribute("aria-selected", String(b.dataset.tab === this._tab));
