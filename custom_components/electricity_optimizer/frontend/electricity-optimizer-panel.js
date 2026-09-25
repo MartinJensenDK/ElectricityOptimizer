@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.16.1";
+const PANEL_JS_VERSION = "0.17.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -288,6 +288,8 @@ const STYLE = `
   .rules-now { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--secondary-background-color); font-size: 13px; line-height: 1.4; }
   .rules-now strong { color: var(--primary-text-color); font-weight: 500; }
   .fl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  th .info, h2 .info, h3 .info, .label .info, .toggle .info { text-transform: none; letter-spacing: 0; font-size: 10px; margin-left: 6px; vertical-align: middle; }
+  h3 { display: flex; align-items: center; }
   .info {
     position: relative; display: inline-flex; align-items: center; justify-content: center;
     width: 15px; height: 15px; border-radius: 50%; flex: none;
@@ -312,6 +314,9 @@ const STYLE = `
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/** (i) icon with a hover/focus tooltip. */
+const I = (tip) => `<span class="info" tabindex="0" data-tip="${esc(tip)}">i</span>`;
 
 const fmtNum = (v, d = 2) =>
   v === null || v === undefined || Number.isNaN(v)
@@ -661,7 +666,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       ${this._renderLiveRow()}
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}</h2>
+        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvede felter = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d)}</div>
         <div class="legend">
           <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
@@ -675,7 +680,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="grid">
         <div class="card">
-          <h2><ha-icon icon="mdi:cash-check"></ha-icon>Billigste timer fremover</h2>
+          <h2><ha-icon icon="mdi:cash-check"></ha-icon>Billigste timer fremover${I("De seks billigste timer fra nu og frem, i dag og i morgen når morgendagens priser er kendt. Her lægges netopladning af elbiler og husbatteri.")}</h2>
           <table>
             <thead><tr><th>Dag</th><th>Tidsrum</th><th style="text-align:right">${esc(d.unit)}</th></tr></thead>
             <tbody>
@@ -689,7 +694,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </table>
         </div>
         <div class="card">
-          <h2><ha-icon icon="mdi:cash-remove"></ha-icon>Dyreste timer fremover</h2>
+          <h2><ha-icon icon="mdi:cash-remove"></ha-icon>Dyreste timer fremover${I("De tre dyreste timer fra nu og frem. Her bør husbatteriet levere strømmen i stedet for nettet.")}</h2>
           <table>
             <thead><tr><th>Dag</th><th>Tidsrum</th><th style="text-align:right">${esc(d.unit)}</th></tr></thead>
             <tbody>
@@ -704,7 +709,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="sub" style="font-size:13px;color:var(--secondary-text-color);margin-top:10px">Her bør husbatteriet levere strøm i stedet for nettet.</div>
         </div>
         <div class="card">
-          <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status</h2>
+          <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, husbatteri, elnet, elbiler og prisdata lige nu. Detaljer findes på de enkelte faner.")}</h2>
           <div class="status-list">
             ${this._renderSolarStatusRow()}
             ${this._renderBatteryStatusRow()}
@@ -889,23 +894,23 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       <div class="grid">
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu</div>
+          <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu${I("Solcellernes produktion lige nu fra effekt-sensoren under Konfigurer. Skalaen går til anlæggets installerede effekt, eller 10 kW hvis den ikke er angivet.")}</div>
           ${this._renderSolarGauge(solar, solarW)}
         </div>
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Husforbrug</div>
+          <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Husforbrug${I("Husets samlede forbrug lige nu fra husforbrugs-sensoren under Hus batteri. Skala 0 til 5 kW.")}</div>
           ${this._renderHouseGauge(bat.houseW)}
         </div>
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet</div>
+          <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet${I("Effekt til og fra elnettet lige nu. Rød mod venstre = køber, grøn mod højre = sælger (minus foran tallet). Skala ±10 kW.")}</div>
           ${this._renderGridGauge(gridW)}
         </div>
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt</div>
+          <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
           ${this._renderBatteryGauge(bat.batW)}
         </div>
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri</div>
+          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand. Rød ved eller under reserven, orange tæt på reserven, ellers grøn.")}</div>
           ${this._renderSocGauge(bat.soc)}
         </div>
       </div>`;
@@ -1184,7 +1189,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       <div class="grid">
         <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:solar-power"></ha-icon>Produktion lige nu</div>
+          <div class="label"><ha-icon icon="mdi:solar-power"></ha-icon>Produktion lige nu${I("Aktuel effekt fra solcelle-sensoren under Konfigurer. Procenten er udnyttelsen af den installerede effekt (kWp).")}</div>
           <div class="value">${fmtNum(s.powerKw === null ? null : Math.round(s.powerKw * 1000), 0)}<small>W</small></div>
           ${
             pct !== null
@@ -1193,7 +1198,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           }
         </div>
         <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:counter"></ha-icon>Produceret i dag</div>
+          <div class="label"><ha-icon icon="mdi:counter"></ha-icon>Produceret i dag${I("Energi produceret i dag fra energi-sensoren. Uden sensor anslås den ud fra effektkurven. Procenten er i forhold til dagens prognose.")}</div>
           <div class="value">${fmtNum(s.todayKwh, 1)}<small>kWh</small></div>
           ${
             s.fcTodayKwh
@@ -1202,19 +1207,19 @@ class ElectricityOptimizerPanel extends HTMLElement {
           }
         </div>
         <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:weather-sunny"></ha-icon>Prognose</div>
+          <div class="label"><ha-icon icon="mdi:weather-sunny"></ha-icon>Prognose${I("Forventet produktion i dag og i morgen fra prognose-sensorerne, fx Solcast eller Forecast.Solar. Bruges til husbatteriets regel om kun at lade fra nettet, når prognosen er lav.")}</div>
           <div class="value">${fmtNum(s.fcTodayKwh, 1)}<small>kWh i dag</small></div>
           <div class="sub">${s.fcTomorrowKwh !== null ? `I morgen: ${fmtNum(s.fcTomorrowKwh, 1)} kWh` : "Ingen prognose-sensor valgt"}</div>
         </div>
         <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:white-balance-sunny"></ha-icon>Solen</div>
+          <div class="label"><ha-icon icon="mdi:white-balance-sunny"></ha-icon>Solen${I("Solens højde over horisonten lige nu samt tidspunkt for solopgang og solnedgang fra Home Assistants sol-entitet.")}</div>
           <div class="value">${s.elevation !== null ? `${fmtNum(s.elevation, 0)}°` : "–"}<small>over horisonten</small></div>
           <div class="sub">${sunBadge} ${esc(sunTimes)}</div>
         </div>
       </div>
 
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-areaspline"></ha-icon>Produktion i dag</h2>
+        <h2><ha-icon icon="mdi:chart-areaspline"></ha-icon>Produktion i dag${I("Effektkurve for i dag ud fra solcelle-sensorens historik i Home Assistant. Lodret streg = nu.")}</h2>
         <div class="chart-wrap">${this._renderSolarChart(s)}</div>
         <div class="legend">
           <span class="l-mid">Effekt (kW)</span>
@@ -1224,7 +1229,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="grid">
         <div class="card">
-          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg</h2>
+          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Nøgletal for anlægget: installeret effekt fra Konfigurer, samlet produktion fra total-sensoren og solens retning lige nu.")}</h2>
           <table>
             <tbody>
               <tr><td>Installeret effekt</td><td class="num">${s.peakKw ? `${fmtNum(s.peakKw, 1)} kWp` : "–"}</td></tr>
@@ -1265,7 +1270,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const ctx = this._context || {};
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen <a class="setup-link hint" href="#" data-goto="home" style="margin-left:auto">Regler</a></h2>
+        <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen${I("Hvordan solstrømmen fordeles mellem elbiler og husbatteri i dag ud fra reglerne på Forsiden og bilernes kilde i ugeplanen.")} <a class="setup-link hint" href="#" data-goto="home" style="margin-left:auto">Regler</a></h2>
         <div class="status-list">${rows}</div>
         ${rules ? `<div class="hint" style="margin-top:8px">${this._solarConditionsText(rules)}${ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""}</div>` : ""}
       </div>`;
@@ -1443,20 +1448,20 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const sensorForm = this._editingRulesSensor
       ? `<form class="rules-form" style="margin-top:10px">
            <div class="fields">
-             <label class="field">Net import/eksport (W)<div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${esc(r.grid_power_entity)}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-             <label class="field">Fortegn<select name="grid_sign"><option value="import_positive" ${r.grid_sign === "import_positive" ? "selected" : ""}>Positiv = køber</option><option value="export_positive" ${r.grid_sign === "export_positive" ? "selected" : ""}>Positiv = sælger</option></select></label>
+             <label class="field"><span class="fl">Net import/eksport (W)${I("Sensor med effekt til og fra nettet. Bruges til at beregne sol-overskud til elbiler, når husbatteriet ikke har sin egen net-sensor.")}</span><div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${esc(r.grid_power_entity)}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+             <label class="field"><span class="fl">Fortegn${I("Om sensoren viser positive tal, når huset køber fra nettet, eller når huset sælger til nettet.")}</span><select name="grid_sign"><option value="import_positive" ${r.grid_sign === "import_positive" ? "selected" : ""}>Positiv = køber</option><option value="export_positive" ${r.grid_sign === "export_positive" ? "selected" : ""}>Positiv = sælger</option></select></label>
            </div>
            <div class="row" style="margin-top:10px"><button class="btn primary" type="submit" data-raction="save-sensor">Gem</button><button class="btn" type="button" data-raction="cancel-sensor">Annuller</button></div>
          </form>`
       : `<div class="hint" style="margin-top:8px">Net-sensor til sol-overskud: ${
           r.grid_power_entity ? `<code>${esc(r.grid_power_entity)}</code>${gridLive.value !== null ? ` (${fmtNum(gridLive.value, 0)} W)` : ""}` : "bruger husbatteriets net-sensor"
         } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-sensor">Vælg sensor</button></div>`;
-    const info = (tip) => `<span class="info" tabindex="0" data-tip="${esc(tip)}">i</span>`;
+    const info = I;
     const head = (text, tip) => `<span class="fl">${text}${info(tip)}</span>`;
     const hasFuse = r.max_total_amps !== null && r.max_total_amps !== "" && Number(r.max_total_amps) > 0;
     return `
       <div class="card" data-rules>
-        <h2><ha-icon icon="mdi:scale-balance"></ha-icon>Regler for opladning</h2>
+        <h2><ha-icon icon="mdi:scale-balance"></ha-icon>Regler for opladning${I("Fælles regler for samspillet mellem elbiler og husbatteri. Hvert felt gemmes med det samme, og linjen under felterne viser, hvad de aktuelle valg betyder.")}</h2>
         <div class="controls">
           <label class="field">${head(
             "Sol først til",
@@ -1607,7 +1612,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const socPct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
     return `
       <div class="card" data-car="${car.id}">
-        <h2><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="hint" style="font-weight:400">#${index + 1}</span> <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span></h2>
+        <h2><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="hint" style="font-weight:400">#${index + 1}</span>${I("Nummeret er bilens prioritet: ved sol-overskud og ved hovedsikringen får bil #1 strøm først. Flyt rækkefølgen med pilene nederst på kortet. Mærkatet viser bilens status lige nu.")} <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span></h2>
         <div class="kpi">
           <div class="value">${soc === null ? "–" : fmtNum(soc, 0) + " %"}<small>mål ${plan && plan.target_soc ? plan.target_soc : car.target_soc} %</small></div>
         </div>
@@ -1615,10 +1620,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
         ${plan ? this._renderPlanStrip(plan) : ""}
         <div class="controls">
-          <label class="toggle"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}> Smart opladning</label>
-          <label class="field">Prisgrænse (kr/kWh)<input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
-          <label class="field">Min. ladestrøm (A)<input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
-          <label class="field">Maks. ladestrøm (A)<input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
+          <label class="toggle"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}> Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen.")}</label>
+          <label class="field"><span class="fl">Prisgrænse (kr/kWh)${I("Bilen lader altid, når prisen lige nu er under denne grænse, uanset planen. Tom = ingen prisgrænse.")}</span><input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
+          <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til. Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
+          <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
         </div>
         ${this._renderSchedule(car)}
         <div class="row" style="margin-top:12px">
@@ -1646,7 +1651,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="sched-wrap">
         <h3>Ugeplan</h3>
         <table class="sched">
-          <thead><tr><th>Dag</th><th>Til</th><th>Kilde</th><th>Klar senest</th><th>Mål-SoC %</th></tr></thead>
+          <thead><tr><th>Dag${I("Rækken Alle dage sætter samme værdi på alle ugedage. Dagens række er fremhævet.")}</th><th>Til${I("Skal bilen lades den dag. Fra = ingen kommandoer den dag.")}</th><th>Kilde${I("Kun sol: lader kun på sol-overskud. Sol + billige timer: sol om dagen og de billigste timer inden deadline. Kun billige timer: kun netopladning i de billigste timer.")}</th><th>Klar senest${I("Tidspunkt hvor mål-SoC skal være nået. Planen vælger de billigste timer inden da. Ligger tidspunktet før nu, gælder næste dag.")}</th><th>Mål-SoC %${I("Ladestand bilen skal nå inden tidspunktet. Er bilen allerede over, sker der ingen opladning.")}</th></tr></thead>
           <tbody>
             ${row("Alle dage", "all", "all", { enabled: sched.every((e) => e.enabled), source: sched[0].source, ready_by: sched[0].ready_by, target_soc: sched[0].target_soc })}
             ${sched.map((e, i) => row(DAY_NAMES[i], i === today ? "today" : "", i, e)).join("")}
@@ -1722,20 +1727,20 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <h2><ha-icon icon="mdi:car-electric"></ha-icon>${isNew ? "Tilføj bil" : `Rediger ${esc(car.name)}`}</h2>
         <form class="car-form" data-id="${v("id")}">
           <div class="fields">
-            <label class="field">Navn<input name="name" value="${v("name")}" placeholder="fx Tesla" required></label>
-            ${isNew ? `<label class="field">Klar senest (alle dage, kan ændres pr. dag bagefter)${timeInput('name="ready_by"', car.ready_by || "07:00")}</label>
-            <label class="field">Mål-SoC % (alle dage)<input name="target_soc" type="number" min="1" max="100" value="${v("target_soc", 80)}"></label>` : ""}
-            <label class="field">SoC-sensor (%)<div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Navn${I("Vises på kortet, i statuslinjen og i prisdiagrammets forklaring.")}</span><input name="name" value="${v("name")}" placeholder="fx Tesla" required></label>
+            ${isNew ? `<label class="field"><span class="fl">Klar senest (alle dage)${I("Startværdi for alle ugedage. Kan ændres pr. dag i ugeplanen bagefter.")}</span>${timeInput('name="ready_by"', car.ready_by || "07:00")}</label>
+            <label class="field"><span class="fl">Mål-SoC % (alle dage)${I("Startværdi for alle ugedage. Kan ændres pr. dag i ugeplanen bagefter.")}</span><input name="target_soc" type="number" min="1" max="100" value="${v("target_soc", 80)}"></label>` : ""}
+            <label class="field"><span class="fl">SoC-sensor (%)${I("Sensor med bilens ladestand i procent, typisk fra bilens egen integration. Uden den kan der ikke planlægges.")}</span><div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             ${this._cmdFields("Start opladning", "start_entity", "start_value", v)}
             ${this._cmdFields("Stop opladning", "stop_entity", "stop_value", v)}
-            <label class="field">Tilsluttet-sensor (valgfri)<div class="picker"><input name="plugged_entity" data-domains="binary_sensor" value="${v("plugged_entity")}" placeholder="binary_sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">Batterikapacitet (kWh)<input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
-            <label class="field">Min. ladestrøm (A)<input name="min_amps" type="number" step="1" min="1" max="64" value="${v("min_amps", 6)}"></label>
-            <label class="field">Maks. ladestrøm (A)<input name="max_amps" type="number" step="1" min="1" max="64" value="${v("max_amps", 16)}"></label>
-            <label class="field">Kilde (alle dage, kan ændres pr. dag bagefter)<select name="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([val, l]) => `<option value="${val}" ${(car.source || "solar_plan") === val ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-            <label class="field">Ladeeffekt-sensor (W, valgfri)<div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… bilens/laderens effekt" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">Faser<select name="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
-            <label class="field">Laderens strøm-entitet (number, valgfri) – ladestrømmen i A sendes hertil<div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… fx laderens 'charger current limit'" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Tilsluttet-sensor (valgfri)${I("binary_sensor der er tændt, når bilen sidder i laderen. Uden den antages bilen altid tilsluttet.")}</span><div class="picker"><input name="plugged_entity" data-domains="binary_sensor" value="${v("plugged_entity")}" placeholder="binary_sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Batterikapacitet (kWh)${I("Bilens batteristørrelse. Bruges til at beregne, hvor mange kWh og timer der skal lades for at nå mål-SoC.")}</span><input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
+            <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til. Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input name="min_amps" type="number" step="1" min="1" max="64" value="${v("min_amps", 6)}"></label>
+            <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input name="max_amps" type="number" step="1" min="1" max="64" value="${v("max_amps", 16)}"></label>
+            <label class="field"><span class="fl">Kilde (alle dage)${I("Startværdi for alle ugedage; kan ændres pr. dag bagefter. Kun sol: kun sol-overskud. Sol + billige timer: sol om dagen og billigste timer inden deadline. Kun billige timer: kun netopladning.")}</span><select name="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([val, l]) => `<option value="${val}" ${(car.source || "solar_plan") === val ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+            <label class="field"><span class="fl">Ladeeffekt-sensor (W, valgfri)${I("Bilens eller laderens faktiske effekt. Vises live og bruges i sol-regnestykket, så bilens eget træk ikke tæller som husforbrug.")}</span><div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… bilens/laderens effekt" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Faser${I("Antal faser laderen bruger. Effekt = ladestrøm × 230 V × faser.")}</span><select name="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
+            <label class="field"><span class="fl">Laderens strøm-entitet (valgfri)${I("number-entitet på laderen, som ladestrømmen i ampere sendes til. Med den justeres strømmen løbende efter sol-overskuddet (højst hvert 30. sekund). Uden den lades altid med maks. ladestrøm.")}</span><div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… fx laderens 'charger current limit'" autocomplete="off"><div class="picker-list" hidden></div></div></label>
           </div>
           <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Maks. ladestrøm × 230 V × faser er effekten, planen regner med. Ved solopladning justeres strømgrænse-entiteten løbende mellem min. og maks. efter overskuddet; uden strømgrænse-entitet startes solopladning kun, når overskuddet dækker maks. ladestrøm. Ladeeffekt-sensoren bruges til at vise og regne med bilens faktiske forbrug.</div>
           ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}
@@ -1949,9 +1954,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   static CMD_DOMAINS = "switch,button,script,input_boolean,automation,select,input_select,number,input_number";
 
-  _cmdFields(label, entityKey, valueKey, v) {
+  _cmdFields(label, entityKey, valueKey, v, tip = ElectricityOptimizerPanel.CMD_HINT) {
     return `
-      <div class="field">${label}
+      <div class="field"><span class="fl">${label}${I(tip)}</span>
         <div class="cmd">
           <div class="picker"><input name="${entityKey}" data-domains="${ElectricityOptimizerPanel.CMD_DOMAINS}" value="${v(entityKey)}" placeholder="entitet" autocomplete="off"><div class="picker-list" hidden></div></div>
           <input name="${valueKey}" value="${v(valueKey)}" placeholder="værdi (select/number)">
@@ -2095,19 +2100,19 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       <div class="grid">
         <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Batteri</div>
+          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Batteri${I("Ladestand, kapacitet og reserve. Stregen på bjælken er reserven, som batteriet ikke aflades under.")}</div>
           <div class="value">${live.soc === null ? "–" : fmtNum(live.soc, 0) + " %"}<small>${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %</small></div>
           <div class="soc-bar"><div class="fill ${live.batW > 0 ? "charging" : ""}" style="width:${socPct}%"></div><div class="target" style="left:${b.min_soc}%"></div></div>
           <div class="sub">${live.batW === null ? "Ingen effekt-sensor" : live.batW >= 0 ? `Lader med ${fmtNum(live.batW, 0)} W` : `Aflader med ${fmtNum(-live.batW, 0)} W`}</div>
         </div>
         <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:state-machine"></ha-icon>Modus lige nu</div>
+          <div class="label"><ha-icon icon="mdi:state-machine"></ha-icon>Modus lige nu${I("Normal: batteriet styres af sin egen inverter. Hold: batteriet spares til dyrere timer senere. Lad fra nettet: batteriet lades i billige timer. Teksten under forklarer hvorfor.")}</div>
           <div class="value"><span class="badge ${modeCls}" style="font-size:16px;padding:4px 14px">${modeText}</span></div>
           <div class="sub">${esc(statusNote)}</div>
           <div class="sub">${esc(why)}</div>
         </div>
         <div class="card">
-          <h2><ha-icon icon="mdi:swap-vertical"></ha-icon>Energiflow</h2>
+          <h2><ha-icon icon="mdi:swap-vertical"></ha-icon>Energiflow${I("Effekt lige nu for elnet (køb/salg), husforbrug og batteri (lader/aflader) fra sensorerne under Rediger.")}</h2>
           <div class="flow">
             <div class="item ${live.gridW > 0 ? "in" : "out"}"><ha-icon icon="mdi:transmission-tower"></ha-icon><div><div class="v">${live.gridW === null ? "–" : fmtNum(Math.abs(live.gridW), 0) + " W"}</div><div class="l">${live.gridW === null ? "Elnet" : live.gridW > 0 ? "Køber fra nettet" : "Sælger til nettet"}</div></div></div>
             <div class="item"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon><div><div class="v">${live.houseW === null ? "–" : fmtNum(live.houseW, 0) + " W"}</div><div class="l">Husforbrug</div></div></div>
@@ -2117,7 +2122,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>
 
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-timeline"></ha-icon>Plan</h2>
+        <h2><ha-icon icon="mdi:chart-timeline"></ha-icon>Plan${I("Planlagt modus pr. tidsrum for i dag og i morgen. Manuel-knapperne overstyrer planen, indtil Auto vælges igen. Knapper uden kommandoer er slået fra.")}</h2>
         ${plan ? this._renderBatteryPlanStrip(plan) : '<div class="hint">Ingen plan endnu.</div>'}
         <div class="legend"><span class="l-normal">Normal</span><span class="l-hold">Hold</span><span class="l-charge">Lad fra nettet</span><span class="l-est">Estimat (pris ukendt)</span></div>
         <div class="row" style="margin-top:12px">
@@ -2134,14 +2139,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>
 
       <div class="card" data-battery>
-        <h2><ha-icon icon="mdi:tune"></ha-icon>Indstillinger <button class="btn" style="margin-left:auto" data-baction="edit">Rediger sensorer og kommandoer</button></h2>
+        <h2><ha-icon icon="mdi:tune"></ha-icon>Indstillinger${I("Regler for hvornår batteriet holdes tilbage eller lades fra nettet. Hvert felt gemmes med det samme.")} <button class="btn" style="margin-left:auto" data-baction="edit">Rediger sensorer og kommandoer</button></h2>
         <div class="controls">
-          <label class="toggle"><input type="checkbox" data-bfield="enabled" ${b.enabled ? "checked" : ""}> Smart styring</label>
-          <label class="field">Prisforskel (kr/kWh)<input type="number" step="0.05" min="0" data-bfield="spread_threshold" value="${b.spread_threshold}"></label>
-          <label class="field">Reserve-SoC (%)<input type="number" min="0" max="100" data-bfield="min_soc" value="${b.min_soc}"></label>
-          <label class="field">Maks-SoC ved netopladning (%)<input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>
-          <label class="field">Virkningsgrad (0–1)<input type="number" step="0.01" min="0.5" max="1" data-bfield="efficiency" value="${b.efficiency}"></label>
-          <label class="field">Lad kun fra net hvis solprognose &lt; (kWh)<input type="number" step="0.5" min="0" data-bfield="grid_charge_max_forecast_kwh" value="${b.grid_charge_max_forecast_kwh === null || b.grid_charge_max_forecast_kwh === undefined ? "" : b.grid_charge_max_forecast_kwh}" placeholder="fra"></label>
+          <label class="toggle"><input type="checkbox" data-bfield="enabled" ${b.enabled ? "checked" : ""}> Smart styring${I("Til: Electricity Optimizer sender hold- og lad-kommandoer efter planen. Fra: planen vises, men der sendes ingen kommandoer.")}</label>
+          <label class="field"><span class="fl">Prisforskel (kr/kWh)${I("Hold: prisen nu skal være under dagens gennemsnit, og en senere time mindst så meget dyrere. Lad fra nettet: en senere time skal være mindst så meget dyrere end nu, efter der er regnet med virkningsgraden.")}</span><input type="number" step="0.05" min="0" data-bfield="spread_threshold" value="${b.spread_threshold}"></label>
+          <label class="field"><span class="fl">Reserve-SoC (%)${I("Batteriet aflades ikke under denne ladestand. Vises som streg på ladestands-bjælken.")}</span><input type="number" min="0" max="100" data-bfield="min_soc" value="${b.min_soc}"></label>
+          <label class="field"><span class="fl">Maks-SoC ved netopladning (%)${I("Netopladning stopper, når batteriet når denne ladestand.")}</span><input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>
+          <label class="field"><span class="fl">Virkningsgrad (0–1)${I("Andel af den indkøbte strøm, der kommer ud af batteriet igen. 0,9 = 10 % tab ved op- og afladning. Indgår i prisforskel-reglen for netopladning.")}</span><input type="number" step="0.01" min="0.5" max="1" data-bfield="efficiency" value="${b.efficiency}"></label>
+          <label class="field"><span class="fl">Lad kun fra net hvis solprognose &lt; (kWh)${I("Netopladning springes over på dage, hvor solprognosen er over denne grænse, fordi solen forventes at fylde batteriet. Tom = altid tilladt. Kræver prognose-sensorer under Konfigurer.")}</span><input type="number" step="0.5" min="0" data-bfield="grid_charge_max_forecast_kwh" value="${b.grid_charge_max_forecast_kwh === null || b.grid_charge_max_forecast_kwh === undefined ? "" : b.grid_charge_max_forecast_kwh}" placeholder="fra"></label>
         </div>
         ${this._renderForecastRuleHint(plan)}
         <div class="hint" style="margin-top:8px">Hold: prisen er under dagens gennemsnit, og en senere time er mindst prisforskellen dyrere. Lad fra nettet: kun på dage hvor det er tilladt, og kun når de dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu – eller når ugeplanens mål-SoC skal nås inden klokkeslættet.</div>
@@ -2180,7 +2185,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="sched-wrap">
         <h3>Ugeplan</h3>
         <table class="sched">
-          <thead><tr><th>Dag</th><th>Til</th><th>Kilde</th><th>Fuldt senest</th><th>Mål-SoC %</th></tr></thead>
+          <thead><tr><th>Dag${I("Rækken Alle dage sætter samme værdi på alle ugedage. Dagens række er fremhævet.")}</th><th>Til${I("Smart styring den dag. Fra = ingen kommandoer den dag.")}</th><th>Kilde${I("Kun sol: aldrig netopladning den dag. Sol + billige timer: må lade fra nettet efter prisforskel-reglen og mål-SoC.")}</th><th>Fuldt senest${I("Tidspunkt hvor mål-SoC skal være nået, med netopladning i de billigste timer inden.")}</th><th>Mål-SoC %${I("Ladestand batteriet skal nå inden tidspunktet. Tom = kun prisforskel-reglen afgør netopladning.")}</th></tr></thead>
           <tbody>
             ${row("Alle dage", "all", "all", { enabled: sched.every((e) => e.enabled), grid_charge: sched.every((e) => e.grid_charge), ready_by: sched[0].ready_by, target_soc: sched[0].target_soc })}
             ${sched.map((e, i) => row(DAY_NAMES[i], i === today ? "today" : "", i, e)).join("")}
@@ -2223,27 +2228,27 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <form class="battery-form">
           <h3>Sensorer</h3>
           <div class="fields">
-            <label class="field">Batteri-SoC (%)<div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">Batteri-effekt (W, fortegn)<div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">Fortegn for batteri-effekt${sel("power_sign", [["charge_positive", "Positiv = lader"], ["discharge_positive", "Positiv = aflader"]], "charge_positive")}</label>
-            <label class="field">…eller ladeeffekt (W)<div class="picker"><input name="charge_power_entity" data-domains="sensor" value="${v("charge_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">…og afladeeffekt (W)<div class="picker"><input name="discharge_power_entity" data-domains="sensor" value="${v("discharge_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">Net import/eksport (W)<div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${v("grid_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field">Fortegn for net${sel("grid_sign", [["import_positive", "Positiv = køber"], ["export_positive", "Positiv = sælger"]], "import_positive")}</label>
-            <label class="field">Husforbrug (W)<div class="picker"><input name="house_power_entity" data-domains="sensor" value="${v("house_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Batteri-SoC (%)${I("Sensor med batteriets ladestand i procent. Påkrævet.")}</span><div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Batteri-effekt (W, fortegn)${I("Én sensor med batteriets effekt, hvor fortegnet viser retningen. Vælg fortegn i feltet ved siden af. Har batteriet separate sensorer, så brug de to felter nedenfor i stedet.")}</span><div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Fortegn for batteri-effekt${I("Om sensoren viser positive tal, når batteriet lader, eller når det aflader.")}</span>${sel("power_sign", [["charge_positive", "Positiv = lader"], ["discharge_positive", "Positiv = aflader"]], "charge_positive")}</label>
+            <label class="field"><span class="fl">…eller ladeeffekt (W)${I("Sensor med effekten ind i batteriet, hvis batteriet har separate sensorer for op- og afladning.")}</span><div class="picker"><input name="charge_power_entity" data-domains="sensor" value="${v("charge_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">…og afladeeffekt (W)${I("Sensor med effekten ud af batteriet, hvis batteriet har separate sensorer for op- og afladning.")}</span><div class="picker"><input name="discharge_power_entity" data-domains="sensor" value="${v("discharge_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Net import/eksport (W)${I("Sensor med effekt til og fra nettet. Vises på Forsiden og bruges til sol-overskud for elbiler.")}</span><div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${v("grid_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Fortegn for net${I("Om sensoren viser positive tal, når huset køber fra nettet, eller når huset sælger til nettet.")}</span>${sel("grid_sign", [["import_positive", "Positiv = køber"], ["export_positive", "Positiv = sælger"]], "import_positive")}</label>
+            <label class="field"><span class="fl">Husforbrug (W)${I("Sensor med husets samlede forbrug. Vises på Forsiden og i Energiflow.")}</span><div class="picker"><input name="house_power_entity" data-domains="sensor" value="${v("house_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
           </div>
           <h3>Batteri</h3>
           <div class="fields">
-            <label class="field">Kapacitet (kWh)<input name="capacity_kwh" type="number" step="0.1" min="0.1" value="${v("capacity_kwh", 10)}"></label>
-            <label class="field">Maks. ladeeffekt (kW)<input name="max_charge_kw" type="number" step="0.1" min="0.1" value="${v("max_charge_kw", 5)}"></label>
-            <label class="field">Maks. afladeeffekt (kW)<input name="max_discharge_kw" type="number" step="0.1" min="0.1" value="${v("max_discharge_kw", 5)}"></label>
+            <label class="field"><span class="fl">Kapacitet (kWh)${I("Batteriets brugbare størrelse. Bruges til at beregne, hvor mange timer netopladning tager.")}</span><input name="capacity_kwh" type="number" step="0.1" min="0.1" value="${v("capacity_kwh", 10)}"></label>
+            <label class="field"><span class="fl">Maks. ladeeffekt (kW)${I("Højeste effekt batteriet kan lade med. Bruges til planens timeberegning, hovedsikringen og skalaen på Batteri effekt-gaugen.")}</span><input name="max_charge_kw" type="number" step="0.1" min="0.1" value="${v("max_charge_kw", 5)}"></label>
+            <label class="field"><span class="fl">Maks. afladeeffekt (kW)${I("Højeste effekt batteriet kan aflade med. Bruges til skalaen på Batteri effekt-gaugen.")}</span><input name="max_discharge_kw" type="number" step="0.1" min="0.1" value="${v("max_discharge_kw", 5)}"></label>
           </div>
-          <h3>Lad fra nettet (valgfri)</h3>
+          <h3>Lad fra nettet (valgfri)${I("Kommandoer der tvinger batteriet til at lade fra nettet, fx en switch som force charge eller en select med værdien Charge. Uden dem vises planen kun.")}</h3>
           <div class="fields">
             ${this._cmdFields("Start", "charge_start_entity", "charge_start_value", v)}
             ${this._cmdFields("Stop", "charge_stop_entity", "charge_stop_value", v)}
           </div>
-          <h3>Hold batteriet – ingen afladning (valgfri)</h3>
+          <h3>Hold batteriet – ingen afladning (valgfri)${I("Kommandoer der stopper afladning, fx en switch som stop discharge eller en select med værdien Hold. Uden dem vises planen kun.")}</h3>
           <div class="fields">
             ${this._cmdFields("Start", "hold_start_entity", "hold_start_value", v)}
             ${this._cmdFields("Stop", "hold_stop_entity", "hold_stop_value", v)}

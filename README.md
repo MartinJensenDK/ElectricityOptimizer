@@ -80,7 +80,7 @@ med, så den ikke slukker sig selv. Flere biler får sol i den rækkefølge, de 
 
 ## Regler for opladning
 
-Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem elbil og husbatteri. Hvert felt har et (i)-ikon med forklaring, og felter uden betydning skjules:
+Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem elbil og husbatteri. Alle kort, målere og felter i panelet har et (i)-ikon med forklaring, og felter uden betydning skjules:
 
 | Regel | Betydning |
 | --- | --- |

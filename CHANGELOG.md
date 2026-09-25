@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.17.0
+
+- (i)-ikoner med forklaring på alle faner: hvert kort, hver måler, hvert indstillingsfelt og hver kolonne i ugeplanerne har nu et ikon, man kan holde musen over (eller tabbe til) for at læse, hvad det betyder og hvordan det bruges.
+
 ## 0.16.1
 
 - Regler for opladning: en fremhævet linje under felterne viser nu med det samme, hvad valget i "Sol først til" og de øvrige felter betyder, så det er tydeligt, at ændringen er gemt.
