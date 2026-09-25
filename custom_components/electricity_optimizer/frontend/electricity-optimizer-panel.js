@@ -5,24 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.7.3";
-const SCRIPT_URL = (() => {
-  try {
-    return import.meta.url;
-  } catch (_) {
-    return "";
-  }
-})();
-
-const cmpVersion = (a, b) => {
-  const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);
-  const pb = String(b).split(".").map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0);
-    if (d) return d;
-  }
-  return 0;
-};
+const PANEL_JS_VERSION = "0.7.4"; // kept equal to manifest.json (checked by tests), not shown in the UI
 
 const DAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const DAY_SHORT = ["man", "tirs", "ons", "tors", "fre", "lør", "søn"];
@@ -58,11 +41,7 @@ const STYLE = `
   .toolbar ha-menu-button { margin-right: 8px; }
   .toolbar .title { font-size: 20px; font-weight: 400; flex: 1; }
   .toolbar .version { font-size: 12px; opacity: 0.7; }
-  .stale {
-    background: var(--warning-color, #ffa600); color: #fff; padding: 10px 16px; font-size: 14px;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .stale button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid #fff; background: transparent; color: #fff; cursor: pointer; }
+
   .tabs {
     display: flex;
     background: var(--app-header-background-color, var(--primary-color));
@@ -436,19 +415,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="version"></div>
       </div>
       <div class="tabs" role="tablist"></div>
-      <div class="stale" hidden>
-        <ha-icon icon="mdi:refresh-circle"></ha-icon>
-        <span class="stale-text"></span>
-        <button type="button" class="stale-reload">Genindlæs</button>
-      </div>
       <div class="content"></div>
     `;
-    this._staleEl = root.querySelector(".stale");
-    this._staleEl.querySelector(".stale-reload").addEventListener("click", () => {
-      const url = new URL(window.location.href);
-      url.searchParams.set("eo_reload", String(Date.now()));
-      window.location.replace(url.toString());
-    });
     this._menuButton = root.querySelector("ha-menu-button");
     this._menuButton.hass = this._hass;
     this._menuButton.narrow = this._narrow;
@@ -486,18 +454,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _render() {
     if (!this._built) this._buildShell();
     this._menuButton.hass = this._hass;
-    this._versionEl.textContent = this._config.version ? `v${this._config.version}` : `v${PANEL_JS_VERSION}`;
-    const backend = this._config.version;
-    const diff = backend ? cmpVersion(PANEL_JS_VERSION, backend) : 0;
-    this._staleEl.hidden = diff === 0;
-    if (diff > 0) {
-      // Script is newer than the running integration: HACS has downloaded the files, HA not restarted.
-      this._staleEl.querySelector(".stale-text").textContent = `Filerne er opdateret til v${PANEL_JS_VERSION}, men Home Assistant kører stadig v${backend}. Genstart Home Assistant (Indstillinger → System → Genstart). Script hentet fra: ${SCRIPT_URL || "ukendt"}`;
-      this._staleEl.querySelector(".stale-reload").textContent = "Genindlæs efter genstart";
-    } else if (diff < 0) {
-      this._staleEl.querySelector(".stale-text").textContent = `Browseren viser det gamle panel v${PANEL_JS_VERSION}, men integrationen er v${backend}. Genindlæs siden (Ctrl+F5 / Cmd+Shift+R). I companion-appen: Indstillinger → Companion app → Ryd frontend-cache. Script hentet fra: ${SCRIPT_URL || "ukendt"}`;
-      this._staleEl.querySelector(".stale-reload").textContent = "Genindlæs";
-    }
+    this._versionEl.textContent = this._config.version ? `v${this._config.version}` : "";
     for (const b of this._tabsEl.querySelectorAll("button.tab")) {
       b.setAttribute("aria-selected", String(b.dataset.tab === this._tab));
     }
