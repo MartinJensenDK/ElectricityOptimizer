@@ -62,7 +62,9 @@ gennemsnit. Der sendes kun start/stop, når den ønskede tilstand skifter.
 ## Udvikling
 
 ```bash
-python -m venv .venv && .venv/bin/pip install -r requirements_test.txt
+python3.14 -m venv .venv
+.venv/bin/pip install -r requirements_test.txt
+.venv/bin/pip install "$(.venv/bin/python scripts/frontend_requirement.py)"
 .venv/bin/python -m pytest -q
 ```
 
