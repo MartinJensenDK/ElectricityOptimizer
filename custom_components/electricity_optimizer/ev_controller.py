@@ -89,6 +89,27 @@ def read_price_slots(hass: HomeAssistant, price_entity: str) -> list[Slot]:
     return [Slot(start, start + duration, price) for start, price in points]
 
 
+def next_deadline(now: datetime, car: dict[str, Any]) -> tuple[datetime | None, int | None]:
+    """Find the next enabled weekday deadline from the car's weekly schedule."""
+    schedule = car.get("schedule") or []
+    if len(schedule) != 7:
+        hh, mm = (int(p) for p in car["ready_by"].split(":"))
+        deadline = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if deadline <= now:
+            deadline += timedelta(days=1)
+        return deadline, car["target_soc"]
+    for offset in range(8):
+        day = now + timedelta(days=offset)
+        entry = schedule[day.weekday()]
+        if not entry["enabled"]:
+            continue
+        hh, mm = (int(p) for p in entry["ready_by"].split(":"))
+        deadline = day.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if deadline > now:
+            return deadline, int(entry["target_soc"])
+    return None, None
+
+
 def plan_car(
     now: datetime,
     slots: list[Slot],
@@ -96,13 +117,29 @@ def plan_car(
     car: dict[str, Any],
 ) -> dict[str, Any]:
     """Return the plan for one car: which slots to charge in, and whether to charge now."""
-    need_kwh = max(0.0, (car["target_soc"] - soc) / 100 * car["capacity_kwh"])
+    deadline, target = next_deadline(now, car)
+    if deadline is None:
+        target = car["target_soc"]
+    need_kwh = max(0.0, (target - soc) / 100 * car["capacity_kwh"])
     need_hours = need_kwh / car["charge_power_kw"] if car["charge_power_kw"] > 0 else 0.0
 
-    hh, mm = (int(p) for p in car["ready_by"].split(":"))
-    deadline = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-    if deadline <= now:
-        deadline += timedelta(days=1)
+    if deadline is None:
+        current = next((s for s in slots if s.start <= now < s.end), None)
+        return {
+            "need_kwh": round(need_kwh, 2),
+            "need_hours": round(need_hours, 2),
+            "target_soc": target,
+            "deadline": None,
+            "enough_time": True,
+            "current_price": current.price if current else None,
+            "in_plan_now": False,
+            "next_start": None,
+            "plan": [
+                {"start": s.start.isoformat(), "end": s.end.isoformat(), "price": s.price, "estimated": False, "chosen": False}
+                for s in slots
+                if s.end > now
+            ],
+        }
 
     candidates = [s for s in slots if s.end > now and s.start < deadline]
     duration = slots[0].end - slots[0].start if slots else timedelta(hours=1)
@@ -140,6 +177,7 @@ def plan_car(
     return {
         "need_kwh": round(need_kwh, 2),
         "need_hours": round(need_hours, 2),
+        "target_soc": target,
         "deadline": deadline.isoformat(),
         "enough_time": total_avail >= need_hours,
         "current_price": current.price if current else None,
@@ -244,7 +282,9 @@ class EvController:
         uses_grid = car["source"] in ("plan", "solar_plan")
         uses_solar = car["source"] in ("solar", "solar_plan")
 
-        if soc >= car["target_soc"]:
+        target = plan["target_soc"] if plan else car["target_soc"]
+        rt["target_soc"] = target
+        if soc >= target:
             rt["status"] = "done"
             if car["charge_now"]:
                 car["charge_now"] = False
@@ -261,7 +301,7 @@ class EvController:
             desired, amps = self._solar_decision(ctx, car, rt, car_w)
             mode = "solar" if desired else None
         else:
-            rt["status"] = "no_prices" if plan is None else "waiting"
+            rt["status"] = "no_prices" if plan is None else ("no_deadline" if plan["deadline"] is None else "waiting")
 
         if mode != "solar" and rt["status"] not in ("solar_wait",):
             self._reset_solar_timers(rt)

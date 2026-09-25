@@ -57,8 +57,13 @@ Under fanen **Elbiler** tilføjer du en bil med:
 | Ladeeffekt-sensor | Valgfri sensor (W/kW) med bilens faktiske ladeeffekt; vises live og bruges i sol-regnestykket |
 | Kilde | *Kun sol*, *Sol + billige timer* (standard) eller *Kun billige timer* |
 
-Pr. bil kan du løbende ændre **Smart opladning** til/fra, **mål-SoC**, **klar senest** (klokkeslæt),
-**prisgrænse** (lad altid under denne pris), **ladestrøm** (A) og trykke **Lad nu**.
+Pr. bil kan du løbende ændre **Smart opladning** til/fra, **prisgrænse** (lad altid under denne pris),
+**min./maks. ladestrøm** (A), **kilde** og trykke **Lad nu**.
+
+**Ugeplan**: på bilens kort sættes for hver ugedag om bilen skal være klar, klokkeslæt og mål-SoC
+(rækken "Alle dage" sætter alle syv). Deadline findes som næste aktive dag, så en slukket lørdag
+betyder, at der planlægges frem mod søndag eller mandag med de billigste timer undervejs.
+Er alle dage slået fra, lades kun fra sol, prisgrænse eller "Lad nu".
 
 Planen genberegnes hvert minut: de billigste tidsrum (EnergiDataService, 15 eller 60 min) inden
 deadline vælges, indtil behovet er dækket. Timer uden kendt pris (før kl. 13) estimeres til dagens

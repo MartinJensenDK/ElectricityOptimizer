@@ -56,6 +56,7 @@ CAR_DEFAULTS = {
     "enabled": True,
     "target_soc": 80,
     "ready_by": "07:00",
+    "schedule": None,  # 7 entries Mon..Sun: {enabled, ready_by, target_soc}; None = derived from the two above
     "price_limit": None,
     "charge_now": False,
 }
