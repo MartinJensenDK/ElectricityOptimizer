@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.11.1";
+const PANEL_JS_VERSION = "0.11.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -232,10 +232,11 @@ const STYLE = `
   .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; align-items: end; }
   .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; min-height: 36px; }
   .toggle input { width: auto; }
-  .plan-strip { width: 100%; height: 34px; display: block; margin-top: 8px; }
+  .plan-strip { width: 100%; height: 44px; display: block; margin-top: 8px; }
+  .strip-day { stroke: var(--primary-text-color); stroke-width: 1; stroke-dasharray: 2 2; opacity: 0.6; }
   .slot { fill: var(--secondary-background-color); }
   .slot.chosen { fill: var(--success-color, #43a047); }
-  .slot.est { opacity: 0.55; }
+  .slot.est { opacity: 0.45; }
   .slot.now { stroke: var(--primary-text-color); stroke-width: 1.5; }
   .err { color: var(--error-color, #db4437); font-size: 13px; margin-top: 6px; }
   .slot.hold { fill: var(--info-color, #039be5); }
@@ -244,6 +245,7 @@ const STYLE = `
   .legend .l-hold::before { background: var(--info-color, #039be5); }
   .legend .l-charge::before { background: var(--success-color, #43a047); }
   .legend .l-normal::before { background: var(--secondary-background-color); border: 1px solid var(--divider-color); }
+  .legend .l-est::before { background: var(--success-color, #43a047); opacity: 0.45; }
   .badge.info { background: var(--info-color, #039be5); }
   .seg { display: inline-flex; border: 1px solid var(--divider-color); border-radius: 8px; overflow: hidden; }
   .seg button { border: 0; border-right: 1px solid var(--divider-color); border-radius: 0; }
@@ -1380,30 +1382,44 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }));
   }
 
-  _renderPlanStrip(plan) {
-    const slots = plan.plan || [];
+  /* Shared plan strip used by cars and the battery: same height, hour ticks every 6 h, day boundary
+     markers, current slot outlined, estimated (unknown price) slots dimmed. */
+  _renderStrip(slots, classOf, labelOf) {
     if (!slots.length) return "";
     const t0 = Math.min(Date.now(), new Date(slots[0].start).getTime());
     const t1 = new Date(slots[slots.length - 1].end).getTime();
-    const W = 600, H = 34, barH = 18;
+    const W = 600, H = 44, barH = 20, textY = H - 4;
     const x = (t) => ((t - t0) / (t1 - t0)) * W;
     const now = Date.now();
     const rects = slots
       .map((s) => {
         const a = new Date(s.start).getTime(), b = new Date(s.end).getTime();
         const isNow = a <= now && now < b;
-        return `<rect class="slot ${s.chosen ? "chosen" : ""} ${s.estimated ? "est" : ""} ${isNow ? "now" : ""}" x="${x(a).toFixed(1)}" y="0" width="${Math.max(0.5, x(b) - x(a) - 0.5).toFixed(1)}" height="${barH}" rx="2"><title>${fmtTime(new Date(a))} ${fmtNum(s.price)}${s.estimated ? " (estimat)" : ""}</title></rect>`;
+        return `<rect class="slot ${classOf(s)} ${s.estimated ? "est" : ""} ${isNow ? "now" : ""}" x="${x(a).toFixed(1)}" y="0" width="${Math.max(0.5, x(b) - x(a) - 0.5).toFixed(1)}" height="${barH}" rx="2"><title>${esc(`${fmtTime(new Date(a))} · ${fmtNum(s.price)}${s.estimated ? " (estimat)" : ""} · ${labelOf(s)}`)}</title></rect>`;
       })
       .join("");
-    const labels = [];
+    const marks = [];
+    let prevDay = null;
     for (const s of slots) {
       const d = new Date(s.start);
-      if (d.getMinutes() === 0 && d.getHours() % 6 === 0) {
-        labels.push(`<text class="tick" x="${x(d.getTime()).toFixed(1)}" y="${H - 2}">${pad2(d.getHours())}</text>`);
+      const day = d.getDate();
+      if (prevDay !== null && day !== prevDay) {
+        const xx = x(d.getTime()).toFixed(1);
+        marks.push(`<line class="strip-day" x1="${xx}" x2="${xx}" y1="0" y2="${barH + 4}"/>`);
+        marks.push(`<text class="tick" x="${x(d.getTime()) + 3}" y="${textY}">${DAY_SHORT[(d.getDay() + 6) % 7]}</text>`);
+      } else if (d.getMinutes() === 0 && d.getHours() % 6 === 0) {
+        marks.push(`<text class="tick" x="${x(d.getTime()).toFixed(1)}" y="${textY}">${pad2(d.getHours())}</text>`);
       }
+      prevDay = day;
     }
-    return `<svg class="plan-strip" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${rects}${labels.join("")}</svg>
-      <div class="hint">Grøn = planlagt ladning · nedtonet = pris endnu ukendt (estimat)</div>`;
+    return `<svg class="plan-strip" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${rects}${marks.join("")}</svg>`;
+  }
+
+  _renderPlanStrip(plan) {
+    const slots = plan.plan || [];
+    if (!slots.length) return "";
+    return `${this._renderStrip(slots, (s) => (s.chosen ? "chosen" : ""), (s) => (s.chosen ? "Planlagt ladning" : "Ingen ladning"))}
+      <div class="legend"><span class="l-normal">Ingen ladning</span><span class="l-charge">Planlagt ladning</span><span class="l-est">Estimat (pris ukendt)</span></div>`;
   }
 
   _renderCarForm(car) {
@@ -1819,7 +1835,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="card">
         <h2><ha-icon icon="mdi:chart-timeline"></ha-icon>Plan</h2>
         ${plan ? this._renderBatteryPlanStrip(plan) : '<div class="hint">Ingen plan endnu.</div>'}
-        <div class="legend"><span class="l-normal">Normal</span><span class="l-hold">Hold</span><span class="l-charge">Lad fra nettet</span></div>
+        <div class="legend"><span class="l-normal">Normal</span><span class="l-hold">Hold</span><span class="l-charge">Lad fra nettet</span><span class="l-est">Estimat (pris ukendt)</span></div>
         <div class="row" style="margin-top:12px">
           <span class="hint">Manuel:</span>
           <span class="seg">
@@ -1903,25 +1919,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderBatteryPlanStrip(plan) {
     const slots = plan.plan || [];
     if (!slots.length) return "";
-    const t0 = Math.min(Date.now(), new Date(slots[0].start).getTime());
-    const t1 = new Date(slots[slots.length - 1].end).getTime();
-    const W = 600, H = 34, barH = 18;
-    const x = (t) => ((t - t0) / (t1 - t0)) * W;
-    const now = Date.now();
-    const rects = slots
-      .map((s) => {
-        const a = new Date(s.start).getTime(), b = new Date(s.end).getTime();
-        const isNow = a <= now && now < b;
-        const label = { normal: "Normal", hold: "Hold", charge: "Lad fra nettet" }[s.mode] || s.mode;
-        return `<rect class="slot ${s.mode} ${isNow ? "now" : ""}" x="${x(a).toFixed(1)}" y="0" width="${Math.max(0.5, x(b) - x(a) - 0.5).toFixed(1)}" height="${barH}" rx="2"><title>${fmtTime(new Date(a))} ${fmtNum(s.price)} – ${label}</title></rect>`;
-      })
-      .join("");
-    const labels = [];
-    for (const s of slots) {
-      const d = new Date(s.start);
-      if (d.getMinutes() === 0 && d.getHours() % 6 === 0) labels.push(`<text class="tick" x="${x(d.getTime()).toFixed(1)}" y="${H - 2}">${pad2(d.getHours())}</text>`);
-    }
-    return `<svg class="plan-strip" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${rects}${labels.join("")}</svg>`;
+    const label = { normal: "Normal", hold: "Hold", charge: "Lad fra nettet" };
+    return this._renderStrip(slots, (s) => s.mode, (s) => label[s.mode] || s.mode);
   }
 
   _renderBatteryForm(b) {

@@ -117,22 +117,22 @@ def plan_battery(
                 avail_start = max(s.start, now)
                 remaining -= (s.end - avail_start).total_seconds() / 3600
 
-    # (b) weekly schedule target: reach target_soc before the deadline in the cheapest slots
+    # (b) weekly schedule target: reach target_soc before the deadline in the cheapest slots.
+    # Hours before the deadline without a known price are padded with estimated slots (shown dimmed).
     deadline, target = next_battery_deadline(now, cfg)
     target_hours = 0.0
-    if deadline is not None and target is not None and soc < target:
-        need_kwh = (target - soc) / 100 * cfg["capacity_kwh"]
-        target_hours = need_kwh / cfg["max_charge_kw"]
+    extra: list[Slot] = []
+    if deadline is not None:
         duration = candidates[0].end - candidates[0].start
-        before = [s for s in candidates if s.start < deadline]
         estimate = sum(x.price for x in slots) / len(slots)
-        cursor = before[-1].end if before else now.replace(minute=0, second=0, microsecond=0)
-        if cursor < now:
-            cursor = now.replace(minute=0, second=0, microsecond=0)
-        extra: list[Slot] = []
+        cursor = candidates[-1].end
         while cursor < deadline:
             extra.append(Slot(cursor, cursor + duration, estimate, estimated=True))
             cursor += duration
+    if deadline is not None and target is not None and soc < target:
+        need_kwh = (target - soc) / 100 * cfg["capacity_kwh"]
+        target_hours = need_kwh / cfg["max_charge_kw"]
+        before = [s for s in candidates if s.start < deadline]
         pool = before + extra
         remaining = target_hours
         for s in sorted(pool, key=lambda s: (s.price, s.start)):
@@ -178,8 +178,9 @@ def plan_battery(
                 "end": s.end.isoformat(),
                 "price": s.price,
                 "mode": modes.get(s.start, "normal"),
+                "estimated": s.estimated,
             }
-            for s in candidates
+            for s in candidates + extra
         ],
     }
 
