@@ -46,10 +46,13 @@ CAR_DEFAULTS = {
     "stop_value": "",
     "plugged_entity": "",
     "capacity_kwh": 60.0,
-    "charge_amps": 16,
+    "min_amps": 6,
+    "max_amps": 16,
     "phases": 3,
     "current_entity": "",  # optional number entity for the charger's current limit
-    "charge_power_kw": 11.04,  # derived: amps * 230 V * phases
+    "power_entity": "",  # optional sensor with the actual charging power (W/kW)
+    "source": "solar_plan",  # solar | solar_plan | plan
+    "charge_power_kw": 11.04,  # derived: max_amps * 230 V * phases
     "enabled": True,
     "target_soc": 80,
     "ready_by": "07:00",
@@ -88,4 +91,19 @@ BATTERY_DEFAULTS = {
     "hold_stop_entity": "",
     "hold_stop_value": "",
     "override": "auto",  # auto | normal | hold | charge
+}
+
+# Shared rules (EV <-> battery)
+STORAGE_KEY_RULES = f"{DOMAIN}.rules"
+AMPS_CHANGE_MIN_SECONDS = 30
+RULES_DEFAULTS = {
+    "solar_priority": "ev",  # ev | battery
+    "battery_min_soc_for_ev_solar": 90,
+    "grid_priority": "ev",  # ev | battery
+    "max_total_amps": None,  # main fuse, per phase
+    "hold_battery_while_ev_grid_charging": True,
+    "solar_start_minutes": 2,
+    "solar_stop_minutes": 5,
+    "grid_power_entity": "",  # used when the battery has none
+    "grid_sign": "import_positive",
 }

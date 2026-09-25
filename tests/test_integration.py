@@ -21,8 +21,11 @@ def test_old_cars_get_amps_from_kw() -> None:
     from custom_components.electricity_optimizer.storage import normalize_car
 
     car = normalize_car({"name": "Old", "charge_power_kw": 7.4, "phases": 1})
-    assert car["charge_amps"] == 32
+    assert car["max_amps"] == 32
+    assert car["min_amps"] == 6
     assert car["charge_power_kw"] == 7.36
+    car = normalize_car({"name": "v0.5", "charge_amps": 10, "phases": 3})
+    assert car["max_amps"] == 10 and car["charge_power_kw"] == 6.9
 
 
 def _set_prices(hass: HomeAssistant, cheap_hours: set[int]) -> None:
@@ -85,7 +88,7 @@ async def test_websocket_cars_and_charging(hass: HomeAssistant, hass_ws_client) 
                 "start_entity": "switch.charger",
                 "stop_entity": "switch.charger",
                 "capacity_kwh": "75",
-                "charge_amps": "16",
+                "max_amps": "16",
                 "phases": "3",
                 "current_entity": "number.charger_current",
                 "target_soc": 80,
@@ -106,7 +109,7 @@ async def test_websocket_cars_and_charging(hass: HomeAssistant, hass_ws_client) 
     assert [(c.data["entity_id"], c.data["value"]) for c in set_value] == [("number.charger_current", 16.0)]
 
     # changing the amps while charging re-sends the limit and recomputes kW
-    await client.send_json({"id": 35, "type": f"{DOMAIN}/cars/save", "car": {"id": car["id"], "charge_amps": 10}})
+    await client.send_json({"id": 35, "type": f"{DOMAIN}/cars/save", "car": {"id": car["id"], "max_amps": 10}})
     msg = await client.receive_json()
     assert msg["result"]["car"]["charge_power_kw"] == 6.9
     assert [c.data["value"] for c in set_value] == [16.0, 10.0]

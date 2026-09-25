@@ -7,16 +7,32 @@ from datetime import datetime, timedelta
 import logging
 from typing import Any
 
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .commands import async_run_command
-from .const import EVALUATE_INTERVAL_SECONDS
+from .const import AMPS_CHANGE_MIN_SECONDS, GRID_VOLTAGE
 from .storage import CarStore
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class Context:
+    """Shared state for one evaluation round."""
+
+    now: datetime
+    slots: list[Slot]
+    rules: dict[str, Any]
+    battery_cfg: dict[str, Any] | None = None
+    battery_soc: float | None = None
+    battery_w: float | None = None  # + = charging
+    grid_w: float | None = None  # + = import
+    battery_grid_charging: bool = False  # battery intends to charge from grid this slot
+    surplus_w: float | None = None  # solar surplus available for EVs (decremented as cars take it)
+    ev_grid_charging: bool = False
+    ev_amps_total: float = 0.0
 
 
 @dataclass
@@ -143,7 +159,7 @@ def plan_car(
 
 
 class EvController:
-    """Evaluates every minute and sends start/stop commands."""
+    """Decides per car whether to charge (grid plan or solar surplus) and sends commands."""
 
     def __init__(self, hass: HomeAssistant, store: CarStore, price_entity: str) -> None:
         self.hass = hass
@@ -152,64 +168,63 @@ class EvController:
         self.runtime: dict[str, dict[str, Any]] = {}
         self._last_cmd: dict[str, bool] = {}
         self._last_amps: dict[str, float] = {}
-        self._unsub = None
+        self._last_amps_at: dict[str, datetime] = {}
 
-    @callback
-    def async_start(self) -> None:
-        self._unsub = async_track_time_interval(
-            self.hass, self._async_tick, timedelta(seconds=EVALUATE_INTERVAL_SECONDS)
-        )
+    # ---- sensors
 
-    @callback
-    def async_stop(self) -> None:
-        if self._unsub:
-            self._unsub()
-            self._unsub = None
-
-    async def _async_tick(self, _now: datetime) -> None:
-        await self.async_evaluate()
+    def _read_number(self, entity_id: str) -> tuple[float | None, str | None]:
+        if not entity_id:
+            return None, None
+        st = self.hass.states.get(entity_id)
+        if st is None or st.state in ("unknown", "unavailable"):
+            return None, None
+        try:
+            return float(st.state), st.attributes.get("unit_of_measurement")
+        except ValueError:
+            return None, None
 
     def _read_soc(self, car: dict[str, Any]) -> float | None:
-        st = self.hass.states.get(car["soc_entity"])
-        if st is None or st.state in ("unknown", "unavailable"):
+        return self._read_number(car["soc_entity"])[0]
+
+    def _read_power_w(self, car: dict[str, Any]) -> float | None:
+        value, unit = self._read_number(car.get("power_entity", ""))
+        if value is None:
             return None
-        try:
-            return float(st.state)
-        except ValueError:
-            return None
+        return value * 1000 if (unit or "").lower() == "kw" else value
 
     def _is_plugged(self, car: dict[str, Any]) -> bool | None:
         if not car.get("plugged_entity"):
             return None
         st = self.hass.states.get(car["plugged_entity"])
-        if st is None:
-            return None
-        return st.state == "on"
+        return None if st is None else st.state == "on"
 
-    async def async_evaluate(self) -> None:
-        """Compute desired state for every car and apply it."""
-        now = dt_util.now()
-        slots = read_price_slots(self.hass, self.price_entity)
+    # ---- evaluation
+
+    async def async_evaluate(self, ctx: Context) -> None:
+        """Compute desired state for every car (in priority order) and apply it."""
+        ctx.ev_grid_charging = False
+        ctx.ev_amps_total = 0.0
         for car in list(self.store.cars):
             try:
-                await self._evaluate_car(now, slots, car)
+                await self._evaluate_car(ctx, car)
             except Exception:  # noqa: BLE001 - keep other cars running
                 _LOGGER.exception("Error evaluating car %s", car.get("name"))
-        # drop runtime for deleted cars
         ids = {c["id"] for c in self.store.cars}
         for cid in list(self.runtime):
             if cid not in ids:
                 self.runtime.pop(cid)
                 self._last_cmd.pop(cid, None)
                 self._last_amps.pop(cid, None)
+                self._last_amps_at.pop(cid, None)
 
-    async def _evaluate_car(self, now: datetime, slots: list[Slot], car: dict[str, Any]) -> None:
+    async def _evaluate_car(self, ctx: Context, car: dict[str, Any]) -> None:
+        now = ctx.now
         rt = self.runtime.setdefault(car["id"], {})
         rt["evaluated_at"] = now.isoformat()
         soc = self._read_soc(car)
         plugged = self._is_plugged(car)
-        rt["soc"] = soc
-        rt["plugged"] = plugged
+        car_w = self._read_power_w(car)
+        rt.update(soc=soc, plugged=plugged, car_w=car_w, amps=self._last_amps.get(car["id"]))
         rt["charging"] = self._last_cmd.get(car["id"], False)
 
         if soc is None:
@@ -217,59 +232,155 @@ class EvController:
             rt["plan"] = None
             return
 
-        plan = plan_car(now, slots, soc, car) if slots else None
+        plan = plan_car(now, ctx.slots, soc, car) if ctx.slots else None
         rt["plan"] = plan
-        if not slots:
-            rt["status"] = "no_prices"
-
         if not car["enabled"]:
             rt["status"] = "disabled"
             return
 
-        desired: bool
+        desired = False
+        mode: str | None = None  # grid | solar
+        amps = car["max_amps"]
+        uses_grid = car["source"] in ("plan", "solar_plan")
+        uses_solar = car["source"] in ("solar", "solar_plan")
+
         if soc >= car["target_soc"]:
-            desired = False
             rt["status"] = "done"
             if car["charge_now"]:
                 car["charge_now"] = False
                 await self.store.async_save()
         elif plugged is False:
-            desired = False
             rt["status"] = "not_plugged"
         elif car["charge_now"]:
-            desired = True
-            rt["status"] = "charge_now"
-        elif plan is None:
-            return
-        elif car["price_limit"] is not None and plan["current_price"] is not None and plan["current_price"] <= car["price_limit"]:
-            desired = True
-            rt["status"] = "below_limit"
+            desired, mode, rt["status"] = True, "grid", "charge_now"
+        elif uses_grid and plan and car["price_limit"] is not None and plan["current_price"] is not None and plan["current_price"] <= car["price_limit"]:
+            desired, mode, rt["status"] = True, "grid", "below_limit"
+        elif uses_grid and plan and plan["in_plan_now"]:
+            desired, mode, rt["status"] = True, "grid", "charging"
+        elif uses_solar:
+            desired, amps = self._solar_decision(ctx, car, rt, car_w)
+            mode = "solar" if desired else None
         else:
-            desired = plan["in_plan_now"]
-            rt["status"] = "charging" if desired else "waiting"
+            rt["status"] = "no_prices" if plan is None else "waiting"
 
+        if mode != "solar" and rt["status"] not in ("solar_wait",):
+            self._reset_solar_timers(rt)
+
+        # Main fuse: battery charging from grid has priority -> reduce or postpone the car.
+        if desired and mode == "grid" and ctx.rules.get("max_total_amps") and ctx.rules["grid_priority"] == "battery" and ctx.battery_grid_charging and ctx.battery_cfg:
+            battery_amps = ctx.battery_cfg["max_charge_kw"] * 1000 / (GRID_VOLTAGE * 3)
+            allowed = ctx.rules["max_total_amps"] - battery_amps - ctx.ev_amps_total
+            if allowed < car["min_amps"]:
+                desired, mode, rt["status"] = False, None, "fuse_wait"
+            else:
+                amps = min(amps, int(allowed))
+        elif desired and mode == "grid" and ctx.rules.get("max_total_amps"):
+            allowed = ctx.rules["max_total_amps"] - ctx.ev_amps_total
+            if allowed < car["min_amps"]:
+                desired, mode, rt["status"] = False, None, "fuse_wait"
+            else:
+                amps = min(amps, int(allowed))
+
+        rt["mode"] = mode if desired else None
+        if desired:
+            await self._apply_amps(ctx, car, amps, rate_limited=(mode == "solar"))
         await self._apply(car, desired)
         rt["charging"] = self._last_cmd.get(car["id"], False)
-        if rt["charging"]:
-            await self._apply_amps(car)
+        rt["amps"] = self._last_amps.get(car["id"]) if desired else None
+        if desired and mode == "grid":
+            ctx.ev_grid_charging = True
+        if desired:
+            ctx.ev_amps_total += amps
 
-    async def _apply_amps(self, car: dict[str, Any]) -> None:
-        """Push the configured current limit to the charger (if an entity is configured)."""
+    # ---- solar surplus
+
+    @staticmethod
+    def _reset_solar_timers(rt: dict[str, Any]) -> None:
+        rt["solar_above_since"] = None
+        rt["solar_below_since"] = None
+
+    def _solar_decision(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], car_w: float | None) -> tuple[bool, int]:
+        """Return (charge, amps) for solar surplus charging, with start/stop hysteresis."""
+        rules = ctx.rules
+        if ctx.surplus_w is None:
+            rt["status"] = "no_grid_sensor"
+            return False, car["max_amps"]
+        if (
+            rules["solar_priority"] == "battery"
+            and ctx.battery_cfg is not None
+            and ctx.battery_soc is not None
+            and ctx.battery_soc < rules["battery_min_soc_for_ev_solar"]
+        ):
+            rt["status"] = "battery_first"
+            return False, car["max_amps"]
+
+        per_amp = GRID_VOLTAGE * car["phases"]
+        currently_solar = rt.get("mode") == "solar" and self._last_cmd.get(car["id"], False)
+        available = ctx.surplus_w  # may be negative when the house is importing
+        if currently_solar:
+            # the car's own draw is already inside the house load; give it back
+            own = car_w if car_w is not None else (self._last_amps.get(car["id"]) or car["min_amps"]) * per_amp
+            available += own
+        modulating = bool(car.get("current_entity"))
+        need_w = (car["min_amps"] if modulating else car["max_amps"]) * per_amp
+        rt["surplus_w"] = round(available)
+
+        now = ctx.now
+        start_s = rules["solar_start_minutes"] * 60
+        stop_s = rules["solar_stop_minutes"] * 60
+        charge = False
+        if available >= need_w:
+            rt["solar_below_since"] = None
+            if currently_solar:
+                charge = True
+            else:
+                since = rt.get("solar_above_since")
+                if since is None:
+                    rt["solar_above_since"] = now.isoformat()
+                    since = rt["solar_above_since"]
+                elapsed = (now - datetime.fromisoformat(since)).total_seconds()
+                charge = elapsed >= start_s
+        else:
+            rt["solar_above_since"] = None
+            if currently_solar:
+                since = rt.get("solar_below_since")
+                if since is None:
+                    rt["solar_below_since"] = now.isoformat()
+                    since = rt["solar_below_since"]
+                elapsed = (now - datetime.fromisoformat(since)).total_seconds()
+                charge = elapsed < stop_s
+
+        if not charge:
+            rt["status"] = "solar_wait"
+            return False, car["max_amps"]
+        amps = int(available // per_amp) if modulating else car["max_amps"]
+        amps = max(car["min_amps"], min(car["max_amps"], amps))
+        ctx.surplus_w = available - amps * per_amp
+        rt["status"] = "solar"
+        return True, amps
+
+    # ---- commands
+
+    async def _apply_amps(self, ctx: Context, car: dict[str, Any], amps: int, *, rate_limited: bool = False) -> None:
+        """Push the current limit to the charger (only on change; solar modulation is rate limited)."""
         cid = car["id"]
         entity = car.get("current_entity")
-        if not entity or self._last_amps.get(cid) == car["charge_amps"]:
+        if not entity:
+            self._last_amps[cid] = amps
+            return
+        last = self._last_amps.get(cid)
+        if last == amps:
+            return
+        last_at = self._last_amps_at.get(cid)
+        if rate_limited and last is not None and last_at is not None and (ctx.now - last_at).total_seconds() < AMPS_CHANGE_MIN_SECONDS:
             return
         try:
-            await async_run_command(self.hass, entity, str(car["charge_amps"]))
-            self._last_amps[cid] = car["charge_amps"]
-            _LOGGER.info("%s: set current limit to %s A", car["name"], car["charge_amps"])
+            await async_run_command(self.hass, entity, str(amps))
+            self._last_amps[cid] = amps
+            self._last_amps_at[cid] = ctx.now
+            _LOGGER.info("%s: set current limit to %s A", car["name"], amps)
         except HomeAssistantError as err:
-            self.runtime[cid]["last_action"] = {
-                "at": dt_util.now().isoformat(),
-                "action": "set_amps",
-                "ok": False,
-                "error": str(err),
-            }
+            self.runtime[cid]["last_action"] = {"at": ctx.now.isoformat(), "action": "set_amps", "ok": False, "error": str(err)}
             _LOGGER.warning("%s: could not set current limit: %s", car["name"], err)
 
     async def _apply(self, car: dict[str, Any], desired: bool) -> None:
@@ -278,35 +389,21 @@ class EvController:
             return
         if not desired:
             self._last_amps.pop(cid, None)  # re-send the limit next time charging starts
+            self._last_amps_at.pop(cid, None)
         try:
             if desired:
                 await self._activate(car)
             else:
                 await self._deactivate(car)
             self._last_cmd[cid] = desired
-            self.runtime[cid]["last_action"] = {
-                "at": dt_util.now().isoformat(),
-                "action": "start" if desired else "stop",
-                "ok": True,
-            }
+            self.runtime[cid]["last_action"] = {"at": dt_util.now().isoformat(), "action": "start" if desired else "stop", "ok": True}
             _LOGGER.info("%s: sent %s", car["name"], "start" if desired else "stop")
         except HomeAssistantError as err:
-            self.runtime[cid]["last_action"] = {
-                "at": dt_util.now().isoformat(),
-                "action": "start" if desired else "stop",
-                "ok": False,
-                "error": str(err),
-            }
+            self.runtime[cid]["last_action"] = {"at": dt_util.now().isoformat(), "action": "start" if desired else "stop", "ok": False, "error": str(err)}
             _LOGGER.warning("%s: could not send %s: %s", car["name"], "start" if desired else "stop", err)
 
     async def _activate(self, car: dict[str, Any]) -> None:
         await async_run_command(self.hass, car["start_entity"], car.get("start_value") or None)
 
     async def _deactivate(self, car: dict[str, Any]) -> None:
-        await async_run_command(
-            self.hass,
-            car["stop_entity"],
-            car.get("stop_value") or None,
-            is_stop=True,
-            start_entity=car["start_entity"],
-        )
+        await async_run_command(self.hass, car["stop_entity"], car.get("stop_value") or None, is_stop=True, start_entity=car["start_entity"])

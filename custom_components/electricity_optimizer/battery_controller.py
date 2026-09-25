@@ -12,7 +12,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .commands import async_run_command
-from .ev_controller import Slot, read_price_slots
+from .const import GRID_VOLTAGE
+from .ev_controller import Context, Slot
 from .storage import BatteryStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,37 +108,53 @@ class BatteryController:
         except ValueError:
             return None
 
-    async def async_evaluate(self) -> None:
+    def read_live(self) -> dict[str, float | None]:
+        """Live sensor values used by the optimizer context."""
+        cfg = self.store.battery
+        if cfg is None:
+            return {"soc": None, "battery_w": None, "grid_w": None}
+        soc = self._number(cfg["soc_entity"])
+        battery_w: float | None = None
+        if cfg["power_entity"]:
+            v = self._number(cfg["power_entity"])
+            if v is not None:
+                battery_w = v * (-1 if cfg["power_sign"] == "discharge_positive" else 1)
+        elif cfg["charge_power_entity"] or cfg["discharge_power_entity"]:
+            c = self._number(cfg["charge_power_entity"]) or 0.0
+            d = self._number(cfg["discharge_power_entity"]) or 0.0
+            battery_w = c - d
+        grid_w: float | None = None
+        if cfg["grid_power_entity"]:
+            v = self._number(cfg["grid_power_entity"])
+            if v is not None:
+                grid_w = v * (-1 if cfg["grid_sign"] == "export_positive" else 1)
+        return {"soc": soc, "battery_w": battery_w, "grid_w": grid_w}
+
+    def compute(self, ctx: Context) -> str | None:
+        """Plan and decide the intended mode; returns the mode or None when nothing can be done."""
         cfg = self.store.battery
         if cfg is None:
             self.runtime = {}
-            return
-        now = dt_util.now()
+            return None
         rt = self.runtime
-        rt["evaluated_at"] = now.isoformat()
-        soc = self._number(cfg["soc_entity"])
+        rt["evaluated_at"] = ctx.now.isoformat()
+        soc = ctx.battery_soc
         rt["soc"] = soc
-        rt["commands_configured"] = {
-            "charge": bool(cfg["charge_start_entity"]),
-            "hold": bool(cfg["hold_start_entity"]),
-        }
+        rt["commands_configured"] = {"charge": bool(cfg["charge_start_entity"]), "hold": bool(cfg["hold_start_entity"])}
         if soc is None:
             rt["status"] = "no_soc"
             rt["plan"] = None
-            return
-        slots = read_price_slots(self.hass, self.price_entity)
-        plan = plan_battery(now, slots, soc, cfg) if slots else None
+            return None
+        plan = plan_battery(ctx.now, ctx.slots, soc, cfg) if ctx.slots else None
         rt["plan"] = plan
         if plan is None:
             rt["status"] = "no_prices"
             rt["mode"] = "normal"
-            return
-
+            return None
         if not cfg["enabled"]:
             rt["status"] = "disabled"
             rt["mode"] = "normal"
-            return
-
+            return None
         if cfg["override"] != "auto":
             mode = cfg["override"]
             rt["status"] = "override"
@@ -148,10 +165,27 @@ class BatteryController:
             mode = "normal"
             rt["status"] = "full"
         rt["mode"] = mode
+        return mode
+
+    async def async_apply(self, ctx: Context, mode: str | None) -> None:
+        """Apply the mode after the EV round, honouring the shared rules."""
+        cfg = self.store.battery
+        if cfg is None or mode is None:
+            return
+        rt = self.runtime
+        rules = ctx.rules
+        if cfg["override"] == "auto":
+            if mode == "normal" and ctx.ev_grid_charging and rules["hold_battery_while_ev_grid_charging"]:
+                mode, rt["status"] = "hold", "ev_hold"
+            if mode == "charge" and rules.get("max_total_amps") and rules["grid_priority"] == "ev":
+                battery_amps = cfg["max_charge_kw"] * 1000 / (GRID_VOLTAGE * 3)
+                if ctx.ev_amps_total + battery_amps > rules["max_total_amps"]:
+                    mode, rt["status"] = "hold", "fuse_wait"
+        rt["mode"] = mode
         try:
             await self._apply(cfg, mode)
         except HomeAssistantError as err:
-            rt["last_action"] = {"at": now.isoformat(), "mode": mode, "ok": False, "error": str(err)}
+            rt["last_action"] = {"at": ctx.now.isoformat(), "mode": mode, "ok": False, "error": str(err)}
             _LOGGER.warning("Battery: could not switch to %s: %s", mode, err)
 
     async def _run(self, cfg: dict[str, Any], mode: str, action: str) -> bool:

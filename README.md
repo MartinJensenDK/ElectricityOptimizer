@@ -52,8 +52,10 @@ Under fanen **Elbiler** tilføjer du en bil med:
 | Stop opladning | Samme domæner. Er det **samme switch** som start, slukkes den – ellers tændes/trykkes stop-entiteten. Har laderen kun én switch, vælges den begge steder |
 | Tilsluttet-sensor | Valgfri `binary_sensor`; er den `off`, startes der ikke |
 | Kapacitet | kWh, bruges sammen med ladestrømmen til at beregne hvor mange timer der skal lades |
-| Ladestrøm / faser | A og 1–3 faser; effekten beregnes som A × 230 V × faser. Ladestrømmen kan ændres direkte på bilens kort |
-| Strømgrænse-entitet | Valgfri `number`/`input_number`; sættes til ladestrømmen når opladning starter, og når du ændrer den |
+| Min./maks. ladestrøm / faser | A og 1–3 faser; planen regner med maks. × 230 V × faser. Ved solopladning justeres strømmen mellem min. og maks. Begge kan ændres direkte på bilens kort |
+| Strømgrænse-entitet | Valgfri `number`/`input_number`; sættes til den ønskede strøm når opladning starter, og løbende ved solopladning (højst hvert 30. sekund) |
+| Ladeeffekt-sensor | Valgfri sensor (W/kW) med bilens faktiske ladeeffekt; vises live og bruges i sol-regnestykket |
+| Kilde | *Kun sol*, *Sol + billige timer* (standard) eller *Kun billige timer* |
 
 Pr. bil kan du løbende ændre **Smart opladning** til/fra, **mål-SoC**, **klar senest** (klokkeslæt),
 **prisgrænse** (lad altid under denne pris), **ladestrøm** (A) og trykke **Lad nu**.
@@ -61,6 +63,25 @@ Pr. bil kan du løbende ændre **Smart opladning** til/fra, **mål-SoC**, **klar
 Planen genberegnes hvert minut: de billigste tidsrum (EnergiDataService, 15 eller 60 min) inden
 deadline vælges, indtil behovet er dækket. Timer uden kendt pris (før kl. 13) estimeres til dagens
 gennemsnit. Der sendes kun start/stop, når den ønskede tilstand skifter.
+
+**Solopladning** (kilde *Kun sol* eller *Sol + billige timer*): overskuddet er eksporten til nettet
+(plus det, husbatteriet lader med, når elbilen har solprioritet). Opladning starter, når overskuddet
+har dækket min. ladestrøm i *start efter*-minutter, strømmen følger overskuddet mellem min. og maks.,
+og stopper når overskuddet har været for lille i *stop efter*-minutter. Bilens eget forbrug regnes
+med, så den ikke slukker sig selv. Flere biler får sol i den rækkefølge, de står i (▲/▼ på kortet).
+
+## Regler for opladning
+
+Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem elbil og husbatteri:
+
+| Regel | Betydning |
+| --- | --- |
+| Solstrøm først til | *Elbil*: bilen får eksport + batteriets ladeeffekt. *Husbatteri*: bilen får kun eksporten, og først når batteriet er over den valgte SoC |
+| Netopladning først til | Hvem der får plads, når hovedsikringen er sat: *Elbil* holder batteriet tilbage, *Husbatteri* begrænser eller udsætter bilen |
+| Hovedsikring (A) | Valgfri øvre grænse for elbiler + batteri-opladning fra nettet |
+| Hold husbatteri mens elbil lader fra nettet | Standard til: batteriet tømmes ikke ned i bilen om natten |
+| Sol: start/stop efter | Minutter overskuddet skal være over/under grænsen, før der startes/stoppes |
+| Net-sensor | Import/eksport-sensor til sol-overskud, hvis husbatteriet ikke har én |
 
 ## Hus batteri
 
@@ -117,6 +138,7 @@ custom_components/electricity_optimizer/
 ├── storage.py             # lagring af biler (HA Store)
 ├── ev_controller.py       # ladeplan for elbiler
 ├── battery_controller.py  # modus-plan for husbatteri
+├── optimizer.py           # samler regler, elbiler og batteri i én beregning
 ├── commands.py            # generiske start/stop-kommandoer (switch/button/script/select/number)
 ├── websocket.py           # API som panelet bruger
 ├── const.py

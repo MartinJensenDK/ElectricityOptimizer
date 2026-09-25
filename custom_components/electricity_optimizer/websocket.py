@@ -17,6 +17,10 @@ def _runtime(hass: HomeAssistant) -> dict[str, Any]:
     return hass.data[DOMAIN]["ev"]
 
 
+def _optimizer(hass: HomeAssistant):
+    return hass.data[DOMAIN]["optimizer"]
+
+
 def _serialize(hass: HomeAssistant) -> dict[str, Any]:
     ev = _runtime(hass)
     controller = ev["controller"]
@@ -24,6 +28,7 @@ def _serialize(hass: HomeAssistant) -> dict[str, Any]:
         "cars": [
             {**car, "runtime": controller.runtime.get(car["id"], {})} for car in ev["store"].cars
         ],
+        "context": _optimizer(hass).context_summary(),
     }
 
 
@@ -52,7 +57,7 @@ async def ws_cars_save(hass: HomeAssistant, connection: websocket_api.ActiveConn
         connection.send_error(msg["id"], "invalid_car", error)
         return
     car = await ev["store"].async_upsert(raw)
-    await ev["controller"].async_evaluate()
+    await _optimizer(hass).async_evaluate()
     connection.send_result(msg["id"], {"car": {**car, "runtime": ev["controller"].runtime.get(car["id"], {})}})
 
 
@@ -63,15 +68,40 @@ async def ws_cars_save(hass: HomeAssistant, connection: websocket_api.ActiveConn
 async def ws_cars_delete(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
     ev = _runtime(hass)
     ok = await ev["store"].async_delete(msg["car_id"])
-    await ev["controller"].async_evaluate()
+    await _optimizer(hass).async_evaluate()
     connection.send_result(msg["id"], {"deleted": ok})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/cars/move", vol.Required("car_id"): str, vol.Required("direction"): vol.In(["up", "down"])}
+)
+@websocket_api.async_response
+async def ws_cars_move(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    ok = await _runtime(hass)["store"].async_move(msg["car_id"], msg["direction"])
+    if ok:
+        await _optimizer(hass).async_evaluate()
+    connection.send_result(msg["id"], _serialize(hass))
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/rules/get"})
+@websocket_api.async_response
+async def ws_rules_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    connection.send_result(msg["id"], {"rules": _optimizer(hass).rules_store.rules, "context": _optimizer(hass).context_summary()})
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/rules/save", vol.Required("rules"): dict})
+@websocket_api.async_response
+async def ws_rules_save(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    opt = _optimizer(hass)
+    rules = await opt.rules_store.async_update(msg["rules"])
+    await opt.async_evaluate()
+    connection.send_result(msg["id"], {"rules": rules, "context": opt.context_summary()})
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/evaluate"})
 @websocket_api.async_response
 async def ws_evaluate(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    await _runtime(hass)["controller"].async_evaluate()
-    await hass.data[DOMAIN]["battery"]["controller"].async_evaluate()
+    await _optimizer(hass).async_evaluate()
     connection.send_result(msg["id"], {**_serialize(hass), **_battery_payload(hass)})
 
 
@@ -81,12 +111,15 @@ def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_cars_save)
     websocket_api.async_register_command(hass, ws_cars_delete)
     websocket_api.async_register_command(hass, ws_evaluate)
+    websocket_api.async_register_command(hass, ws_cars_move)
+    websocket_api.async_register_command(hass, ws_rules_get)
+    websocket_api.async_register_command(hass, ws_rules_save)
     async_register_battery(hass)
 
 
 def _battery_payload(hass: HomeAssistant) -> dict[str, Any]:
     bat = hass.data[DOMAIN]["battery"]
-    return {"battery": bat["store"].battery, "runtime": bat["controller"].runtime}
+    return {"battery": bat["store"].battery, "runtime": bat["controller"].runtime, "context": _optimizer(hass).context_summary()}
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/battery/get"})
@@ -113,7 +146,7 @@ async def ws_battery_save(hass: HomeAssistant, connection: websocket_api.ActiveC
     if any(candidate.get(k) != old.get(k) for k in entity_keys):
         bat["controller"].reset()
     await bat["store"].async_update(msg["battery"])
-    await bat["controller"].async_evaluate()
+    await _optimizer(hass).async_evaluate()
     connection.send_result(msg["id"], _battery_payload(hass))
 
 
@@ -123,7 +156,7 @@ async def ws_battery_delete(hass: HomeAssistant, connection: websocket_api.Activ
     bat = hass.data[DOMAIN]["battery"]
     await bat["store"].async_delete()
     bat["controller"].reset()
-    await bat["controller"].async_evaluate()
+    await _optimizer(hass).async_evaluate()
     connection.send_result(msg["id"], _battery_payload(hass))
 
 

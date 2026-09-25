@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.loader import async_get_loaded_integration
 
 from . import websocket
@@ -27,10 +28,12 @@ from .const import (
     PANEL_WEBCOMPONENT,
     SOLAR_ENTITY_KEYS,
     STATIC_URL_BASE,
+    EVALUATE_INTERVAL_SECONDS,
 )
 from .battery_controller import BatteryController
 from .ev_controller import EvController
-from .storage import BatteryStore, CarStore
+from .optimizer import Optimizer
+from .storage import BatteryStore, CarStore, RulesStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -91,36 +94,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     battery_controller = BatteryController(hass, battery_store, config[CONF_PRICE_ENTITY])
     domain_data["battery"] = {"store": battery_store, "controller": battery_controller}
 
+    rules_store = RulesStore(hass)
+    await rules_store.async_load()
+    optimizer = Optimizer(hass, config[CONF_PRICE_ENTITY], controller, battery_controller, rules_store)
+    domain_data["optimizer"] = optimizer
+
     if not domain_data.get("_ws_registered"):
         websocket.async_register(hass)
         domain_data["_ws_registered"] = True
-    controller.async_start()
 
-    async def _evaluate_all() -> None:
-        await controller.async_evaluate()
-        await battery_controller.async_evaluate()
+    async def _tick(_now: Any) -> None:
+        await optimizer.async_evaluate()
 
-    hass.async_create_task(_evaluate_all())
+    entry.async_on_unload(
+        async_track_time_interval(hass, _tick, timedelta(seconds=EVALUATE_INTERVAL_SECONDS))
+    )
+    hass.async_create_task(optimizer.async_evaluate())
 
-    # Re-evaluate shortly after a relevant sensor changes (prices, SoC, plugged state).
+    # Re-evaluate shortly after a relevant sensor changes (prices, SoC, grid/battery power).
     pending: dict[str, Any] = {"handle": None}
-
-    def _watched_entities() -> set[str]:
-        ids = {config[CONF_PRICE_ENTITY]}
-        for car in store.cars:
-            ids.update(v for k, v in car.items() if k in ("soc_entity", "plugged_entity") and v)
-        if battery_store.battery:
-            ids.add(battery_store.battery["soc_entity"])
-        return ids
 
     @callback
     def _on_state_changed(event: Event) -> None:
-        if event.data.get("entity_id") not in _watched_entities() or pending["handle"]:
+        if event.data.get("entity_id") not in optimizer.watched_entities() or pending["handle"]:
             return
 
         async def _run(_now: Any) -> None:
             pending["handle"] = None
-            await _evaluate_all()
+            await optimizer.async_evaluate()
 
         pending["handle"] = async_call_later(hass, 2, _run)
 
@@ -146,9 +147,8 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     hass.data[DOMAIN].pop(entry.entry_id, None)
-    ev = hass.data[DOMAIN].pop("ev", None)
-    if ev:
-        ev["controller"].async_stop()
+    hass.data[DOMAIN].pop("ev", None)
     hass.data[DOMAIN].pop("battery", None)
+    hass.data[DOMAIN].pop("optimizer", None)
     frontend.async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
     return True

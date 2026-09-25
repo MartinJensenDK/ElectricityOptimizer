@@ -262,6 +262,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._batteryStamp = 0;
     this._editingBattery = false;
     this._batteryError = null;
+    this._rules = null;
+    this._rulesStamp = 0;
+    this._editingRulesSensor = false;
+    this._rulesError = null;
     this._editing = null; // null | {} (new) | car object being edited
     this._formError = null;
     this._built = false;
@@ -304,7 +308,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
     for (const c of this._cars || []) {
       if (c.soc_entity) ids.push(c.soc_entity);
       if (c.plugged_entity) ids.push(c.plugged_entity);
+      if (c.power_entity) ids.push(c.power_entity);
     }
+    if (this._rules && this._rules.grid_power_entity) ids.push(this._rules.grid_power_entity);
     const b = this._battery;
     if (b) {
       for (const k of ["soc_entity", "power_entity", "charge_power_entity", "discharge_power_entity", "grid_power_entity", "house_power_entity"]) {
@@ -367,9 +373,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const liveKey = this._liveEntityIds
       .map((id) => (this._hass.states[id] ? this._hass.states[id].last_updated : "x"))
       .join(",");
+    if (this._editingRulesSensor && this._tab === "home" && !force) return;
     const key = [
       liveKey,
       this._batteryStamp,
+      this._rulesStamp,
       this._tab,
       st ? st.last_updated : "missing",
       solarKey,
@@ -445,6 +453,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     else if (this._tab === "battery") html = this._renderBattery();
     if (this._tab === "ev" || this._tab === "home") this._loadCars();
     if (this._tab === "battery" || this._tab === "home") this._loadBattery();
+    if (this._tab === "home" || this._tab === "ev" || this._tab === "battery") this._loadRules();
     this._contentEl.innerHTML = html;
   }
 
@@ -636,7 +645,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
             }</div></div><span class="badge low">OK</span></div>
           </div>
         </div>
-      </div>`;
+      </div>
+      ${this._renderRulesCard()}`;
   }
 
   _renderSolarStatusRow() {
@@ -1008,7 +1018,108 @@ class ElectricityOptimizerPanel extends HTMLElement {
     below_limit: ["Lader – under prisgrænse", "low"],
     charging: ["Lader – planlagt", "low"],
     waiting: ["Venter på billig strøm", "mid"],
+    solar: ["Lader fra sol", "low"],
+    solar_wait: ["Venter på sol-overskud", "mid"],
+    battery_first: ["Venter – husbatteri først", "mid"],
+    fuse_wait: ["Venter – hovedsikring", "mid"],
+    no_grid_sensor: ["Mangler net-sensor til sol", "neutral"],
   };
+
+  static SOURCE_TEXT = { solar: "Kun sol", solar_plan: "Sol + billige timer", plan: "Kun billige timer" };
+
+  async _loadRules(force = false) {
+    if (!this._hass || !this._hass.callWS) return;
+    const now = Date.now();
+    if (!force && this._rulesLoadedAt && now - this._rulesLoadedAt < 10000) return;
+    if (this._rulesLoading) return;
+    this._rulesLoading = true;
+    try {
+      const res = await this._hass.callWS({ type: "electricity_optimizer/rules/get" });
+      this._rulesLoadedAt = Date.now();
+      this._applyRules(res);
+    } catch (err) {
+      this._rulesError = err && err.message ? err.message : String(err);
+    } finally {
+      this._rulesLoading = false;
+    }
+  }
+
+  _applyRules(res) {
+    const json = JSON.stringify(res.rules || null);
+    this._context = res.context || this._context;
+    if (json === this._rulesJson) return;
+    this._rules = res.rules || null;
+    this._rulesJson = json;
+    this._rulesStamp = Date.now();
+    this._maybeRender();
+  }
+
+  async _saveRules(patch) {
+    const res = await this._hass.callWS({ type: "electricity_optimizer/rules/save", rules: patch });
+    this._rulesLoadedAt = Date.now();
+    this._applyRules(res);
+    return res;
+  }
+
+  _renderRulesCard() {
+    const r = this._rules;
+    if (!r) return "";
+    const ctx = this._context || {};
+    const gridLive = r.grid_power_entity ? this._numState(r.grid_power_entity) : { value: null };
+    const sel = (key, opts) =>
+      `<select data-rfield="${key}">${opts.map(([v, l]) => `<option value="${v}" ${r[key] === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+    const sensorForm = this._editingRulesSensor
+      ? `<form class="rules-form" style="margin-top:10px">
+           <div class="fields">
+             <label class="field">Net import/eksport (W)<div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${esc(r.grid_power_entity)}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+             <label class="field">Fortegn<select name="grid_sign"><option value="import_positive" ${r.grid_sign === "import_positive" ? "selected" : ""}>Positiv = køber</option><option value="export_positive" ${r.grid_sign === "export_positive" ? "selected" : ""}>Positiv = sælger</option></select></label>
+           </div>
+           <div class="row" style="margin-top:10px"><button class="btn primary" type="submit" data-raction="save-sensor">Gem</button><button class="btn" type="button" data-raction="cancel-sensor">Annuller</button></div>
+         </form>`
+      : `<div class="hint" style="margin-top:8px">Net-sensor til sol-overskud: ${
+          r.grid_power_entity ? `<code>${esc(r.grid_power_entity)}</code>${gridLive.value !== null ? ` (${fmtNum(gridLive.value, 0)} W)` : ""}` : "bruger husbatteriets net-sensor"
+        } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-sensor">Vælg sensor</button></div>`;
+    return `
+      <div class="card" data-rules>
+        <h2><ha-icon icon="mdi:scale-balance"></ha-icon>Regler for opladning</h2>
+        <div class="controls">
+          <label class="field">Solstrøm først til${sel("solar_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>
+          <label class="field">Elbil får sol når batteri ≥ (%)<input type="number" min="0" max="100" data-rfield="battery_min_soc_for_ev_solar" value="${r.battery_min_soc_for_ev_solar}" ${r.solar_priority === "battery" ? "" : "disabled"}></label>
+          <label class="field">Netopladning først til${sel("grid_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>
+          <label class="field">Hovedsikring (A pr. fase)<input type="number" min="0" step="1" data-rfield="max_total_amps" value="${r.max_total_amps === null ? "" : r.max_total_amps}" placeholder="ingen grænse"></label>
+          <label class="toggle"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri mens elbil lader fra nettet</label>
+          <label class="field">Sol: start efter (min)<input type="number" min="0" step="0.5" data-rfield="solar_start_minutes" value="${r.solar_start_minutes}"></label>
+          <label class="field">Sol: stop efter (min)<input type="number" min="0" step="0.5" data-rfield="solar_stop_minutes" value="${r.solar_stop_minutes}"></label>
+        </div>
+        ${sensorForm}
+        <div class="hint" style="margin-top:8px">Elbil først: bilen får eksporten plus det, batteriet lader med. Husbatteri først: bilen får kun eksporten, og først når batteriet er over grænsen. Flere biler får sol i den rækkefølge, de står i under Elbiler.${
+          ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""
+        }</div>
+        ${this._rulesError ? `<div class="err">${esc(this._rulesError)}</div>` : ""}
+      </div>`;
+  }
+
+  async _onRulesClick(btn, ev) {
+    const action = btn.dataset.raction;
+    try {
+      if (action === "edit-sensor") {
+        this._editingRulesSensor = true;
+      } else if (action === "cancel-sensor") {
+        this._editingRulesSensor = false;
+      } else if (action === "save-sensor") {
+        ev.preventDefault();
+        const form = btn.closest("form");
+        const data = {};
+        for (const el of form.querySelectorAll("input[name],select[name]")) data[el.name] = el.value;
+        await this._saveRules(data);
+        this._editingRulesSensor = false;
+      }
+      this._rulesError = null;
+    } catch (err) {
+      this._rulesError = err && err.message ? err.message : String(err);
+    }
+    this._maybeRender(true);
+  }
 
   _renderEvStatusRow() {
     const cars = this._cars;
@@ -1036,7 +1147,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div>Ingen elbiler er tilføjet endnu.</div>
         <div style="margin-top:12px"><button class="btn primary" data-action="add-car">Tilføj bil</button></div></div></div>`;
     } else {
-      body = `<div class="car-grid">${cars.map((c) => this._renderCarCard(c)).join("")}</div>`;
+      body = `<div class="car-grid">${cars.map((c, i) => this._renderCarCard(c, i, cars.length)).join("")}</div>`;
     }
     return `
       <div class="row between" style="margin-bottom:12px">
@@ -1047,7 +1158,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${body}`;
   }
 
-  _renderCarCard(car) {
+  _renderCarCard(car, index = 0, total = 1) {
     const rt = car.runtime || {};
     const [statusText, statusCls] = ElectricityOptimizerPanel.STATUS_TEXT[rt.status] || ["Ukendt", "neutral"];
     const liveSoc = this._numState(car.soc_entity).value;
@@ -1057,7 +1168,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const dayLabel = (d) => (d.getDate() === now.getDate() ? "i dag" : "i morgen");
     const meta = [];
     if (plan) {
-      if (plan.need_kwh > 0) meta.push(`Mangler ${fmtNum(plan.need_kwh, 1)} kWh · ca. ${fmtNum(plan.need_hours, 1)} t ved ${fmtNum(car.charge_amps, 0)} A (${fmtNum(car.charge_power_kw, 1)} kW)`);
+      if (plan.need_kwh > 0) meta.push(`Mangler ${fmtNum(plan.need_kwh, 1)} kWh · ca. ${fmtNum(plan.need_hours, 1)} t ved ${fmtNum(car.max_amps, 0)} A (${fmtNum(car.charge_power_kw, 1)} kW)`);
       const dl = new Date(plan.deadline);
       meta.push(`Klar senest ${dayLabel(dl)} kl. ${fmtTime(dl)}${plan.enough_time ? "" : " – ikke nok tid, lader hele vejen"}`);
       if (rt.charging) meta.push("Lader lige nu");
@@ -1067,6 +1178,16 @@ class ElectricityOptimizerPanel extends HTMLElement {
       }
     }
     if (rt.plugged === false) meta.push("Bilen er ikke tilsluttet");
+    const liveW = car.power_entity ? (() => { const p = this._numState(car.power_entity); const kw = ElectricityOptimizerPanel._toKw(p.value, p.unit); return kw === null ? null : kw * 1000; })() : null;
+    if (rt.charging) {
+      const parts = [];
+      if (rt.amps) parts.push(`${rt.amps} A`);
+      if (liveW !== null) parts.push(`${fmtNum(liveW, 0)} W`);
+      meta.push(`${rt.mode === "solar" ? "Lader fra sol" : "Lader"}${parts.length ? " med " + parts.join(" · ") : ""}`);
+    } else if (liveW !== null && liveW > 50) {
+      meta.push(`Bilen trækker ${fmtNum(liveW, 0)} W`);
+    }
+    if (rt.status === "solar_wait" && rt.surplus_w !== undefined) meta.push(`Sol-overskud lige nu ${fmtNum(rt.surplus_w, 0)} W – kræver ${car.min_amps * 230 * car.phases} W`);
     if (rt.last_action) {
       const la = rt.last_action;
       meta.push(`Sidste kommando: ${la.action === "start" ? "start" : "stop"} kl. ${fmtTime(new Date(la.at))}${la.ok ? "" : ` – fejlede: ${la.error || ""}`}`);
@@ -1074,7 +1195,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const socPct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
     return `
       <div class="card" data-car="${car.id}">
-        <h2><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span></h2>
+        <h2><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="hint" style="font-weight:400">#${index + 1}</span> <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span></h2>
         <div class="kpi">
           <div class="value">${soc === null ? "–" : fmtNum(soc, 0) + " %"}<small>mål ${car.target_soc} %</small></div>
         </div>
@@ -1086,12 +1207,15 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <label class="field">Mål-SoC (%)<input type="number" min="1" max="100" step="1" data-field="target_soc" value="${car.target_soc}"></label>
           <label class="field">Klar senest<input type="time" data-field="ready_by" value="${esc(car.ready_by)}"></label>
           <label class="field">Prisgrænse (kr/kWh)<input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
-          <label class="field">Ladestrøm (A)<input type="number" min="1" max="64" step="1" data-field="charge_amps" value="${car.charge_amps}"></label>
+          <label class="field">Kilde<select data-field="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([v, l]) => `<option value="${v}" ${car.source === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+          <label class="field">Min. ladestrøm (A)<input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
+          <label class="field">Maks. ladestrøm (A)<input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
         </div>
         <div class="row" style="margin-top:12px">
           <button class="btn ${car.charge_now ? "active" : ""}" data-action="charge-now">${car.charge_now ? "Stop 'Lad nu'" : "Lad nu"}</button>
           <button class="btn" data-action="edit-car">Rediger</button>
           <button class="btn danger" data-action="delete-car">Slet</button>
+          ${total > 1 ? `<span class="seg" style="margin-left:auto"><button class="btn" data-action="move-up" ${index === 0 ? "disabled" : ""} title="Højere prioritet">▲</button><button class="btn" data-action="move-down" ${index === total - 1 ? "disabled" : ""} title="Lavere prioritet">▼</button></span>` : ""}
         </div>
       </div>`;
   }
@@ -1144,11 +1268,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${this._cmdFields("Stop opladning", "stop_entity", "stop_value", v)}
             <label class="field">Tilsluttet-sensor (valgfri)<div class="picker"><input name="plugged_entity" data-domains="binary_sensor" value="${v("plugged_entity")}" placeholder="binary_sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field">Batterikapacitet (kWh)<input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
-            <label class="field">Ladestrøm (A)<input name="charge_amps" type="number" step="1" min="1" max="64" value="${v("charge_amps", 16)}"></label>
+            <label class="field">Min. ladestrøm (A)<input name="min_amps" type="number" step="1" min="1" max="64" value="${v("min_amps", 6)}"></label>
+            <label class="field">Maks. ladestrøm (A)<input name="max_amps" type="number" step="1" min="1" max="64" value="${v("max_amps", 16)}"></label>
+            <label class="field">Kilde<select name="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([val, l]) => `<option value="${val}" ${(car.source || "solar_plan") === val ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+            <label class="field">Ladeeffekt-sensor (W, valgfri)<div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… bilens/laderens effekt" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field">Faser<select name="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
             <label class="field">Strømgrænse-entitet (number, valgfri)<div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… sættes til ladestrømmen" autocomplete="off"><div class="picker-list" hidden></div></div></label>
           </div>
-          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Ladestrøm × 230 V × faser giver effekten, som planen regner med. Vælges en strømgrænse-entitet, sættes den til ladestrømmen, hver gang opladning starter, og når du ændrer ladestrømmen.</div>
+          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Maks. ladestrøm × 230 V × faser er effekten, planen regner med. Ved solopladning justeres strømgrænse-entiteten løbende mellem min. og maks. efter overskuddet; uden strømgrænse-entitet startes solopladning kun, når overskuddet dækker maks. ladestrøm. Ladeeffekt-sensoren bruges til at vise og regne med bilens faktiske forbrug.</div>
           ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}
           <div class="row" style="margin-top:14px">
             <button class="btn primary" type="submit" data-action="save-car">Gem</button>
@@ -1186,6 +1313,18 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   async _onContentChange(ev) {
     const input = ev.target;
+    if (input.dataset && input.dataset.rfield) {
+      const field = input.dataset.rfield;
+      const value = input.type === "checkbox" ? input.checked : input.value;
+      try {
+        await this._saveRules({ [field]: value });
+        this._rulesError = null;
+      } catch (err) {
+        this._rulesError = err && err.message ? err.message : String(err);
+      }
+      this._maybeRender(true);
+      return;
+    }
     if (input.dataset && input.dataset.bfield) {
       const field = input.dataset.bfield;
       const value = input.type === "checkbox" ? input.checked : input.value;
@@ -1204,7 +1343,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     let value;
     if (input.type === "checkbox") value = input.checked;
     else if (field === "price_limit") value = input.value === "" ? null : Number(input.value);
-    else if (field === "target_soc" || field === "charge_amps") value = Number(input.value);
+    else if (field === "target_soc" || field === "min_amps" || field === "max_amps") value = Number(input.value);
     else value = input.value;
     try {
       await this._saveCar({ id: card.dataset.car, [field]: value });
@@ -1225,6 +1364,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const bbtn = ev.target.closest && ev.target.closest("[data-baction]");
     if (bbtn) {
       await this._onBatteryClick(bbtn, ev);
+      return;
+    }
+    const rbtn = ev.target.closest && ev.target.closest("[data-raction]");
+    if (rbtn) {
+      await this._onRulesClick(rbtn, ev);
       return;
     }
     const btn = ev.target.closest && ev.target.closest("[data-action]");
@@ -1269,6 +1413,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         this._maybeRender(true);
       } else if (action === "charge-now" && car) {
         await this._saveCar({ id: car.id, charge_now: !car.charge_now });
+        this._maybeRender(true);
+      } else if ((action === "move-up" || action === "move-down") && car) {
+        await this._hass.callWS({ type: "electricity_optimizer/cars/move", car_id: car.id, direction: action === "move-up" ? "up" : "down" });
+        await this._loadCars(true);
         this._maybeRender(true);
       }
     } catch (err) {
@@ -1405,6 +1553,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
       disabled: "Smart styring er slået fra",
       override: "Manuel styring – tryk Auto for at følge planen",
       full: "Batteriet er fyldt til maks-SoC",
+      ev_hold: "Holdes, fordi en elbil lader fra nettet (regel)",
+      fuse_wait: "Venter – hovedsikringen er optaget af elbil (regel)",
       auto: modeWhy,
     }[rt.status] || "";
     const cmds = rt.commands_configured || {};

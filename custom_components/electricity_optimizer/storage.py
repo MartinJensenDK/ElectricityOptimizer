@@ -11,6 +11,8 @@ from homeassistant.helpers.storage import Store
 from .const import (
     GRID_VOLTAGE,
     BATTERY_DEFAULTS,
+    RULES_DEFAULTS,
+    STORAGE_KEY_RULES,
     BATTERY_MODES,
     CAR_DEFAULTS,
     STORAGE_KEY_BATTERY,
@@ -21,7 +23,8 @@ from .const import (
 NUMERIC_FIELDS = {
     "capacity_kwh": float,
     "charge_power_kw": float,
-    "charge_amps": float,
+    "min_amps": int,
+    "max_amps": int,
     "phases": int,
     "target_soc": int,
 }
@@ -50,14 +53,22 @@ def normalize_car(raw: dict[str, Any], existing: dict[str, Any] | None = None) -
         except (TypeError, ValueError):
             car["price_limit"] = None
     car["phases"] = 3 if car["phases"] not in (1, 2, 3) else car["phases"]
-    if "charge_amps" not in raw and not (existing and "charge_amps" in existing):
-        # migrate old cars that only had a power in kW
-        car["charge_amps"] = round(car["charge_power_kw"] * 1000 / (GRID_VOLTAGE * car["phases"]))
-    car["charge_power_kw"] = amps_to_kw(car["charge_amps"], car["phases"])
+    legacy = {**(existing or {}), **raw}
+    if "max_amps" not in legacy:
+        # migrate: charge_amps (v0.5) or charge_power_kw (v0.3/0.4)
+        if "charge_amps" in legacy:
+            car["max_amps"] = int(float(legacy["charge_amps"]))
+        else:
+            car["max_amps"] = round(car["charge_power_kw"] * 1000 / (GRID_VOLTAGE * car["phases"]))
+    car["min_amps"] = max(1, min(car["min_amps"], car["max_amps"]))
+    car["max_amps"] = max(car["min_amps"], car["max_amps"])
+    if car["source"] not in ("solar", "solar_plan", "plan"):
+        car["source"] = "solar_plan"
+    car["charge_power_kw"] = amps_to_kw(car["max_amps"], car["phases"])
     car["enabled"] = bool(car["enabled"])
     car["charge_now"] = bool(car["charge_now"])
     car["target_soc"] = max(1, min(100, car["target_soc"]))
-    for key in ("name", "soc_entity", "start_entity", "start_value", "stop_entity", "stop_value", "plugged_entity", "current_entity", "ready_by"):
+    for key in ("name", "soc_entity", "start_entity", "start_value", "stop_entity", "stop_value", "plugged_entity", "current_entity", "power_entity", "source", "ready_by"):
         car[key] = str(car[key] or "").strip()
     if len(car["ready_by"]) == 8:  # HH:MM:SS -> HH:MM
         car["ready_by"] = car["ready_by"][:5]
@@ -73,7 +84,7 @@ def validate_car(car: dict[str, Any]) -> str | None:
         return "soc_required"
     if not car["start_entity"] or not car["stop_entity"]:
         return "start_stop_required"
-    if car["capacity_kwh"] <= 0 or car["charge_amps"] <= 0:
+    if car["capacity_kwh"] <= 0 or car["max_amps"] <= 0:
         return "capacity_power_positive"
     if car["current_entity"] and car["current_entity"].split(".")[0] not in ("number", "input_number"):
         return "current_entity_number"
@@ -110,6 +121,17 @@ class CarStore:
             self.cars.append(car)
         await self.async_save()
         return car
+
+    async def async_move(self, car_id: str, direction: str) -> bool:
+        idx = next((i for i, c in enumerate(self.cars) if c["id"] == car_id), None)
+        if idx is None:
+            return False
+        new = idx - 1 if direction == "up" else idx + 1
+        if new < 0 or new >= len(self.cars):
+            return False
+        self.cars[idx], self.cars[new] = self.cars[new], self.cars[idx]
+        await self.async_save()
+        return True
 
     async def async_delete(self, car_id: str) -> bool:
         before = len(self.cars)
@@ -194,3 +216,58 @@ class BatteryStore:
     async def async_delete(self) -> None:
         self.battery = None
         await self.async_save()
+
+
+RULES_NUMERIC = {
+    "battery_min_soc_for_ev_solar": int,
+    "solar_start_minutes": float,
+    "solar_stop_minutes": float,
+}
+
+
+def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
+    rules: dict[str, Any] = {**RULES_DEFAULTS, **(existing or {})}
+    for key in RULES_DEFAULTS:
+        if key in raw:
+            rules[key] = raw[key]
+    for key, cast in RULES_NUMERIC.items():
+        try:
+            rules[key] = cast(float(str(rules[key]).replace(",", ".")))
+        except (TypeError, ValueError):
+            rules[key] = RULES_DEFAULTS[key]
+    if rules["max_total_amps"] in ("", None):
+        rules["max_total_amps"] = None
+    else:
+        try:
+            rules["max_total_amps"] = float(str(rules["max_total_amps"]).replace(",", "."))
+        except (TypeError, ValueError):
+            rules["max_total_amps"] = None
+    rules["hold_battery_while_ev_grid_charging"] = bool(rules["hold_battery_while_ev_grid_charging"])
+    rules["battery_min_soc_for_ev_solar"] = max(0, min(100, rules["battery_min_soc_for_ev_solar"]))
+    rules["solar_start_minutes"] = max(0.0, rules["solar_start_minutes"])
+    rules["solar_stop_minutes"] = max(0.0, rules["solar_stop_minutes"])
+    if rules["solar_priority"] not in ("ev", "battery"):
+        rules["solar_priority"] = "ev"
+    if rules["grid_priority"] not in ("ev", "battery"):
+        rules["grid_priority"] = "ev"
+    if rules["grid_sign"] not in ("import_positive", "export_positive"):
+        rules["grid_sign"] = "import_positive"
+    rules["grid_power_entity"] = str(rules["grid_power_entity"] or "").strip()
+    return rules
+
+
+class RulesStore:
+    """Load/save the shared rules."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_RULES)
+        self.rules: dict[str, Any] = dict(RULES_DEFAULTS)
+
+    async def async_load(self) -> None:
+        data = await self._store.async_load() or {}
+        self.rules = normalize_rules(data.get("rules") or {})
+
+    async def async_update(self, raw: dict[str, Any]) -> dict[str, Any]:
+        self.rules = normalize_rules(raw, self.rules)
+        await self._store.async_save({"rules": self.rules})
+        return self.rules
