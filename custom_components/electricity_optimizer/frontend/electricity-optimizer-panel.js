@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.10.1";
+const PANEL_JS_VERSION = "0.11.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -260,6 +260,7 @@ const STYLE = `
   h3 { font-size: 14px; font-weight: 500; margin: 14px 0 6px; color: var(--secondary-text-color); }
   table.sched { margin-top: 8px; }
   table.sched td, table.sched th { padding: 4px 4px; }
+  table.sched select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); max-width: 170px; }
   table.sched input[data-time], table.sched input[type=number] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); width: 100%; max-width: 110px; box-sizing: border-box; }
   table.sched th:first-child, table.sched td:first-child { width: 30%; }
   table.sched tr.off td:not(:first-child) { opacity: 0.45; }
@@ -1000,12 +1001,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderSolarUsageCard() {
     const rules = this._rules;
     const cars = this._cars || [];
-    const solarCars = cars.filter((c) => c.source === "solar" || c.source === "solar_plan");
+    const todayIdx = (new Date().getDay() + 6) % 7;
+    const srcToday = (c) => (Array.isArray(c.schedule) && c.schedule[todayIdx] && c.schedule[todayIdx].source) || c.source;
+    const solarCars = cars.filter((c) => srcToday(c) === "solar" || srcToday(c) === "solar_plan");
     const battery = this._battery;
     const carText = solarCars.length
-      ? `${solarCars.map((c) => c.name).join(", ")} lader på overskud (${solarCars.length > 1 ? "i den rækkefølge" : "kilde: " + (ElectricityOptimizerPanel.SOURCE_TEXT[solarCars[0].source] || "")})`
+      ? `${solarCars.map((c) => c.name).join(", ")} lader på overskud i dag (${solarCars.length > 1 ? "i den rækkefølge" : "kilde: " + (ElectricityOptimizerPanel.SOURCE_TEXT[srcToday(solarCars[0])] || "")})`
       : cars.length
-        ? "Ingen biler er sat til at bruge sol (kilde under Elbiler)"
+        ? "Ingen biler bruger sol i dag (kilde pr. dag i ugeplanen under Elbiler)"
         : "Ingen elbiler tilføjet";
     let rows;
     if (!rules) {
@@ -1295,6 +1298,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       }
     }
     if (rt.plugged === false) meta.push("Bilen er ikke tilsluttet");
+    if (rt.source_today) meta.push(`Kilde i dag: ${ElectricityOptimizerPanel.SOURCE_TEXT[rt.source_today] || rt.source_today}`);
     const liveW = car.power_entity ? (() => { const p = this._numState(car.power_entity); const kw = ElectricityOptimizerPanel._toKw(p.value, p.unit); return kw === null ? null : kw * 1000; })() : null;
     if (rt.charging) {
       const parts = [];
@@ -1322,7 +1326,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="controls">
           <label class="toggle"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}> Smart opladning</label>
           <label class="field">Prisgrænse (kr/kWh)<input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
-          <label class="field">Kilde<select data-field="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([v, l]) => `<option value="${v}" ${car.source === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
           <label class="field">Min. ladestrøm (A)<input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
           <label class="field">Maks. ladestrøm (A)<input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
         </div>
@@ -1337,12 +1340,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
   }
 
   _renderSchedule(car) {
-    const sched = Array.isArray(car.schedule) && car.schedule.length === 7 ? car.schedule : DAY_NAMES.map(() => ({ enabled: true, ready_by: car.ready_by, target_soc: car.target_soc }));
+    const sched = Array.isArray(car.schedule) && car.schedule.length === 7 ? car.schedule : DAY_NAMES.map(() => ({ enabled: true, source: car.source, ready_by: car.ready_by, target_soc: car.target_soc }));
     const today = (new Date().getDay() + 6) % 7;
+    const sourceSel = (value) => `<select data-sched="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([v, l]) => `<option value="${v}" ${(value || car.source) === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
     const row = (label, cls, day, e) => `
       <tr class="${cls}${e.enabled || cls === "all" ? "" : " off"}" data-day="${day}">
         <td>${label}</td>
         <td><input type="checkbox" data-sched="enabled" ${e.enabled ? "checked" : ""} title="Skal bilen være klar denne dag?"></td>
+        <td>${sourceSel(e.source)}</td>
         <td>${timeInput('data-sched="ready_by"', e.ready_by)}</td>
         <td><input type="number" min="1" max="100" step="1" data-sched="target_soc" value="${e.target_soc}"></td>
       </tr>`;
@@ -1350,13 +1355,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="sched-wrap">
         <h3>Ugeplan</h3>
         <table class="sched">
-          <thead><tr><th>Dag</th><th>Til</th><th>Klar senest</th><th>Mål-SoC %</th></tr></thead>
+          <thead><tr><th>Dag</th><th>Til</th><th>Kilde</th><th>Klar senest</th><th>Mål-SoC %</th></tr></thead>
           <tbody>
-            ${row("Alle dage", "all", "all", { enabled: sched.every((e) => e.enabled), ready_by: sched[0].ready_by, target_soc: sched[0].target_soc })}
+            ${row("Alle dage", "all", "all", { enabled: sched.every((e) => e.enabled), source: sched[0].source, ready_by: sched[0].ready_by, target_soc: sched[0].target_soc })}
             ${sched.map((e, i) => row(DAY_NAMES[i], i === today ? "today" : "", i, e)).join("")}
           </tbody>
         </table>
-        <div class="hint">Slå en dag fra, hvis bilen ikke skal være klar den morgen – så planlægges der frem mod næste aktive dag. "Alle dage" sætter alle syv.</div>
+        <div class="hint">Slå en dag fra, hvis bilen ikke skal være klar den morgen – så planlægges der frem mod næste aktive dag. Kilde: "Kun sol" lader kun på overskud den dag, "Kun billige timer" bruger kun planen, "Sol + billige timer" begge. "Alle dage" sætter alle syv.</div>
       </div>`;
   }
 
@@ -1364,6 +1369,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const rows = [...card.querySelectorAll("table.sched tbody tr[data-day]")].filter((r) => r.dataset.day !== "all");
     return rows.map((r) => ({
       enabled: r.querySelector('[data-sched="enabled"]').checked,
+      source: r.querySelector('[data-sched="source"]').value,
       ready_by: normalizeTime(r.querySelector('[data-sched="ready_by"]').value) || "07:00",
       target_soc: Number(r.querySelector('[data-sched="target_soc"]').value) || 80,
     }));
@@ -1421,7 +1427,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             <label class="field">Batterikapacitet (kWh)<input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
             <label class="field">Min. ladestrøm (A)<input name="min_amps" type="number" step="1" min="1" max="64" value="${v("min_amps", 6)}"></label>
             <label class="field">Maks. ladestrøm (A)<input name="max_amps" type="number" step="1" min="1" max="64" value="${v("max_amps", 16)}"></label>
-            <label class="field">Kilde<select name="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([val, l]) => `<option value="${val}" ${(car.source || "solar_plan") === val ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+            <label class="field">Kilde (alle dage, kan ændres pr. dag bagefter)<select name="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([val, l]) => `<option value="${val}" ${(car.source || "solar_plan") === val ? "selected" : ""}>${l}</option>`).join("")}</select></label>
             <label class="field">Ladeeffekt-sensor (W, valgfri)<div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… bilens/laderens effekt" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field">Faser<select name="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
             <label class="field">Laderens strøm-entitet (number, valgfri) – ladestrømmen i A sendes hertil<div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… fx laderens 'charger current limit'" autocomplete="off"><div class="picker-list" hidden></div></div></label>
@@ -1857,7 +1863,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <tr class="${cls}${e.enabled || cls === "all" ? "" : " off"}" data-bday="${day}">
         <td>${label}</td>
         <td><input type="checkbox" data-bsched="enabled" ${e.enabled ? "checked" : ""} title="Smart styring denne dag"></td>
-        <td><input type="checkbox" data-bsched="grid_charge" ${e.grid_charge ? "checked" : ""} title="Må lade fra nettet denne dag"></td>
+        <td><select data-bsched="grid_charge" title="Kilde denne dag"><option value="solar" ${e.grid_charge ? "" : "selected"}>Kun sol</option><option value="solar_grid" ${e.grid_charge ? "selected" : ""}>Sol + billige timer</option></select></td>
         <td>${timeInput('data-bsched="ready_by"', e.ready_by)}</td>
         <td><input type="number" min="1" max="100" step="1" data-bsched="target_soc" value="${e.target_soc === null || e.target_soc === undefined ? "" : e.target_soc}" placeholder="–"></td>
       </tr>`;
@@ -1869,13 +1875,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="sched-wrap">
         <h3>Ugeplan</h3>
         <table class="sched">
-          <thead><tr><th>Dag</th><th>Til</th><th>Fra net</th><th>Fuldt senest</th><th>Mål-SoC %</th></tr></thead>
+          <thead><tr><th>Dag</th><th>Til</th><th>Kilde</th><th>Fuldt senest</th><th>Mål-SoC %</th></tr></thead>
           <tbody>
             ${row("Alle dage", "all", "all", { enabled: sched.every((e) => e.enabled), grid_charge: sched.every((e) => e.grid_charge), ready_by: sched[0].ready_by, target_soc: sched[0].target_soc })}
             ${sched.map((e, i) => row(DAY_NAMES[i], i === today ? "today" : "", i, e)).join("")}
           </tbody>
         </table>
-        <div class="hint">Til: smart styring den dag. Fra net: må lade fra nettet den dag. Mål-SoC (valgfrit): batteriet fyldes til dette niveau i de billigste timer inden klokkeslættet – fx 100 % senest kl. 17 før aftenens dyre timer. ${esc(next)}</div>
+        <div class="hint">Til: smart styring den dag. Kilde: "Kun sol" lader aldrig fra nettet den dag; "Sol + billige timer" må lade fra nettet efter prisforskel-reglen og mål-SoC. Mål-SoC (valgfrit): batteriet fyldes til dette niveau i de billigste timer inden klokkeslættet – fx 100 % senest kl. 17 før aftenens dyre timer. ${esc(next)}</div>
       </div>`;
   }
 
@@ -1883,7 +1889,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const rows = [...card.querySelectorAll("table.sched tbody tr[data-bday]")].filter((r) => r.dataset.bday !== "all");
     return rows.map((r) => ({
       enabled: r.querySelector('[data-bsched="enabled"]').checked,
-      grid_charge: r.querySelector('[data-bsched="grid_charge"]').checked,
+      grid_charge: r.querySelector('[data-bsched="grid_charge"]').value === "solar_grid",
       ready_by: normalizeTime(r.querySelector('[data-bsched="ready_by"]').value) || "17:00",
       target_soc: r.querySelector('[data-bsched="target_soc"]').value === "" ? null : Number(r.querySelector('[data-bsched="target_soc"]').value),
     }));

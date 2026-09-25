@@ -184,3 +184,25 @@ async def test_cars_move_changes_priority_order(hass: HomeAssistant, hass_ws_cli
     res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/cars/move", "car_id": b["id"], "direction": "up"})
     assert [c["name"] for c in res["cars"]] == ["B", "A"]
     assert a["id"] != b["id"]
+
+
+async def test_today_source_controls_grid_and_solar(hass: HomeAssistant, hass_ws_client) -> None:
+    now = dt_util.now()
+    _set_prices(hass, {now.hour: 0.2})  # cheap now
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.grid", "-6000", {"unit_of_measurement": "W"})
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "number", "set_value")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_start_minutes": 0}})
+    today = now.weekday()
+    schedule = [{"enabled": True, "source": "plan", "ready_by": (now + timedelta(hours=2)).strftime("%H:%M"), "target_soc": 80} for _ in range(7)]
+    schedule[today]["source"] = "solar"  # today: solar only, even though the hour is cheap
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "source": "plan", "schedule": schedule}})
+    rt = res["car"]["runtime"]
+    assert rt["source_today"] == "solar" and rt["status"] == "solar" and rt["mode"] == "solar"
+    schedule[today]["source"] = "plan"
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": res["car"]["id"], "schedule": schedule}})
+    assert res["car"]["runtime"]["status"] == "charging" and res["car"]["runtime"]["mode"] == "grid"
+    assert len(turn_on) >= 1

@@ -36,7 +36,7 @@ def _week(**overrides):
 def test_schedule_defaults_from_car_fields():
     car = normalize_car({"name": "X", "ready_by": "06:30", "target_soc": 90})
     assert len(car["schedule"]) == 7
-    assert all(e == {"enabled": True, "ready_by": "06:30", "target_soc": 90} for e in car["schedule"])
+    assert all(e == {"enabled": True, "source": "solar_plan", "ready_by": "06:30", "target_soc": 90} for e in car["schedule"])
 
 
 def test_weekend_disabled_skips_to_monday():
@@ -77,3 +77,24 @@ def test_plan_uses_schedule_target():
     assert plan["target_soc"] == 60
     assert plan["need_kwh"] == 6.0
     assert plan["deadline"] == datetime(2026, 9, 26, 9, 0, tzinfo=TZ).isoformat()
+
+
+def test_per_day_source_defaults_and_validation():
+    car = normalize_car({"name": "X", "source": "plan", "schedule": [{"source": "solar"}, {"source": "bogus"}]})
+    assert car["schedule"][0]["source"] == "solar"
+    assert car["schedule"][1]["source"] == "plan"  # invalid -> car default
+    assert all(e["source"] == "plan" for e in car["schedule"][2:])
+
+
+def test_plan_skips_grid_slots_on_solar_only_days():
+    # Friday evening, deadline Saturday 07:00; Friday is solar-only, Saturday allows grid
+    car = _car(_week(d4={"source": "solar"}, d5={"source": "solar_plan", "ready_by": "07:00"}))
+    day = FRIDAY.replace(hour=0)
+    prices = [1.0] * 48
+    prices[22] = 0.1  # Friday 22:00 cheapest, but solar-only day
+    prices[27] = 0.5  # Saturday 03:00
+    slots = [Slot(day + timedelta(hours=i), day + timedelta(hours=i + 1), p) for i, p in enumerate(prices)]
+    plan = plan_car(FRIDAY, slots, soc=70, car=car)  # needs ~0.55 h -> 1 slot
+    chosen = [datetime.fromisoformat(p["start"]) for p in plan["plan"] if p["chosen"]]
+    assert chosen == [day + timedelta(hours=27)]
+    assert plan["source_today"] == "solar"

@@ -90,6 +90,14 @@ def read_price_slots(hass: HomeAssistant, price_entity: str) -> list[Slot]:
     return [Slot(start, start + duration, price) for start, price in points]
 
 
+def day_source(car: dict[str, Any], when: datetime) -> str:
+    """Charging source for the weekday of `when` (falls back to the car default)."""
+    schedule = car.get("schedule") or []
+    if len(schedule) == 7:
+        return schedule[when.weekday()].get("source") or car.get("source", "solar_plan")
+    return car.get("source", "solar_plan")
+
+
 def next_deadline(now: datetime, car: dict[str, Any]) -> tuple[datetime | None, int | None]:
     """Find the next enabled weekday deadline from the car's weekly schedule."""
     schedule = car.get("schedule") or []
@@ -130,6 +138,7 @@ def plan_car(
             "need_kwh": round(need_kwh, 2),
             "need_hours": round(need_hours, 2),
             "target_soc": target,
+            "source_today": day_source(car, now),
             "deadline": None,
             "enough_time": True,
             "current_price": current.price if current else None,
@@ -164,6 +173,8 @@ def plan_car(
     for s in sorted(candidates, key=lambda s: (s.price, s.start)):
         if remaining <= 0:
             break
+        if day_source(car, s.start) == "solar":
+            continue  # no grid charging on that day
         a = avail(s)
         if a <= 0:
             continue
@@ -172,13 +183,14 @@ def plan_car(
     chosen.sort(key=lambda s: s.start)
     current = next((s for s in candidates if s.start <= now < s.end), None)
     charge_now_in_plan = current is not None and any(c.start == current.start for c in chosen)
-    total_avail = sum(avail(s) for s in candidates)
+    total_avail = sum(avail(s) for s in candidates if day_source(car, s.start) != "solar")
     next_slot = next((s for s in chosen if s.start > now), None)
 
     return {
         "need_kwh": round(need_kwh, 2),
         "need_hours": round(need_hours, 2),
         "target_soc": target,
+        "source_today": day_source(car, now),
         "deadline": deadline.isoformat(),
         "enough_time": total_avail >= need_hours,
         "current_price": current.price if current else None,
@@ -280,8 +292,10 @@ class EvController:
         desired = False
         mode: str | None = None  # grid | solar
         amps = car["max_amps"]
-        uses_grid = car["source"] in ("plan", "solar_plan")
-        uses_solar = car["source"] in ("solar", "solar_plan")
+        source = day_source(car, now)
+        rt["source_today"] = source
+        uses_grid = source in ("plan", "solar_plan")
+        uses_solar = source in ("solar", "solar_plan")
 
         target = plan["target_soc"] if plan else car["target_soc"]
         rt["target_soc"] = target

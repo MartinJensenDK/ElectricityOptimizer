@@ -76,7 +76,7 @@ def normalize_car(raw: dict[str, Any], existing: dict[str, Any] | None = None) -
         car["ready_by"] = car["ready_by"][:5]
     if not _valid_time(car["ready_by"]):
         car["ready_by"] = CAR_DEFAULTS["ready_by"]
-    car["schedule"] = normalize_schedule(car.get("schedule"), car["ready_by"], car["target_soc"])
+    car["schedule"] = normalize_schedule(car.get("schedule"), car["ready_by"], car["target_soc"], car["source"])
     car["id"] = (existing or {}).get("id") or raw.get("id") or uuid.uuid4().hex[:8]
     return car
 
@@ -86,12 +86,18 @@ def _valid_time(value: Any) -> bool:
     return len(parts) == 2 and all(p.isdigit() for p in parts) and int(parts[0]) < 24 and int(parts[1]) < 60
 
 
-def normalize_schedule(raw: Any, default_ready_by: str, default_target: int) -> list[dict[str, Any]]:
+CAR_SOURCES = ("solar", "solar_plan", "plan")
+
+
+def normalize_schedule(raw: Any, default_ready_by: str, default_target: int, default_source: str = "solar_plan") -> list[dict[str, Any]]:
     """Return exactly 7 entries (Mon..Sun), filling gaps from the car defaults."""
     out: list[dict[str, Any]] = []
     items = raw if isinstance(raw, list) else []
     for i in range(7):
         item = items[i] if i < len(items) and isinstance(items[i], dict) else {}
+        source = str(item.get("source") or default_source)
+        if source not in CAR_SOURCES:
+            source = default_source
         ready_by = str(item.get("ready_by") or default_ready_by).strip()
         if len(ready_by) == 8:
             ready_by = ready_by[:5]
@@ -103,6 +109,7 @@ def normalize_schedule(raw: Any, default_ready_by: str, default_target: int) -> 
             target = default_target
         out.append({
             "enabled": bool(item.get("enabled", True)),
+            "source": source,
             "ready_by": ready_by,
             "target_soc": max(1, min(100, target)),
         })

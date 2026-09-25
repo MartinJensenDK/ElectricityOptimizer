@@ -56,13 +56,14 @@ Under fanen **Elbiler** tilføjer du en bil med:
 | Min./maks. ladestrøm / faser | A og 1–3 faser; planen regner med maks. × 230 V × faser. Ved solopladning justeres strømmen mellem min. og maks. Begge kan ændres direkte på bilens kort |
 | Strømgrænse-entitet | Valgfri `number`/`input_number`; sættes til den ønskede strøm når opladning starter, og løbende ved solopladning (højst hvert 30. sekund) |
 | Ladeeffekt-sensor | Valgfri sensor (W/kW) med bilens faktiske ladeeffekt; vises live og bruges i sol-regnestykket |
-| Kilde | *Kun sol*, *Sol + billige timer* (standard) eller *Kun billige timer* |
+| Kilde | *Kun sol*, *Sol + billige timer* (standard) eller *Kun billige timer* – vælges pr. ugedag i ugeplanen (formularens valg gælder alle dage ved oprettelse) |
 
 Pr. bil kan du løbende ændre **Smart opladning** til/fra, **prisgrænse** (lad altid under denne pris),
 **min./maks. ladestrøm** (A), **kilde** og trykke **Lad nu**.
 
-**Ugeplan**: på bilens kort (altid synlig) sættes for hver ugedag om bilen skal være klar, klokkeslæt
-og mål-SoC (rækken "Alle dage" sætter alle syv). Deadline findes som næste aktive dag, så en slukket lørdag
+**Ugeplan**: på bilens kort (altid synlig) sættes for hver ugedag om bilen skal være klar, kilde,
+klokkeslæt og mål-SoC (rækken "Alle dage" sætter alle syv). På dage med *Kun sol* vælges der ingen
+billige timer, heller ikke frem mod en deadline på en senere dag. Deadline findes som næste aktive dag, så en slukket lørdag
 betyder, at der planlægges frem mod søndag eller mandag med de billigste timer undervejs.
 Er alle dage slået fra, lades kun fra sol, prisgrænse eller "Lad nu".
 
@@ -121,8 +122,8 @@ for prisforskel-reglen og ugeplanens mål-SoC. Uden prognose-sensor har reglen i
 
 Alle klokkeslæt indtastes som TT:MM i 24-timers format (fx 06:30); "630" og "1830" rettes automatisk.
 
-**Ugeplan for batteriet**: pr. ugedag sættes *Til* (smart styring den dag), *Fra net* (må lade fra
-nettet den dag), og valgfrit *Mål-SoC* med *Fuldt senest*: batteriet fyldes til niveauet i de
+**Ugeplan for batteriet**: pr. ugedag sættes *Til* (smart styring den dag), *Kilde* (*Kun sol* eller
+*Sol + billige timer*, dvs. om der må lades fra nettet den dag), og valgfrit *Mål-SoC* med *Fuldt senest*: batteriet fyldes til niveauet i de
 billigste timer inden klokkeslættet, fx 100 % senest kl. 17 før aftenens dyre timer. Uden mål-SoC
 lader batteriet kun fra nettet efter prisforskel-reglen. Rækken "Alle dage" sætter alle syv.
 
