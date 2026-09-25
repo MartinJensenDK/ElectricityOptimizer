@@ -60,8 +60,8 @@ Under fanen **Elbiler** tilføjer du en bil med:
 Pr. bil kan du løbende ændre **Smart opladning** til/fra, **prisgrænse** (lad altid under denne pris),
 **min./maks. ladestrøm** (A), **kilde** og trykke **Lad nu**.
 
-**Ugeplan**: på bilens kort sættes for hver ugedag om bilen skal være klar, klokkeslæt og mål-SoC
-(rækken "Alle dage" sætter alle syv). Deadline findes som næste aktive dag, så en slukket lørdag
+**Ugeplan**: på bilens kort (altid synlig) sættes for hver ugedag om bilen skal være klar, klokkeslæt
+og mål-SoC (rækken "Alle dage" sætter alle syv). Deadline findes som næste aktive dag, så en slukket lørdag
 betyder, at der planlægges frem mod søndag eller mandag med de billigste timer undervejs.
 Er alle dage slået fra, lades kun fra sol, prisgrænse eller "Lad nu".
 
@@ -113,6 +113,11 @@ Modus pr. tidsrum:
 
 Kommandoer sendes kun ved skift af modus (stop på den gamle modus før start på den nye). Knapperne
 Auto / Normal / Hold nu / Lad fra net nu tilsidesætter planen, indtil Auto vælges igen.
+
+**Ugeplan for batteriet**: pr. ugedag sættes *Til* (smart styring den dag), *Fra net* (må lade fra
+nettet den dag), og valgfrit *Mål-SoC* med *Fuldt senest*: batteriet fyldes til niveauet i de
+billigste timer inden klokkeslættet, fx 100 % senest kl. 17 før aftenens dyre timer. Uden mål-SoC
+lader batteriet kun fra nettet efter prisforskel-reglen. Rækken "Alle dage" sætter alle syv.
 
 Alle tal i panelet er live fra Home Assistants states; plan og status hentes hvert 3. sekund, og
 planen genberegnes hvert minut samt straks efter ændringer i pris- og SoC-sensorer.

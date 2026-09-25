@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import math
 from typing import Any
@@ -19,13 +19,39 @@ from .storage import BatteryStore
 _LOGGER = logging.getLogger(__name__)
 
 
+def _day_entry(cfg: dict[str, Any], when: datetime) -> dict[str, Any]:
+    schedule = cfg.get("schedule") or []
+    if len(schedule) == 7:
+        return schedule[when.weekday()]
+    return {"enabled": True, "grid_charge": cfg.get("grid_charge_enabled", False), "ready_by": "17:00", "target_soc": None}
+
+
+def next_battery_deadline(now: datetime, cfg: dict[str, Any]) -> tuple[datetime | None, int | None]:
+    """Next enabled day with a target SoC and a deadline still ahead."""
+    schedule = cfg.get("schedule") or []
+    if len(schedule) != 7:
+        return None, None
+    for offset in range(8):
+        day = now + timedelta(days=offset)
+        entry = schedule[day.weekday()]
+        if not entry["enabled"] or entry["target_soc"] is None or not entry["grid_charge"]:
+            continue
+        hh, mm = (int(p) for p in entry["ready_by"].split(":"))
+        deadline = day.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if deadline > now:
+            return deadline, int(entry["target_soc"])
+    return None, None
+
+
 def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, Any]) -> dict[str, Any] | None:
     """Assign a mode to every known future slot.
 
     hold:   price below the day's mean and a later slot is at least `spread_threshold` dearer.
-    charge: grid charging enabled, room in the battery, and the cheapest slots whose price is at least
-            `spread_threshold` below the (efficiency-adjusted) average of the dearest later slots.
-    normal: everything else.
+    charge: (a) grid charging allowed that day, room in the battery, and the cheapest slots whose price
+            is at least `spread_threshold` below the (efficiency-adjusted) average of the dearest later
+            slots; or (b) the cheapest slots needed to reach the weekly schedule's target SoC before its
+            deadline.
+    normal: everything else, and every slot on a day that is switched off in the schedule.
     """
     candidates = [s for s in slots if s.end > now]
     if not candidates:
@@ -40,6 +66,8 @@ def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, An
 
     modes: dict[datetime, str] = {}
     for i, s in enumerate(candidates):
+        if not _day_entry(cfg, s.start)["enabled"]:
+            continue
         later = candidates[i + 1 :]
         if not later:
             continue
@@ -48,7 +76,7 @@ def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, An
             modes[s.start] = "hold"
 
     charge_hours = 0.0
-    if cfg["grid_charge_enabled"] and soc < cfg["max_soc"]:
+    if soc < cfg["max_soc"]:
         room_kwh = (cfg["max_soc"] - soc) / 100 * cfg["capacity_kwh"]
         charge_hours = room_kwh / cfg["max_charge_kw"]
         slot_hours = candidates[0].hours or 1.0
@@ -57,6 +85,9 @@ def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, An
         for s in sorted(candidates, key=lambda s: (s.price, s.start)):
             if remaining <= 0:
                 break
+            entry = _day_entry(cfg, s.start)
+            if not entry["enabled"] or not entry["grid_charge"]:
+                continue
             later = [x for x in candidates if x.start > s.start]
             if not later:
                 continue
@@ -66,11 +97,49 @@ def plan_battery(now: datetime, slots: list[Slot], soc: float, cfg: dict[str, An
                 avail_start = max(s.start, now)
                 remaining -= (s.end - avail_start).total_seconds() / 3600
 
+    # (b) weekly schedule target: reach target_soc before the deadline in the cheapest slots
+    deadline, target = next_battery_deadline(now, cfg)
+    target_hours = 0.0
+    if deadline is not None and target is not None and soc < target:
+        need_kwh = (target - soc) / 100 * cfg["capacity_kwh"]
+        target_hours = need_kwh / cfg["max_charge_kw"]
+        duration = candidates[0].end - candidates[0].start
+        before = [s for s in candidates if s.start < deadline]
+        estimate = sum(x.price for x in slots) / len(slots)
+        cursor = before[-1].end if before else now.replace(minute=0, second=0, microsecond=0)
+        if cursor < now:
+            cursor = now.replace(minute=0, second=0, microsecond=0)
+        extra: list[Slot] = []
+        while cursor < deadline:
+            extra.append(Slot(cursor, cursor + duration, estimate, estimated=True))
+            cursor += duration
+        pool = before + extra
+        remaining = target_hours
+        for s in sorted(pool, key=lambda s: (s.price, s.start)):
+            if remaining <= 0:
+                break
+            entry = _day_entry(cfg, s.start)
+            if not entry["enabled"] or not entry["grid_charge"]:
+                continue
+            avail = max(0.0, (min(s.end, deadline) - max(s.start, now)).total_seconds() / 3600)
+            if avail <= 0:
+                continue
+            modes[s.start] = "charge"
+            remaining -= avail
+
     current = next((s for s in candidates if s.start <= now < s.end), None)
+    today = _day_entry(cfg, now)
     auto_mode = modes.get(current.start, "normal") if current else "normal"
+    if not today["enabled"]:
+        auto_mode = "normal"
     later_max = max((s.price for s in candidates if current and s.start > current.start), default=None)
     return {
         "auto_mode": auto_mode,
+        "day_enabled": bool(today["enabled"]),
+        "grid_charge_today": bool(today["grid_charge"]),
+        "deadline": deadline.isoformat() if deadline else None,
+        "target_soc": target,
+        "target_hours": round(target_hours, 2),
         "current_price": current.price if current else None,
         "day_mean": day_mean.get(current.start.date()) if current else None,
         "later_max": later_max,
@@ -158,6 +227,9 @@ class BatteryController:
         if cfg["override"] != "auto":
             mode = cfg["override"]
             rt["status"] = "override"
+        elif not plan["day_enabled"]:
+            mode = "normal"
+            rt["status"] = "day_off"
         else:
             mode = plan["auto_mode"]
             rt["status"] = "auto"

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.7.4"; // kept equal to manifest.json (checked by tests), not shown in the UI
+const PANEL_JS_VERSION = "0.8.0"; // kept equal to manifest.json (checked by tests), not shown in the UI
 
 const DAY_NAMES = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const DAY_SHORT = ["man", "tirs", "ons", "tors", "fre", "lør", "søn"];
@@ -241,7 +241,7 @@ const STYLE = `
   table.sched tr.off td:not(:first-child) { opacity: 0.45; }
   table.sched tr.all td { border-bottom: 2px solid var(--divider-color); }
   table.sched tr.today td:first-child { font-weight: 600; color: var(--primary-color); }
-  details.sched-wrap summary { cursor: pointer; font-size: 13px; color: var(--secondary-text-color); margin-top: 10px; }
+  .sched-wrap h3 { margin-top: 12px; }
   .hint { font-size: 12px; color: var(--secondary-text-color); }
   @media (max-width: 600px) {
     .content { padding: 12px; }
@@ -466,7 +466,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
     else if (this._tab === "battery") html = this._renderBattery();
     if (this._tab === "ev" || this._tab === "home") this._loadCars();
     if (this._tab === "battery" || this._tab === "home") this._loadBattery();
-    if (this._tab === "home" || this._tab === "ev" || this._tab === "battery") this._loadRules();
+    this._loadRules();
+    if (this._tab === "solar") {
+      this._loadCars();
+      this._loadBattery();
+    }
     this._contentEl.innerHTML = html;
   }
 
@@ -920,13 +924,38 @@ class ElectricityOptimizerPanel extends HTMLElement {
             </tbody>
           </table>
         </div>
-        <div class="card">
-          <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen</h2>
-          <div class="status-list">
-            <div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Overskud fra solceller går først til bilen (indstilles under Elbiler).</div></div></div>
-            <div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">Resten lagres og bruges i de dyre timer (styres under Hus batteri).</div></div></div>
-          </div>
-        </div>
+        ${this._renderSolarUsageCard()}
+      </div>`;
+  }
+
+  _renderSolarUsageCard() {
+    const rules = this._rules;
+    const cars = this._cars || [];
+    const solarCars = cars.filter((c) => c.source === "solar" || c.source === "solar_plan");
+    const battery = this._battery;
+    const carText = solarCars.length
+      ? `${solarCars.map((c) => c.name).join(", ")} lader på overskud (${solarCars.length > 1 ? "i den rækkefølge" : "kilde: " + (ElectricityOptimizerPanel.SOURCE_TEXT[solarCars[0].source] || "")})`
+      : cars.length
+        ? "Ingen biler er sat til at bruge sol (kilde under Elbiler)"
+        : "Ingen elbiler tilføjet";
+    let rows;
+    if (!rules) {
+      rows = `<div class="status-row"><ha-icon icon="mdi:timer-sand"></ha-icon><div class="t"><div class="d">Henter regler…</div></div></div>`;
+    } else if (rules.solar_priority === "battery") {
+      rows = `
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Batteriet lader fra sol, indtil det er over ${rules.battery_min_soc_for_ev_solar} %.` : "Intet husbatteri sat op – reglen har ingen effekt."}</div></div></div>
+        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Får kun ren eksport, og først når batteriet er over grænsen. ${esc(carText)}.</div></div></div>`;
+    } else {
+      rows = `
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Bilen får eksporten plus det, batteriet lader med. ${esc(carText)}.</div></div></div>
+        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${battery ? "Får det overskud, bilen ikke bruger, og bruges i de dyre timer." : "Intet husbatteri sat op."}</div></div></div>`;
+    }
+    const ctx = this._context || {};
+    return `
+      <div class="card">
+        <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen <a class="setup-link hint" href="#" data-goto="home" style="margin-left:auto">Regler</a></h2>
+        <div class="status-list">${rows}</div>
+        ${rules ? `<div class="hint" style="margin-top:8px">Sol starter efter ${rules.solar_start_minutes} min overskud og stopper efter ${rules.solar_stop_minutes} min underskud.${ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""}</div>` : ""}
       </div>`;
   }
 
@@ -1241,10 +1270,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderSchedule(car) {
     const sched = Array.isArray(car.schedule) && car.schedule.length === 7 ? car.schedule : DAY_NAMES.map(() => ({ enabled: true, ready_by: car.ready_by, target_soc: car.target_soc }));
     const today = (new Date().getDay() + 6) % 7;
-    const open = this._openSchedules && this._openSchedules.has(car.id);
-    const summary = sched
-      .map((e, i) => (e.enabled ? `${DAY_SHORT[i]} ${e.ready_by}/${e.target_soc}%` : `${DAY_SHORT[i]} –`))
-      .join(" · ");
     const row = (label, cls, day, e) => `
       <tr class="${cls}${e.enabled || cls === "all" ? "" : " off"}" data-day="${day}">
         <td>${label}</td>
@@ -1253,8 +1278,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <td><input type="number" min="1" max="100" step="1" data-sched="target_soc" value="${e.target_soc}"></td>
       </tr>`;
     return `
-      <details class="sched-wrap" data-sched-details ${open ? "open" : ""}>
-        <summary>Ugeplan: ${esc(summary)}</summary>
+      <div class="sched-wrap">
+        <h3>Ugeplan</h3>
         <table class="sched">
           <thead><tr><th>Dag</th><th>Til</th><th>Klar senest</th><th>Mål-SoC %</th></tr></thead>
           <tbody>
@@ -1263,7 +1288,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </tbody>
         </table>
         <div class="hint">Slå en dag fra, hvis bilen ikke skal være klar den morgen – så planlægges der frem mod næste aktive dag. "Alle dage" sætter alle syv.</div>
-      </details>`;
+      </div>`;
   }
 
   _readScheduleFromCard(card) {
@@ -1370,6 +1395,26 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   async _onContentChange(ev) {
     const input = ev.target;
+    if (input.dataset && input.dataset.bsched) {
+      const card = input.closest("[data-battery]");
+      const tr = input.closest("tr");
+      if (tr.dataset.bday === "all") {
+        for (const r of card.querySelectorAll("table.sched tbody tr[data-bday]")) {
+          if (r.dataset.bday === "all") continue;
+          const target = r.querySelector(`[data-bsched="${input.dataset.bsched}"]`);
+          if (input.type === "checkbox") target.checked = input.checked;
+          else target.value = input.value;
+        }
+      }
+      try {
+        await this._saveBattery({ schedule: this._readBatterySchedule(card) });
+        this._batteryError = null;
+      } catch (err) {
+        this._batteryError = err && err.message ? err.message : String(err);
+      }
+      this._maybeRender(true);
+      return;
+    }
     if (input.dataset && input.dataset.rfield) {
       const field = input.dataset.rfield;
       const value = input.type === "checkbox" ? input.checked : input.value;
@@ -1406,8 +1451,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
         }
       }
       const schedule = this._readScheduleFromCard(card);
-      this._openSchedules = this._openSchedules || new Set();
-      this._openSchedules.add(card.dataset.car);
       try {
         await this._saveCar({ id: card.dataset.car, schedule });
       } catch (err) {
@@ -1432,15 +1475,16 @@ class ElectricityOptimizerPanel extends HTMLElement {
   }
 
   async _onContentClick(ev) {
-    const det = ev.target.closest && ev.target.closest("details[data-sched-details]");
-    if (det && ev.target.closest("summary")) {
-      const card = det.closest("[data-car]");
-      this._openSchedules = this._openSchedules || new Set();
-      // toggle happens after the click event; record the resulting state
-      setTimeout(() => {
-        if (det.open) this._openSchedules.add(card.dataset.car);
-        else this._openSchedules.delete(card.dataset.car);
-      }, 0);
+    const goto = ev.target.closest && ev.target.closest("[data-goto]");
+    if (goto) {
+      ev.preventDefault();
+      this._tab = goto.dataset.goto;
+      try {
+        localStorage.setItem("electricity_optimizer_tab", this._tab);
+      } catch (_) {
+        /* ignore */
+      }
+      this._maybeRender(true);
       return;
     }
     const pick = ev.target.closest && ev.target.closest("[data-pick]");
@@ -1643,6 +1687,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       override: "Manuel styring – tryk Auto for at følge planen",
       full: "Batteriet er fyldt til maks-SoC",
       ev_hold: "Holdes, fordi en elbil lader fra nettet (regel)",
+      day_off: "Slået fra i ugeplanen i dag – batteriet kører selv",
       fuse_wait: "Venter – hovedsikringen er optaget af elbil (regel)",
       auto: modeWhy,
     }[rt.status] || "";
@@ -1707,15 +1752,54 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <h2><ha-icon icon="mdi:tune"></ha-icon>Indstillinger <button class="btn" style="margin-left:auto" data-baction="edit">Rediger sensorer og kommandoer</button></h2>
         <div class="controls">
           <label class="toggle"><input type="checkbox" data-bfield="enabled" ${b.enabled ? "checked" : ""}> Smart styring</label>
-          <label class="toggle"><input type="checkbox" data-bfield="grid_charge_enabled" ${b.grid_charge_enabled ? "checked" : ""}> Må lade fra nettet</label>
           <label class="field">Prisforskel (kr/kWh)<input type="number" step="0.05" min="0" data-bfield="spread_threshold" value="${b.spread_threshold}"></label>
           <label class="field">Reserve-SoC (%)<input type="number" min="0" max="100" data-bfield="min_soc" value="${b.min_soc}"></label>
           <label class="field">Maks-SoC ved netopladning (%)<input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>
           <label class="field">Virkningsgrad (0–1)<input type="number" step="0.01" min="0.5" max="1" data-bfield="efficiency" value="${b.efficiency}"></label>
         </div>
-        <div class="hint" style="margin-top:8px">Hold: prisen er under dagens gennemsnit, og en senere time er mindst prisforskellen dyrere. Lad fra nettet: kun når de dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu.</div>
+        <div class="hint" style="margin-top:8px">Hold: prisen er under dagens gennemsnit, og en senere time er mindst prisforskellen dyrere. Lad fra nettet: kun på dage hvor det er tilladt, og kun når de dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu – eller når ugeplanens mål-SoC skal nås inden klokkeslættet.</div>
+        ${this._renderBatterySchedule(b, plan)}
         ${this._batteryError ? `<div class="err">${esc(this._batteryError)}</div>` : ""}
       </div>`;
+  }
+
+  _renderBatterySchedule(b, plan) {
+    const sched = Array.isArray(b.schedule) && b.schedule.length === 7 ? b.schedule : DAY_NAMES.map(() => ({ enabled: true, grid_charge: !!b.grid_charge_enabled, ready_by: "17:00", target_soc: null }));
+    const today = (new Date().getDay() + 6) % 7;
+    const row = (label, cls, day, e) => `
+      <tr class="${cls}${e.enabled || cls === "all" ? "" : " off"}" data-bday="${day}">
+        <td>${label}</td>
+        <td><input type="checkbox" data-bsched="enabled" ${e.enabled ? "checked" : ""} title="Smart styring denne dag"></td>
+        <td><input type="checkbox" data-bsched="grid_charge" ${e.grid_charge ? "checked" : ""} title="Må lade fra nettet denne dag"></td>
+        <td><input type="time" data-bsched="ready_by" value="${esc(e.ready_by)}"></td>
+        <td><input type="number" min="1" max="100" step="1" data-bsched="target_soc" value="${e.target_soc === null || e.target_soc === undefined ? "" : e.target_soc}" placeholder="–"></td>
+      </tr>`;
+    const dl = plan && plan.deadline ? new Date(plan.deadline) : null;
+    const next = dl
+      ? `Næste mål: ${plan.target_soc} % senest ${DAY_NAMES[(dl.getDay() + 6) % 7].toLowerCase()} kl. ${fmtTime(dl)}${plan.target_hours ? ` (ca. ${fmtNum(plan.target_hours, 1)} t netopladning)` : ""}`
+      : "Intet mål-SoC sat – kun prisforskel-reglen lader fra nettet";
+    return `
+      <div class="sched-wrap">
+        <h3>Ugeplan</h3>
+        <table class="sched">
+          <thead><tr><th>Dag</th><th>Til</th><th>Fra net</th><th>Fuldt senest</th><th>Mål-SoC %</th></tr></thead>
+          <tbody>
+            ${row("Alle dage", "all", "all", { enabled: sched.every((e) => e.enabled), grid_charge: sched.every((e) => e.grid_charge), ready_by: sched[0].ready_by, target_soc: sched[0].target_soc })}
+            ${sched.map((e, i) => row(DAY_NAMES[i], i === today ? "today" : "", i, e)).join("")}
+          </tbody>
+        </table>
+        <div class="hint">Til: smart styring den dag. Fra net: må lade fra nettet den dag. Mål-SoC (valgfrit): batteriet fyldes til dette niveau i de billigste timer inden klokkeslættet – fx 100 % senest kl. 17 før aftenens dyre timer. ${esc(next)}</div>
+      </div>`;
+  }
+
+  _readBatterySchedule(card) {
+    const rows = [...card.querySelectorAll("table.sched tbody tr[data-bday]")].filter((r) => r.dataset.bday !== "all");
+    return rows.map((r) => ({
+      enabled: r.querySelector('[data-bsched="enabled"]').checked,
+      grid_charge: r.querySelector('[data-bsched="grid_charge"]').checked,
+      ready_by: r.querySelector('[data-bsched="ready_by"]').value || "17:00",
+      target_soc: r.querySelector('[data-bsched="target_soc"]').value === "" ? null : Number(r.querySelector('[data-bsched="target_soc"]').value),
+    }));
   }
 
   _renderBatteryPlanStrip(plan) {

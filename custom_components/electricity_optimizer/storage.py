@@ -211,7 +211,39 @@ def normalize_battery(raw: dict[str, Any], existing: dict[str, Any] | None = Non
         cfg["grid_sign"] = "import_positive"
     if cfg["override"] not in ("auto", *BATTERY_MODES):
         cfg["override"] = "auto"
+    cfg["schedule"] = normalize_battery_schedule(cfg.get("schedule"), cfg["grid_charge_enabled"])
+    # keep the legacy flag in sync: "any day may charge from grid"
+    cfg["grid_charge_enabled"] = any(d["grid_charge"] for d in cfg["schedule"])
     return cfg
+
+
+def normalize_battery_schedule(raw: Any, grid_default: bool) -> list[dict[str, Any]]:
+    """Return exactly 7 entries (Mon..Sun) for the battery."""
+    out: list[dict[str, Any]] = []
+    items = raw if isinstance(raw, list) else []
+    for i in range(7):
+        item = items[i] if i < len(items) and isinstance(items[i], dict) else {}
+        ready_by = str(item.get("ready_by") or "17:00").strip()
+        if len(ready_by) == 8:
+            ready_by = ready_by[:5]
+        if not _valid_time(ready_by):
+            ready_by = "17:00"
+        target: int | None
+        raw_target = item.get("target_soc")
+        if raw_target in (None, "", "null"):
+            target = None
+        else:
+            try:
+                target = max(1, min(100, int(float(raw_target))))
+            except (TypeError, ValueError):
+                target = None
+        out.append({
+            "enabled": bool(item.get("enabled", True)),
+            "grid_charge": bool(item.get("grid_charge", grid_default)),
+            "ready_by": ready_by,
+            "target_soc": target,
+        })
+    return out
 
 
 def validate_battery(cfg: dict[str, Any]) -> str | None:

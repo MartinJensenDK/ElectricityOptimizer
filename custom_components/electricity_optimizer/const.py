@@ -92,6 +92,7 @@ BATTERY_DEFAULTS = {
     "hold_stop_entity": "",
     "hold_stop_value": "",
     "override": "auto",  # auto | normal | hold | charge
+    "schedule": None,  # 7 entries Mon..Sun: {enabled, grid_charge, ready_by, target_soc|None}
 }
 
 # Shared rules (EV <-> battery)
