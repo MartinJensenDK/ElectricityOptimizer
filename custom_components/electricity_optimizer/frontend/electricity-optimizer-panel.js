@@ -1057,7 +1057,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const dayLabel = (d) => (d.getDate() === now.getDate() ? "i dag" : "i morgen");
     const meta = [];
     if (plan) {
-      if (plan.need_kwh > 0) meta.push(`Mangler ${fmtNum(plan.need_kwh, 1)} kWh · ca. ${fmtNum(plan.need_hours, 1)} t ved ${fmtNum(car.charge_power_kw, 1)} kW`);
+      if (plan.need_kwh > 0) meta.push(`Mangler ${fmtNum(plan.need_kwh, 1)} kWh · ca. ${fmtNum(plan.need_hours, 1)} t ved ${fmtNum(car.charge_amps, 0)} A (${fmtNum(car.charge_power_kw, 1)} kW)`);
       const dl = new Date(plan.deadline);
       meta.push(`Klar senest ${dayLabel(dl)} kl. ${fmtTime(dl)}${plan.enough_time ? "" : " – ikke nok tid, lader hele vejen"}`);
       if (rt.charging) meta.push("Lader lige nu");
@@ -1086,6 +1086,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <label class="field">Mål-SoC (%)<input type="number" min="1" max="100" step="1" data-field="target_soc" value="${car.target_soc}"></label>
           <label class="field">Klar senest<input type="time" data-field="ready_by" value="${esc(car.ready_by)}"></label>
           <label class="field">Prisgrænse (kr/kWh)<input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
+          <label class="field">Ladestrøm (A)<input type="number" min="1" max="64" step="1" data-field="charge_amps" value="${car.charge_amps}"></label>
         </div>
         <div class="row" style="margin-top:12px">
           <button class="btn ${car.charge_now ? "active" : ""}" data-action="charge-now">${car.charge_now ? "Stop 'Lad nu'" : "Lad nu"}</button>
@@ -1128,7 +1129,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
       name_required: "Navn mangler.",
       soc_required: "Vælg en SoC-sensor.",
       start_stop_required: "Vælg både start- og stop-entitet.",
-      capacity_power_positive: "Kapacitet og ladeeffekt skal være større end 0.",
+      capacity_power_positive: "Kapacitet og ladestrøm skal være større end 0.",
+      current_entity_number: "Strømgrænse-entiteten skal være en number- eller input_number-entitet.",
       ready_by_invalid: "Ugyldigt klokkeslæt.",
     };
     return `
@@ -1142,9 +1144,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${this._cmdFields("Stop opladning", "stop_entity", "stop_value", v)}
             <label class="field">Tilsluttet-sensor (valgfri)<div class="picker"><input name="plugged_entity" data-domains="binary_sensor" value="${v("plugged_entity")}" placeholder="binary_sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field">Batterikapacitet (kWh)<input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
-            <label class="field">Ladeeffekt (kW)<input name="charge_power_kw" type="number" step="0.1" min="0.1" value="${v("charge_power_kw", 11)}"></label>
+            <label class="field">Ladestrøm (A)<input name="charge_amps" type="number" step="1" min="1" max="64" value="${v("charge_amps", 16)}"></label>
+            <label class="field">Faser<select name="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
+            <label class="field">Strømgrænse-entitet (number, valgfri)<div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… sættes til ladestrømmen" autocomplete="off"><div class="picker-list" hidden></div></div></label>
           </div>
-          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT}</div>
+          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Ladestrøm × 230 V × faser giver effekten, som planen regner med. Vælges en strømgrænse-entitet, sættes den til ladestrømmen, hver gang opladning starter, og når du ændrer ladestrømmen.</div>
           ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}
           <div class="row" style="margin-top:14px">
             <button class="btn primary" type="submit" data-action="save-car">Gem</button>
@@ -1200,7 +1204,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     let value;
     if (input.type === "checkbox") value = input.checked;
     else if (field === "price_limit") value = input.value === "" ? null : Number(input.value);
-    else if (field === "target_soc") value = Number(input.value);
+    else if (field === "target_soc" || field === "charge_amps") value = Number(input.value);
     else value = input.value;
     try {
       await this._saveCar({ id: card.dataset.car, [field]: value });
@@ -1246,7 +1250,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         ev.preventDefault();
         const form = btn.closest("form");
         const data = {};
-        for (const el of form.querySelectorAll("input[name]")) data[el.name] = el.value;
+        for (const el of form.querySelectorAll("input[name],select[name]")) data[el.name] = el.value;
         if (form.dataset.id) data.id = form.dataset.id;
         try {
           await this._saveCar(data);

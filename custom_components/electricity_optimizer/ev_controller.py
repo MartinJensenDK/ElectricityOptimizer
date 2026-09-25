@@ -151,6 +151,7 @@ class EvController:
         self.price_entity = price_entity
         self.runtime: dict[str, dict[str, Any]] = {}
         self._last_cmd: dict[str, bool] = {}
+        self._last_amps: dict[str, float] = {}
         self._unsub = None
 
     @callback
@@ -200,6 +201,7 @@ class EvController:
             if cid not in ids:
                 self.runtime.pop(cid)
                 self._last_cmd.pop(cid, None)
+                self._last_amps.pop(cid, None)
 
     async def _evaluate_car(self, now: datetime, slots: list[Slot], car: dict[str, Any]) -> None:
         rt = self.runtime.setdefault(car["id"], {})
@@ -248,11 +250,34 @@ class EvController:
 
         await self._apply(car, desired)
         rt["charging"] = self._last_cmd.get(car["id"], False)
+        if rt["charging"]:
+            await self._apply_amps(car)
+
+    async def _apply_amps(self, car: dict[str, Any]) -> None:
+        """Push the configured current limit to the charger (if an entity is configured)."""
+        cid = car["id"]
+        entity = car.get("current_entity")
+        if not entity or self._last_amps.get(cid) == car["charge_amps"]:
+            return
+        try:
+            await async_run_command(self.hass, entity, str(car["charge_amps"]))
+            self._last_amps[cid] = car["charge_amps"]
+            _LOGGER.info("%s: set current limit to %s A", car["name"], car["charge_amps"])
+        except HomeAssistantError as err:
+            self.runtime[cid]["last_action"] = {
+                "at": dt_util.now().isoformat(),
+                "action": "set_amps",
+                "ok": False,
+                "error": str(err),
+            }
+            _LOGGER.warning("%s: could not set current limit: %s", car["name"], err)
 
     async def _apply(self, car: dict[str, Any], desired: bool) -> None:
         cid = car["id"]
         if self._last_cmd.get(cid) is desired:
             return
+        if not desired:
+            self._last_amps.pop(cid, None)  # re-send the limit next time charging starts
         try:
             if desired:
                 await self._activate(car)

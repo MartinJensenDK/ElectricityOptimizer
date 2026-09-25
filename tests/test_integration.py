@@ -17,6 +17,14 @@ from custom_components.electricity_optimizer.const import DOMAIN
 PRICE_ENTITY = "sensor.energi_data_service"
 
 
+def test_old_cars_get_amps_from_kw() -> None:
+    from custom_components.electricity_optimizer.storage import normalize_car
+
+    car = normalize_car({"name": "Old", "charge_power_kw": 7.4, "phases": 1})
+    assert car["charge_amps"] == 32
+    assert car["charge_power_kw"] == 7.36
+
+
 def _set_prices(hass: HomeAssistant, cheap_hours: set[int]) -> None:
     now = dt_util.now()
     day = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -53,6 +61,7 @@ async def test_websocket_cars_and_charging(hass: HomeAssistant, hass_ws_client) 
     hass.states.async_set("switch.charger", "off")
     turn_on = async_mock_service(hass, "switch", "turn_on")
     turn_off = async_mock_service(hass, "switch", "turn_off")
+    set_value = async_mock_service(hass, "number", "set_value")
 
     await _setup(hass)
     client = await hass_ws_client(hass)
@@ -76,7 +85,9 @@ async def test_websocket_cars_and_charging(hass: HomeAssistant, hass_ws_client) 
                 "start_entity": "switch.charger",
                 "stop_entity": "switch.charger",
                 "capacity_kwh": "75",
-                "charge_power_kw": "11",
+                "charge_amps": "16",
+                "phases": "3",
+                "current_entity": "number.charger_current",
                 "target_soc": 80,
                 "ready_by": (now + timedelta(hours=3)).strftime("%H:%M"),
             },
@@ -86,25 +97,34 @@ async def test_websocket_cars_and_charging(hass: HomeAssistant, hass_ws_client) 
     assert msg["success"]
     car = msg["result"]["car"]
     assert car["capacity_kwh"] == 75.0
+    assert car["charge_power_kw"] == 11.04  # 16 A * 230 V * 3
     assert car["runtime"]["status"] == "charging"
     assert car["runtime"]["plan"]["in_plan_now"] is True
     assert len(turn_on) == 1 and turn_on[0].data["entity_id"] == "switch.charger"
     assert len(turn_off) == 0
+    # current limit pushed to the charger when charging starts
+    assert [(c.data["entity_id"], c.data["value"]) for c in set_value] == [("number.charger_current", 16.0)]
+
+    # changing the amps while charging re-sends the limit and recomputes kW
+    await client.send_json({"id": 35, "type": f"{DOMAIN}/cars/save", "car": {"id": car["id"], "charge_amps": 10}})
+    msg = await client.receive_json()
+    assert msg["result"]["car"]["charge_power_kw"] == 6.9
+    assert [c.data["value"] for c in set_value] == [16.0, 10.0]
 
     # reaching the target sends stop (turn_off on the same switch)
     hass.states.async_set("sensor.car_soc", "80", {"unit_of_measurement": "%"})
-    await client.send_json({"id": 4, "type": f"{DOMAIN}/evaluate"})
+    await client.send_json({"id": 40, "type": f"{DOMAIN}/evaluate"})
     msg = await client.receive_json()
     assert msg["success"]
     assert msg["result"]["cars"][0]["runtime"]["status"] == "done"
     assert len(turn_off) == 1
 
     # partial update via save keeps the rest of the car
-    await client.send_json({"id": 5, "type": f"{DOMAIN}/cars/save", "car": {"id": car["id"], "target_soc": 90}})
+    await client.send_json({"id": 50, "type": f"{DOMAIN}/cars/save", "car": {"id": car["id"], "target_soc": 90}})
     msg = await client.receive_json()
     assert msg["success"] and msg["result"]["car"]["name"] == "Tesla" and msg["result"]["car"]["target_soc"] == 90
 
-    await client.send_json({"id": 6, "type": f"{DOMAIN}/cars/delete", "car_id": car["id"]})
+    await client.send_json({"id": 60, "type": f"{DOMAIN}/cars/delete", "car_id": car["id"]})
     msg = await client.receive_json()
     assert msg["success"] and msg["result"]["deleted"] is True
 

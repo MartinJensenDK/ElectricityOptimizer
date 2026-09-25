@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import (
+    GRID_VOLTAGE,
     BATTERY_DEFAULTS,
     BATTERY_MODES,
     CAR_DEFAULTS,
@@ -20,8 +21,14 @@ from .const import (
 NUMERIC_FIELDS = {
     "capacity_kwh": float,
     "charge_power_kw": float,
+    "charge_amps": float,
+    "phases": int,
     "target_soc": int,
 }
+
+
+def amps_to_kw(amps: float, phases: int) -> float:
+    return round(amps * GRID_VOLTAGE * phases / 1000, 2)
 
 
 def normalize_car(raw: dict[str, Any], existing: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -42,10 +49,15 @@ def normalize_car(raw: dict[str, Any], existing: dict[str, Any] | None = None) -
             car["price_limit"] = float(car["price_limit"])
         except (TypeError, ValueError):
             car["price_limit"] = None
+    car["phases"] = 3 if car["phases"] not in (1, 2, 3) else car["phases"]
+    if "charge_amps" not in raw and not (existing and "charge_amps" in existing):
+        # migrate old cars that only had a power in kW
+        car["charge_amps"] = round(car["charge_power_kw"] * 1000 / (GRID_VOLTAGE * car["phases"]))
+    car["charge_power_kw"] = amps_to_kw(car["charge_amps"], car["phases"])
     car["enabled"] = bool(car["enabled"])
     car["charge_now"] = bool(car["charge_now"])
     car["target_soc"] = max(1, min(100, car["target_soc"]))
-    for key in ("name", "soc_entity", "start_entity", "start_value", "stop_entity", "stop_value", "plugged_entity", "ready_by"):
+    for key in ("name", "soc_entity", "start_entity", "start_value", "stop_entity", "stop_value", "plugged_entity", "current_entity", "ready_by"):
         car[key] = str(car[key] or "").strip()
     if len(car["ready_by"]) == 8:  # HH:MM:SS -> HH:MM
         car["ready_by"] = car["ready_by"][:5]
@@ -61,8 +73,10 @@ def validate_car(car: dict[str, Any]) -> str | None:
         return "soc_required"
     if not car["start_entity"] or not car["stop_entity"]:
         return "start_stop_required"
-    if car["capacity_kwh"] <= 0 or car["charge_power_kw"] <= 0:
+    if car["capacity_kwh"] <= 0 or car["charge_amps"] <= 0:
         return "capacity_power_positive"
+    if car["current_entity"] and car["current_entity"].split(".")[0] not in ("number", "input_number"):
+        return "current_entity_number"
     parts = car["ready_by"].split(":")
     if len(parts) != 2 or not all(p.isdigit() for p in parts) or int(parts[0]) > 23 or int(parts[1]) > 59:
         return "ready_by_invalid"

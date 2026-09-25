@@ -32,6 +32,7 @@ STATIC_URL_BASE = "/electricity_optimizer_static"
 PANEL_FILENAME = "electricity-optimizer-panel.js"
 
 # EV charging
+GRID_VOLTAGE = 230
 STORAGE_KEY_CARS = f"{DOMAIN}.cars"
 STORAGE_VERSION = 1
 EVALUATE_INTERVAL_SECONDS = 60
@@ -45,7 +46,10 @@ CAR_DEFAULTS = {
     "stop_value": "",
     "plugged_entity": "",
     "capacity_kwh": 60.0,
-    "charge_power_kw": 11.0,
+    "charge_amps": 16,
+    "phases": 3,
+    "current_entity": "",  # optional number entity for the charger's current limit
+    "charge_power_kw": 11.04,  # derived: amps * 230 V * phases
     "enabled": True,
     "target_soc": 80,
     "ready_by": "07:00",

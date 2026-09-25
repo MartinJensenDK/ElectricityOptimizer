@@ -51,10 +51,12 @@ Under fanen **Elbiler** tilføjer du en bil med:
 | Start opladning | `switch`, `button`, `script`, `input_boolean` eller `automation`. Tændes/trykkes når der skal lades |
 | Stop opladning | Samme domæner. Er det **samme switch** som start, slukkes den – ellers tændes/trykkes stop-entiteten. Har laderen kun én switch, vælges den begge steder |
 | Tilsluttet-sensor | Valgfri `binary_sensor`; er den `off`, startes der ikke |
-| Kapacitet / ladeeffekt | kWh og kW, bruges til at beregne hvor mange timer der skal lades |
+| Kapacitet | kWh, bruges sammen med ladestrømmen til at beregne hvor mange timer der skal lades |
+| Ladestrøm / faser | A og 1–3 faser; effekten beregnes som A × 230 V × faser. Ladestrømmen kan ændres direkte på bilens kort |
+| Strømgrænse-entitet | Valgfri `number`/`input_number`; sættes til ladestrømmen når opladning starter, og når du ændrer den |
 
 Pr. bil kan du løbende ændre **Smart opladning** til/fra, **mål-SoC**, **klar senest** (klokkeslæt),
-**prisgrænse** (lad altid under denne pris) og trykke **Lad nu**.
+**prisgrænse** (lad altid under denne pris), **ladestrøm** (A) og trykke **Lad nu**.
 
 Planen genberegnes hvert minut: de billigste tidsrum (EnergiDataService, 15 eller 60 min) inden
 deadline vælges, indtil behovet er dækket. Timer uden kendt pris (før kl. 13) estimeres til dagens
