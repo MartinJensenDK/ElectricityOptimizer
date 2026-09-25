@@ -532,7 +532,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">Ingen sensorer valgt – se fanen Solceller</div></div><span class="badge neutral">Ikke sat op</span></div>`;
     }
     const parts = [];
-    if (s.powerKw !== null) parts.push(`${fmtNum(s.powerKw, 2)} kW lige nu`);
+    if (s.powerKw !== null) parts.push(`${fmtNum(Math.round(s.powerKw * 1000), 0)} W lige nu`);
     if (s.todayKwh !== null) parts.push(`${fmtNum(s.todayKwh, 1)} kWh i dag`);
     const producing = s.powerKw !== null && s.powerKw > 0.05;
     return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${esc(parts.join(" · ") || "Ingen data")}</div></div><span class="badge ${producing ? "low" : "neutral"}">${producing ? "Producerer" : "Inaktiv"}</span></div>`;
@@ -735,7 +735,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="grid">
         <div class="card kpi">
           <div class="label"><ha-icon icon="mdi:solar-power"></ha-icon>Produktion lige nu</div>
-          <div class="value">${fmtNum(s.powerKw, 2)}<small>kW</small></div>
+          <div class="value">${fmtNum(s.powerKw === null ? null : Math.round(s.powerKw * 1000), 0)}<small>W</small></div>
           ${
             pct !== null
               ? `<div class="sub">${pct} % af ${fmtNum(s.peakKw, 1)} kWp</div><div class="progress"><div style="width:${pct}%"></div></div>`
