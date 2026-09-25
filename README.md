@@ -80,14 +80,14 @@ med, så den ikke slukker sig selv. Flere biler får sol i den rækkefølge, de 
 
 ## Regler for opladning
 
-Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem elbil og husbatteri:
+Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem elbil og husbatteri. Hvert felt har et (i)-ikon med forklaring, og felter uden betydning skjules:
 
 | Regel | Betydning |
 | --- | --- |
-| Solstrøm først til | *Elbil*: bilen får eksport + batteriets ladeeffekt. *Husbatteri*: bilen får kun eksporten, og først når batteriet er over den valgte SoC |
-| Netopladning først til | Hvem der får plads, når hovedsikringen er sat: *Elbil* holder batteriet tilbage, *Husbatteri* begrænser eller udsætter bilen |
-| Hovedsikring (A) | Valgfri øvre grænse for elbiler + batteri-opladning fra nettet |
-| Hold husbatteri mens elbil lader fra nettet | Standard til: batteriet tømmes ikke ned i bilen om natten |
+| Sol først til | *Elbil*: bilen får eksport + batteriets ladeeffekt. *Husbatteri*: bilen får kun eksporten, og først når batteriet er over grænsen *Elbil får sol fra (%)* (feltet vises kun ved husbatteri først) |
+| Hovedsikring (A) | Valgfri øvre grænse pr. fase for elbiler + batteri-opladning fra nettet. Tom = ingen grænse |
+| Ved sikring først til | Vises kun når hovedsikringen er sat: *Elbil* holder batteriet tilbage, *Husbatteri* begrænser eller udsætter bilen |
+| Hold husbatteri ved net-ladning | Standard til: batteriet tømmes ikke ned i bilen om natten |
 | Sol: start/stop efter | Minutter overskuddet skal være over/under grænsen, før der startes/stoppes |
 | Net-sensor | Import/eksport-sensor til sol-overskud, hvis husbatteriet ikke har én |
 

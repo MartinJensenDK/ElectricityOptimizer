@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.13.0";
+const PANEL_JS_VERSION = "0.14.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -290,6 +290,21 @@ const STYLE = `
   table.sched tr.today td:first-child { font-weight: 600; color: var(--primary-color); }
   .sched-wrap h3 { margin-top: 12px; }
   .hint { font-size: 12px; color: var(--secondary-text-color); }
+  .fl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .info {
+    position: relative; display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%; flex: none;
+    border: 1px solid var(--secondary-text-color); color: var(--secondary-text-color);
+    font-size: 10px; font-weight: 600; font-style: italic; font-family: Georgia, serif;
+    cursor: help; user-select: none; margin-left: 4px;
+  }
+  .info:hover, .info:focus { color: var(--primary-color); border-color: var(--primary-color); outline: none; }
+  .tip {
+    position: fixed; z-index: 50; max-width: min(300px, 80vw);
+    background: var(--primary-text-color); color: var(--card-background-color, #fff);
+    padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.4;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25); pointer-events: none;
+  }
   @media (max-width: 600px) {
     .content { padding: 12px; }
     .tab { font-size: 12px; padding: 10px 4px; }
@@ -463,7 +478,27 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>
       <div class="tabs" role="tablist"></div>
       <div class="content"></div>
+      <div class="tip" hidden></div>
     `;
+    this._tipEl = root.querySelector(".tip");
+    const showTip = (ev) => {
+      const el = ev.target.closest && ev.target.closest(".info");
+      if (!el || !el.dataset.tip) return;
+      const tip = this._tipEl;
+      tip.textContent = el.dataset.tip;
+      tip.hidden = false;
+      const r = el.getBoundingClientRect();
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      let left = r.left + r.width / 2 - tw / 2;
+      left = Math.max(8, Math.min(window.innerWidth - tw - 8, left));
+      let top = r.top - th - 8;
+      if (top < 8) top = r.bottom + 8;
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top}px`;
+    };
+    const hideTip = (ev) => {
+      if (ev.target.closest && ev.target.closest(".info")) this._tipEl.hidden = true;
+    };
     this._menuButton = root.querySelector("ha-menu-button");
     this._menuButton.hass = this._hass;
     this._menuButton.narrow = this._narrow;
@@ -473,6 +508,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._contentEl.addEventListener("change", (ev) => this._onContentChange(ev));
     this._contentEl.addEventListener("input", (ev) => this._onContentInput(ev));
     this._contentEl.addEventListener("focusin", (ev) => this._onContentInput(ev));
+    this._contentEl.addEventListener("mouseover", showTip);
+    this._contentEl.addEventListener("mouseout", hideTip);
+    this._contentEl.addEventListener("focusin", showTip);
+    this._contentEl.addEventListener("focusout", hideTip);
+    this._contentEl.addEventListener("scroll", () => (this._tipEl.hidden = true));
     this._contentEl.addEventListener("focusout", (ev) => {
       const list = ev.target.closest && ev.target.closest(".picker") && ev.target.closest(".picker").querySelector(".picker-list");
       if (list) setTimeout(() => (list.hidden = true), 150);
@@ -1287,22 +1327,55 @@ class ElectricityOptimizerPanel extends HTMLElement {
       : `<div class="hint" style="margin-top:8px">Net-sensor til sol-overskud: ${
           r.grid_power_entity ? `<code>${esc(r.grid_power_entity)}</code>${gridLive.value !== null ? ` (${fmtNum(gridLive.value, 0)} W)` : ""}` : "bruger husbatteriets net-sensor"
         } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-sensor">Vælg sensor</button></div>`;
+    const info = (tip) => `<span class="info" tabindex="0" data-tip="${esc(tip)}">i</span>`;
+    const head = (text, tip) => `<span class="fl">${text}${info(tip)}</span>`;
+    const hasFuse = r.max_total_amps !== null && r.max_total_amps !== "" && Number(r.max_total_amps) > 0;
     return `
       <div class="card" data-rules>
         <h2><ha-icon icon="mdi:scale-balance"></ha-icon>Regler for opladning</h2>
         <div class="controls">
-          <label class="field">Solstrøm først til${sel("solar_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>
-          <label class="field">Elbil får sol når batteri ≥ (%)<input type="number" min="0" max="100" data-rfield="battery_min_soc_for_ev_solar" value="${r.battery_min_soc_for_ev_solar}" ${r.solar_priority === "battery" ? "" : "disabled"}></label>
-          <label class="field">Netopladning først til${sel("grid_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>
-          <label class="field">Hovedsikring (A pr. fase)<input type="number" min="0" step="1" data-rfield="max_total_amps" value="${r.max_total_amps === null ? "" : r.max_total_amps}" placeholder="ingen grænse"></label>
-          <label class="toggle"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri mens elbil lader fra nettet</label>
-          <label class="field">Sol: start efter (min)<input type="number" min="0" step="0.5" data-rfield="solar_start_minutes" value="${r.solar_start_minutes}"></label>
-          <label class="field">Sol: stop efter (min)<input type="number" min="0" step="0.5" data-rfield="solar_stop_minutes" value="${r.solar_stop_minutes}"></label>
+          <label class="field">${head(
+            "Sol først til",
+            "Hvem der får solstrømmen først. Elbil: bilen får eksporten plus det, husbatteriet ellers ville lade med. Husbatteri: bilen får kun det, der ellers sælges til nettet, og først når batteriet er over grænsen ved siden af. Flere biler får sol i den rækkefølge, de står i under Elbiler."
+          )}${sel("solar_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>
+          ${
+            r.solar_priority === "battery"
+              ? `<label class="field">${head(
+                  "Elbil får sol fra (%)",
+                  "Husbatteriets ladestand, hvorfra elbilen må bruge sol-overskuddet, når husbatteriet har førsteret. Under denne grænse går alt overskud til husbatteriet."
+                )}<input type="number" min="0" max="100" data-rfield="battery_min_soc_for_ev_solar" value="${r.battery_min_soc_for_ev_solar}"></label>`
+              : ""
+          }
+          <label class="field">${head(
+            "Hovedsikring (A)",
+            "Maks. strøm pr. fase, som elbiler og husbatteri må trække fra nettet tilsammen. Tom = ingen grænse. Kun med en grænse har rækkefølgen ved sikringen betydning."
+          )}<input type="number" min="0" step="1" data-rfield="max_total_amps" value="${r.max_total_amps === null ? "" : r.max_total_amps}" placeholder="ingen grænse"></label>
+          ${
+            hasFuse
+              ? `<label class="field">${head(
+                  "Ved sikring først til",
+                  "Hvem der får strøm fra nettet, når hovedsikringen ellers ville blive overbelastet. Den anden skrues ned eller venter, til der er plads."
+                )}${sel("grid_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>`
+              : ""
+          }
+          <label class="field">${head(
+            "Sol: start efter (min)",
+            "Hvor længe der skal være sol-overskud nok, før elbilen starter. Forhindrer tænd/sluk, når skyer passerer."
+          )}<input type="number" min="0" step="0.5" data-rfield="solar_start_minutes" value="${r.solar_start_minutes}"></label>
+          <label class="field">${head(
+            "Sol: stop efter (min)",
+            "Hvor længe sol-overskuddet skal mangle, før elbilen stopper igen."
+          )}<input type="number" min="0" step="0.5" data-rfield="solar_stop_minutes" value="${r.solar_stop_minutes}"></label>
         </div>
+        <label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri ved net-ladning${info(
+          "Når en elbil lader fra nettet, sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer."
+        )}</label>
         ${sensorForm}
-        <div class="hint" style="margin-top:8px">Elbil først: bilen får eksporten plus det, batteriet lader med. Husbatteri først: bilen får kun eksporten, og først når batteriet er over grænsen. Flere biler får sol i den rækkefølge, de står i under Elbiler.${
-          ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""
-        }</div>
+        ${
+          ctx.surplus_w !== undefined && ctx.surplus_w !== null
+            ? `<div class="hint" style="margin-top:8px">Sol-overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.</div>`
+            : ""
+        }
         ${this._rulesError ? `<div class="err">${esc(this._rulesError)}</div>` : ""}
       </div>`;
   }
