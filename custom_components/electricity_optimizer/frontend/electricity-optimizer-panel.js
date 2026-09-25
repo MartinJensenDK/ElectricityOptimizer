@@ -7,6 +7,7 @@
 
 const TABS = [
   { id: "home", label: "Forsiden", icon: "mdi:view-dashboard" },
+  { id: "solar", label: "Solceller", icon: "mdi:solar-power-variant" },
   { id: "ev", label: "Elbiler", icon: "mdi:car-electric" },
   { id: "battery", label: "Hus batteri", icon: "mdi:home-battery" },
 ];
@@ -160,6 +161,12 @@ const STYLE = `
     background: var(--secondary-background-color); color: var(--secondary-text-color);
     margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0;
   }
+  .area { fill: var(--warning-color, #ffa600); opacity: 0.25; }
+  .line { fill: none; stroke: var(--warning-color, #ffa600); stroke-width: 2; }
+  .now-line { stroke: var(--primary-text-color); stroke-width: 1; stroke-dasharray: 3 3; }
+  .progress { height: 8px; border-radius: 4px; background: var(--secondary-background-color); overflow: hidden; margin-top: 6px; }
+  .progress > div { height: 100%; background: var(--warning-color, #ffa600); border-radius: 4px; transition: width 300ms; }
+  .setup-link { color: var(--primary-color); text-decoration: none; }
   @media (max-width: 600px) {
     .content { padding: 12px; }
     .tab { font-size: 12px; padding: 10px 4px; }
@@ -220,6 +227,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return this._config.price_entity || "sensor.energi_data_service";
   }
 
+  get _solarEntityIds() {
+    const c = this._config;
+    return [
+      c.solar_power_entity,
+      c.solar_energy_today_entity,
+      c.solar_energy_total_entity,
+      c.solar_forecast_today_entity,
+      c.solar_forecast_tomorrow_entity,
+    ].filter(Boolean);
+  }
+
   connectedCallback() {
     this._maybeRender(true);
     this._timer = setInterval(() => this._maybeRender(), 30000);
@@ -246,9 +264,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (!this._hass) return;
     const st = this._hass.states[this._priceEntityId];
     const now = new Date();
+    const solarKey = this._solarEntityIds
+      .map((id) => (this._hass.states[id] ? this._hass.states[id].last_updated : "x"))
+      .join(",");
     const key = [
       this._tab,
       st ? st.last_updated : "missing",
+      solarKey,
+      this._solarHistoryStamp || 0,
       now.getHours(),
       Math.floor(now.getMinutes() / 15),
       this._hass.language,
@@ -306,6 +329,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const data = this._readPrices();
     let html = "";
     if (this._tab === "home") html = this._renderHome(data);
+    else if (this._tab === "solar") html = this._renderSolar(this._readSolar());
     else if (this._tab === "ev") html = this._renderEv();
     else html = this._renderBattery();
     this._contentEl.innerHTML = html;
@@ -491,7 +515,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="card">
           <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status</h2>
           <div class="status-list">
-            <div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">Ikke tilknyttet endnu</div></div><span class="badge neutral">Senere</span></div>
+            ${this._renderSolarStatusRow()}
             <div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">Ikke tilknyttet endnu</div></div><span class="badge neutral">Senere</span></div>
             <div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">Ingen biler tilføjet</div></div><span class="badge neutral">Senere</span></div>
             <div class="status-row"><ha-icon icon="mdi:database-clock-outline"></ha-icon><div class="t"><div class="n">Prisdata</div><div class="d">${esc(d.attribution || "EnergiDataService")}${
@@ -500,6 +524,18 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </div>
         </div>
       </div>`;
+  }
+
+  _renderSolarStatusRow() {
+    const s = this._readSolar();
+    if (!s.configured) {
+      return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">Ingen sensorer valgt – se fanen Solceller</div></div><span class="badge neutral">Ikke sat op</span></div>`;
+    }
+    const parts = [];
+    if (s.powerKw !== null) parts.push(`${fmtNum(s.powerKw, 2)} kW lige nu`);
+    if (s.todayKwh !== null) parts.push(`${fmtNum(s.todayKwh, 1)} kWh i dag`);
+    const producing = s.powerKw !== null && s.powerKw > 0.05;
+    return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${esc(parts.join(" · ") || "Ingen data")}</div></div><span class="badge ${producing ? "low" : "neutral"}">${producing ? "Producerer" : "Inaktiv"}</span></div>`;
   }
 
   _renderChart(d) {
@@ -567,6 +603,250 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${bars}
       ${meanLine}
       ${ticks.join("")}
+    </svg>`;
+  }
+
+  /* ---------- solar ---------- */
+
+  _numState(entityId) {
+    if (!entityId) return { value: null, unit: null, state: null };
+    const st = this._hass.states[entityId];
+    if (!st || st.state === "unknown" || st.state === "unavailable") return { value: null, unit: null, state: st || null };
+    const v = Number(st.state);
+    return { value: Number.isNaN(v) ? null : v, unit: st.attributes.unit_of_measurement || null, state: st };
+  }
+
+  static _toKw(value, unit) {
+    if (value === null) return null;
+    const u = (unit || "").toLowerCase();
+    if (u === "w") return value / 1000;
+    if (u === "mw") return value * 1000;
+    return value; // assume kW
+  }
+
+  static _toKwh(value, unit) {
+    if (value === null) return null;
+    const u = (unit || "").toLowerCase();
+    if (u === "wh") return value / 1000;
+    if (u === "mwh") return value * 1000;
+    return value; // assume kWh
+  }
+
+  _readSolar() {
+    const c = this._config;
+    const configured = !!(c.solar_power_entity || c.solar_energy_today_entity);
+    const power = this._numState(c.solar_power_entity);
+    const today = this._numState(c.solar_energy_today_entity);
+    const total = this._numState(c.solar_energy_total_entity);
+    const fcToday = this._numState(c.solar_forecast_today_entity);
+    const fcTomorrow = this._numState(c.solar_forecast_tomorrow_entity);
+    const sun = this._hass.states["sun.sun"];
+    const sunAttr = (sun && sun.attributes) || {};
+    return {
+      configured,
+      powerKw: ElectricityOptimizerPanel._toKw(power.value, power.unit),
+      powerEntity: c.solar_power_entity,
+      todayKwh: ElectricityOptimizerPanel._toKwh(today.value, today.unit),
+      totalKwh: ElectricityOptimizerPanel._toKwh(total.value, total.unit),
+      fcTodayKwh: ElectricityOptimizerPanel._toKwh(fcToday.value, fcToday.unit),
+      fcTomorrowKwh: ElectricityOptimizerPanel._toKwh(fcTomorrow.value, fcTomorrow.unit),
+      peakKw: typeof c.solar_peak_kw === "number" ? c.solar_peak_kw : null,
+      sunUp: sun ? sun.state === "above_horizon" : null,
+      elevation: typeof sunAttr.elevation === "number" ? sunAttr.elevation : null,
+      azimuth: typeof sunAttr.azimuth === "number" ? sunAttr.azimuth : null,
+      nextRising: sunAttr.next_rising ? new Date(sunAttr.next_rising) : null,
+      nextSetting: sunAttr.next_setting ? new Date(sunAttr.next_setting) : null,
+      history: this._solarHistory || null,
+    };
+  }
+
+  async _loadSolarHistory() {
+    const entityId = this._config.solar_power_entity;
+    if (!entityId || !this._hass || !this._hass.callWS) return;
+    const now = Date.now();
+    if (this._solarHistoryLoading || (this._solarHistoryAt && now - this._solarHistoryAt < 5 * 60000)) return;
+    this._solarHistoryLoading = true;
+    try {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const res = await this._hass.callWS({
+        type: "history/history_during_period",
+        start_time: start.toISOString(),
+        end_time: new Date().toISOString(),
+        entity_ids: [entityId],
+        minimal_response: true,
+        no_attributes: true,
+        significant_changes_only: false,
+      });
+      const rows = (res && res[entityId]) || [];
+      const unit = (this._hass.states[entityId] || { attributes: {} }).attributes.unit_of_measurement;
+      const points = rows
+        .map((r) => ({ t: Number(r.lu) * 1000, v: ElectricityOptimizerPanel._toKw(Number(r.s), unit) }))
+        .filter((r) => !Number.isNaN(r.v) && r.v !== null);
+      // 10-minute buckets over the whole day, last-known value carried forward
+      const buckets = [];
+      let idx = 0;
+      let last = 0;
+      for (let m = 0; m < 24 * 60; m += 10) {
+        const bt = start.getTime() + m * 60000;
+        if (bt > now) break;
+        while (idx < points.length && points[idx].t <= bt + 10 * 60000) {
+          last = points[idx].v;
+          idx++;
+        }
+        buckets.push({ t: bt, v: Math.max(0, last) });
+      }
+      this._solarHistory = { start: start.getTime(), buckets };
+      this._solarHistoryAt = now;
+      this._solarHistoryStamp = now;
+      this._maybeRender();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("electricity-optimizer: history fetch failed", err);
+    } finally {
+      this._solarHistoryLoading = false;
+    }
+  }
+
+  _renderSolar(s) {
+    if (!s.configured) {
+      return `
+        <div class="card">
+          <div class="empty">
+            <ha-icon icon="mdi:solar-power-variant-outline"></ha-icon>
+            <div>Der er ikke valgt nogen solcelle-sensorer endnu.</div>
+            <div style="margin-top:8px">Gå til <a class="setup-link" href="/config/integrations/integration/electricity_optimizer">Indstillinger → Enheder og tjenester → Electricity Optimizer → Konfigurer</a>
+              og vælg som minimum sensoren for produktion lige nu (W/kW) og produktion i dag (kWh).</div>
+          </div>
+        </div>`;
+    }
+    this._loadSolarHistory();
+
+    const pct = s.peakKw && s.powerKw !== null ? Math.min(100, Math.round((s.powerKw / s.peakKw) * 100)) : null;
+    const fcPct = s.fcTodayKwh && s.todayKwh !== null ? Math.min(100, Math.round((s.todayKwh / s.fcTodayKwh) * 100)) : null;
+    const sunBadge = s.sunUp === null ? "" : s.sunUp ? '<span class="badge low">Solen er oppe</span>' : '<span class="badge neutral">Solen er nede</span>';
+    const rise = s.nextRising ? fmtTime(s.nextRising) : "–";
+    const set = s.nextSetting ? fmtTime(s.nextSetting) : "–";
+    const sunTimes = s.sunUp ? `Solnedgang kl. ${set} · Solopgang i morgen kl. ${rise}` : `Solopgang kl. ${rise} · Solnedgang kl. ${set}`;
+
+    const producedKwh = s.history ? s.history.buckets.reduce((acc, b) => acc + b.v * (10 / 60), 0) : null;
+
+    return `
+      <div class="grid">
+        <div class="card kpi">
+          <div class="label"><ha-icon icon="mdi:solar-power"></ha-icon>Produktion lige nu</div>
+          <div class="value">${fmtNum(s.powerKw, 2)}<small>kW</small></div>
+          ${
+            pct !== null
+              ? `<div class="sub">${pct} % af ${fmtNum(s.peakKw, 1)} kWp</div><div class="progress"><div style="width:${pct}%"></div></div>`
+              : `<div class="sub">${s.peakKw ? "" : "Angiv installeret effekt for at se udnyttelse"}</div>`
+          }
+        </div>
+        <div class="card kpi">
+          <div class="label"><ha-icon icon="mdi:counter"></ha-icon>Produceret i dag</div>
+          <div class="value">${fmtNum(s.todayKwh, 1)}<small>kWh</small></div>
+          ${
+            s.fcTodayKwh
+              ? `<div class="sub">${fcPct} % af prognosen på ${fmtNum(s.fcTodayKwh, 1)} kWh</div><div class="progress"><div style="width:${fcPct}%"></div></div>`
+              : `<div class="sub">${producedKwh !== null && s.todayKwh === null ? `ca. ${fmtNum(producedKwh, 1)} kWh ud fra effektkurven` : ""}</div>`
+          }
+        </div>
+        <div class="card kpi">
+          <div class="label"><ha-icon icon="mdi:weather-sunny"></ha-icon>Prognose</div>
+          <div class="value">${fmtNum(s.fcTodayKwh, 1)}<small>kWh i dag</small></div>
+          <div class="sub">${s.fcTomorrowKwh !== null ? `I morgen: ${fmtNum(s.fcTomorrowKwh, 1)} kWh` : "Ingen prognose-sensor valgt"}</div>
+        </div>
+        <div class="card kpi">
+          <div class="label"><ha-icon icon="mdi:white-balance-sunny"></ha-icon>Solen</div>
+          <div class="value">${s.elevation !== null ? `${fmtNum(s.elevation, 0)}°` : "–"}<small>over horisonten</small></div>
+          <div class="sub">${sunBadge} ${esc(sunTimes)}</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><ha-icon icon="mdi:chart-areaspline"></ha-icon>Produktion i dag</h2>
+        <div class="chart-wrap">${this._renderSolarChart(s)}</div>
+        <div class="legend">
+          <span class="l-mid">Effekt (kW)</span>
+          ${s.peakKw ? `<span style="margin-left:auto">Toppunkt for anlægget: ${fmtNum(s.peakKw, 1)} kWp</span>` : ""}
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg</h2>
+          <table>
+            <tbody>
+              <tr><td>Installeret effekt</td><td class="num">${s.peakKw ? `${fmtNum(s.peakKw, 1)} kWp` : "–"}</td></tr>
+              <tr><td>Produceret i alt</td><td class="num">${s.totalKwh !== null ? `${fmtNum(s.totalKwh, 0)} kWh` : "–"}</td></tr>
+              <tr><td>Solens retning</td><td class="num">${s.azimuth !== null ? `${fmtNum(s.azimuth, 0)}°` : "–"}</td></tr>
+              <tr><td>Effekt-sensor</td><td class="num" style="font-size:12px;color:var(--secondary-text-color)">${esc(s.powerEntity || "–")}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen</h2>
+          <div class="status-list">
+            <div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Overskud fra solceller går først til bilen (indstilles under Elbiler).</div></div></div>
+            <div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">Resten lagres til de dyre timer (indstilles under Hus batteri).</div></div></div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  _renderSolarChart(s) {
+    const W = Math.max(320, Math.floor(this._chartWidth || (this._contentEl && this._contentEl.clientWidth - 34) || 640));
+    const H = 220;
+    const padL = 40, padR = 8, padT = 10, padB = 26;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+    const dayMs = 24 * 3600000;
+    const x = (t, start) => padL + ((t - start) / dayMs) * innerW;
+
+    if (!s.history) {
+      return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><text class="tick" x="${W / 2}" y="${H / 2}" text-anchor="middle">${
+        s.powerEntity ? "Henter dagens produktionskurve…" : "Vælg en effekt-sensor for at se kurven"
+      }</text></svg>`;
+    }
+    const { start, buckets } = s.history;
+    const maxV = Math.max(s.peakKw || 0, ...buckets.map((b) => b.v), 0.1);
+    const y = (v) => padT + innerH - (v / maxV) * innerH;
+    const pts = buckets.map((b) => `${x(b.t, start).toFixed(1)},${y(b.v).toFixed(1)}`);
+    const lastT = buckets.length ? buckets[buckets.length - 1].t : start;
+    const area = pts.length
+      ? `<path class="area" d="M${x(buckets[0].t, start).toFixed(1)},${y(0).toFixed(1)} L${pts.join(" L")} L${x(lastT, start).toFixed(1)},${y(0).toFixed(1)} Z"/>`
+      : "";
+    const line = pts.length ? `<polyline class="line" points="${pts.join(" ")}"/>` : "";
+
+    const xt = [];
+    for (let h = 0; h <= 24; h += 3) {
+      const xx = padL + (h / 24) * innerW;
+      xt.push(`<line class="axis" x1="${xx.toFixed(1)}" x2="${xx.toFixed(1)}" y1="${padT}" y2="${padT + innerH}" opacity="0.5"/>`);
+      if (h < 24) xt.push(`<text class="tick" x="${xx.toFixed(1)}" y="${H - 8}" text-anchor="middle">${pad2(h)}</text>`);
+    }
+    const yt = [];
+    for (let i = 0; i <= 4; i++) {
+      const v = (maxV * i) / 4;
+      yt.push(`<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" opacity="0.5"/>`);
+      yt.push(`<text class="tick" x="${padL - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmtNum(v, 1)}</text>`);
+    }
+    const nowX = x(Date.now(), start);
+    const sunLines = [];
+    for (const [d, label] of [[s.nextRising, "op"], [s.nextSetting, "ned"]]) {
+      if (!d) continue;
+      let t = d.getTime();
+      // sun.sun exposes the *next* event; if that is tomorrow, shift back one day (≈ today's time)
+      if (t > start + dayMs) t -= dayMs;
+      if (t < start || t > start + dayMs) continue;
+      const xx = x(t, start);
+      sunLines.push(`<line class="axis" x1="${xx.toFixed(1)}" x2="${xx.toFixed(1)}" y1="${padT}" y2="${padT + innerH}" stroke-dasharray="4 3"/>`);
+      sunLines.push(`<text class="tick" x="${(xx + 3).toFixed(1)}" y="${padT + 10}">Sol ${label}</text>`);
+    }
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      ${yt.join("")}${xt.join("")}
+      ${area}${line}
+      <line class="now-line" x1="${nowX.toFixed(1)}" x2="${nowX.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
+      ${sunLines.join("")}
     </svg>`;
   }
 

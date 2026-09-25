@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_loaded_integration
 
 from .const import (
     CONF_PRICE_ENTITY,
+    CONF_SOLAR_PEAK_KW,
     DEFAULT_PRICE_ENTITY,
     DOMAIN,
     PANEL_FILENAME,
@@ -19,52 +22,58 @@ from .const import (
     PANEL_TITLE,
     PANEL_URL_PATH,
     PANEL_WEBCOMPONENT,
+    SOLAR_ENTITY_KEYS,
     STATIC_URL_BASE,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = []
+
+def effective_config(entry: ConfigEntry) -> dict[str, Any]:
+    """Merge entry data and options into the config the panel needs."""
+    merged = {**entry.data, **entry.options}
+    config: dict[str, Any] = {
+        CONF_PRICE_ENTITY: merged.get(CONF_PRICE_ENTITY, DEFAULT_PRICE_ENTITY),
+    }
+    for key in SOLAR_ENTITY_KEYS:
+        if merged.get(key):
+            config[key] = merged[key]
+    if merged.get(CONF_SOLAR_PEAK_KW):
+        config[CONF_SOLAR_PEAK_KW] = float(merged[CONF_SOLAR_PEAK_KW])
+    return config
 
 
-def _integration_version(hass: HomeAssistant) -> str:
-    """Read version from manifest for cache busting."""
-    from homeassistant.loader import async_get_loaded_integration
-
-    integration = async_get_loaded_integration(hass, DOMAIN)
-    return str(integration.version or "0")
+async def _async_register_panel(hass: HomeAssistant, config: dict[str, Any]) -> None:
+    """(Re)register the sidebar panel with the current config."""
+    version = str(async_get_loaded_integration(hass, DOMAIN).version or "0")
+    if PANEL_URL_PATH in hass.data.get(frontend.DATA_PANELS, {}):
+        frontend.async_remove_panel(hass, PANEL_URL_PATH)
+    await panel_custom.async_register_panel(
+        hass,
+        frontend_url_path=PANEL_URL_PATH,
+        webcomponent_name=PANEL_WEBCOMPONENT,
+        sidebar_title=PANEL_TITLE,
+        sidebar_icon=PANEL_ICON,
+        module_url=f"{STATIC_URL_BASE}/{PANEL_FILENAME}?v={version}",
+        require_admin=False,
+        config={**config, "version": version},
+    )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Electricity Optimizer from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        CONF_PRICE_ENTITY: entry.data.get(CONF_PRICE_ENTITY, DEFAULT_PRICE_ENTITY),
-    }
+    domain_data = hass.data.setdefault(DOMAIN, {})
 
-    if not hass.data[DOMAIN].get("_static_registered"):
+    if not domain_data.get("_static_registered"):
         frontend_dir = Path(__file__).parent / "frontend"
         await hass.http.async_register_static_paths(
             [StaticPathConfig(STATIC_URL_BASE, str(frontend_dir), cache_headers=False)]
         )
-        hass.data[DOMAIN]["_static_registered"] = True
+        domain_data["_static_registered"] = True
 
-    if not hass.data[DOMAIN].get("_panel_registered"):
-        version = _integration_version(hass)
-        await panel_custom.async_register_panel(
-            hass,
-            frontend_url_path=PANEL_URL_PATH,
-            webcomponent_name=PANEL_WEBCOMPONENT,
-            sidebar_title=PANEL_TITLE,
-            sidebar_icon=PANEL_ICON,
-            module_url=f"{STATIC_URL_BASE}/{PANEL_FILENAME}?v={version}",
-            require_admin=False,
-            config={
-                "price_entity": entry.data.get(CONF_PRICE_ENTITY, DEFAULT_PRICE_ENTITY),
-                "version": version,
-            },
-        )
-        hass.data[DOMAIN]["_panel_registered"] = True
+    config = effective_config(entry)
+    domain_data[entry.entry_id] = config
+    await _async_register_panel(hass, config)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
@@ -78,10 +87,5 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     hass.data[DOMAIN].pop(entry.entry_id, None)
-
-    remaining = [k for k in hass.data[DOMAIN] if not k.startswith("_")]
-    if not remaining:
-        frontend.async_remove_panel(hass, PANEL_URL_PATH)
-        hass.data[DOMAIN].pop("_panel_registered", None)
-
+    frontend.async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
     return True

@@ -7,6 +7,9 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
 
 - **Forsiden** – pris lige nu, laveste/højeste/gennemsnit i dag, prisgraf for i dag og i morgen,
   billigste og dyreste timer fremover samt status for solceller, batteri og elbiler.
+- **Solceller** – produktion lige nu (og udnyttelse af kWp), produceret i dag mod prognosen,
+  prognose for i dag/i morgen, solens højde og op-/nedgang samt dagens produktionskurve
+  (hentet fra Home Assistants historik).
 - **Elbiler** – indstillinger for opladning af elbiler (kommer).
 - **Hus batteri** – indstillinger for opladning/afladning af husbatteri (kommer).
 
@@ -22,7 +25,19 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
 2. Tilføj `https://github.com/MartinJensenDK/ElectricityOptimizer` med kategori *Integration*.
 3. Installer **Electricity Optimizer** og genstart Home Assistant.
 4. Indstillinger → Enheder og tjenester → *Tilføj integration* → **Electricity Optimizer**.
-5. Vælg EnergiDataService-prissensoren. Menupunktet dukker op i sidebaren.
+5. Vælg EnergiDataService-prissensoren og (valgfrit) dine solcelle-sensorer. Menupunktet dukker op i sidebaren.
+
+Sensorerne kan altid ændres under Indstillinger → Enheder og tjenester → Electricity Optimizer → **Konfigurer**.
+
+### Solcelle-sensorer
+
+| Felt | Forventet | Eksempel |
+| --- | --- | --- |
+| Produktion lige nu | sensor i W eller kW (device_class `power`) | inverterens PV-effekt |
+| Produktion i dag | sensor i kWh (device_class `energy`), nulstilles dagligt | inverterens "yield today" |
+| Produktion i alt | sensor i kWh, akkumuleret | inverterens "total yield" |
+| Prognose i dag / i morgen | sensor i kWh | Solcast eller Forecast.Solar |
+| Installeret effekt | tal i kWp | 6,4 |
 
 ## Manuel installation
 
@@ -34,7 +49,7 @@ Home Assistant-installation og genstart.
 ```
 custom_components/electricity_optimizer/
 ├── __init__.py            # registrerer statisk sti og sidebar-panel
-├── config_flow.py         # opsætning: valg af prissensor
+├── config_flow.py         # opsætning + Konfigurer: prissensor og solcelle-sensorer
 ├── const.py
 ├── manifest.json
 ├── strings.json

@@ -7,6 +7,18 @@
         "data": {
           "price_entity": "Elpris-sensor"
         }
+      },
+      "solar": {
+        "title": "Solceller",
+        "description": "Valgfrit: vælg sensorerne for dit solcelleanlæg. Kan ændres senere under Konfigurer.",
+        "data": {
+          "solar_power_entity": "Solcelleproduktion lige nu (W eller kW)",
+          "solar_energy_today_entity": "Solcelleproduktion i dag (kWh)",
+          "solar_energy_total_entity": "Solcelleproduktion i alt (kWh)",
+          "solar_forecast_today_entity": "Solprognose i dag (kWh)",
+          "solar_forecast_tomorrow_entity": "Solprognose i morgen (kWh)",
+          "solar_peak_kw": "Installeret effekt (kWp)"
+        }
       }
     },
     "error": {
@@ -15,6 +27,27 @@
     },
     "abort": {
       "already_configured": "Electricity Optimizer er allerede sat op."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Electricity Optimizer",
+        "description": "Prissensor og solcelle-sensorer.",
+        "data": {
+          "price_entity": "Elpris-sensor",
+          "solar_power_entity": "Solcelleproduktion lige nu (W eller kW)",
+          "solar_energy_today_entity": "Solcelleproduktion i dag (kWh)",
+          "solar_energy_total_entity": "Solcelleproduktion i alt (kWh)",
+          "solar_forecast_today_entity": "Solprognose i dag (kWh)",
+          "solar_forecast_tomorrow_entity": "Solprognose i morgen (kWh)",
+          "solar_peak_kw": "Installeret effekt (kWp)"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Enheden blev ikke fundet.",
+      "not_energidataservice": "Sensoren ligner ikke en EnergiDataService-prissensor (mangler attributten raw_today)."
     }
   }
 }
