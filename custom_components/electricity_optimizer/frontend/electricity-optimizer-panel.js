@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.26.0";
+const PANEL_JS_VERSION = "0.26.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1879,14 +1879,23 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (!cars || !cars.length) {
       return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">Ingen biler tilføjet – se fanen Elbiler</div></div><span class="badge neutral">Ikke sat op</span></div>`;
     }
+    const K = ElectricityOptimizerPanel;
     const charging = cars.filter((c) => c.runtime && c.runtime.charging).length;
     const desc = cars
       .map((c) => {
         const v = this._numState(c.soc_entity).value;
-        return `${c.name}: ${v !== null ? fmtNum(v, 0) + " %" : "–"}`;
+        const [text] = K.STATUS_TEXT[(c.runtime || {}).status] || ["–"];
+        return `${c.name}: ${v !== null ? fmtNum(v, 0) + " %" : "–"} – ${text}`;
       })
       .join(" · ");
-    return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${esc(desc)}</div></div><span class="badge ${charging ? "low" : "neutral"}">${charging ? `${charging} lader` : "Ingen lader"}</span></div>`;
+    // badge: how many charge, else the most relevant waiting/blocking status, else done
+    let badge = ["Klar", "low"];
+    if (charging) badge = [`${charging} lader`, "low"];
+    else {
+      const active = cars.find((c) => c.runtime && c.runtime.status && !["done", "disabled"].includes(c.runtime.status)) || cars.find((c) => c.runtime && c.runtime.status);
+      if (active) badge = K.STATUS_TEXT[active.runtime.status] || ["–", "neutral"];
+    }
+    return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${esc(desc)}</div></div><span class="badge ${badge[1]}">${esc(badge[0])}</span></div>`;
   }
 
   _renderEv() {

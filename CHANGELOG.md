@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.26.1
+
+- Forsiden, Status-kortet: rækken Elbiler viser nu hver bils ladestatus (fx "Venter på solproduktion") i stedet for "Ingen lader", og mærkatet viser antal biler, der lader, eller den mest relevante status.
+
 ## 0.26.0
 
 - Solceller: Anlæg-kortet viser "Produceret i dag" i stedet for "Produceret i alt" samt "Produceret denne uge", "denne måned" og "i år" fra tre nye valgfrie energi-sensorer under Konfigurer. "Solcelleproduktion i alt" er fjernet fra konfigurationen.
