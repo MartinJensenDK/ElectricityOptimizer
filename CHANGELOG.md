@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.22.1
+
+- Elbil: status siger ikke længere "Lader", når bilen ikke gør det. Med en ladeeffekt-sensor vises "Starter ikke – 0 W", hvis bilen trækker under 100 W tre minutter efter start, og start-kommandoen gensendes hvert 5. minut. Bliver start-kommandoen afvist af laderens integration, vises "Start fejlede" med fejlteksten, og der prøves igen ved næste beregning.
+- Historik: med en ladeeffekt-sensor tælles der ikke energi, når sensoren viser 0 W.
+
 ## 0.22.0
 
 - Solopladning: når bilen starter, sendes kun start-kommandoen. Ladestrømmen (A) sendes første gang efter det valgte interval og justeres derefter højst så ofte. Nyt felt "Ladestrøm hvert (sek)" under Regler for opladning (standard 30 s). Stop sender som før kun stop-kommandoen.

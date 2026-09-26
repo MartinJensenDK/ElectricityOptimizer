@@ -224,6 +224,7 @@ class EvController:
         self._last_cmd: dict[str, bool] = {}
         self._charging_since: dict[str, datetime] = {}
         self._force_send: set[str] = set()  # cars whose next start/stop must be sent even if unchanged
+        self._start_retry_at: dict[str, datetime] = {}
         self.notifier = None  # set by __init__
         self._last_amps: dict[str, float] = {}
         self._last_amps_at: dict[str, datetime] = {}
@@ -358,6 +359,9 @@ class EvController:
         await self._apply(car, desired)
         rt["charging"] = self._last_cmd.get(car["id"], False)
         rt["amps"] = self._last_amps.get(car["id"]) if desired else None
+        if desired and not rt["charging"]:
+            rt["status"] = "cmd_failed"  # the start command was rejected; last_action carries the error
+        await self._verify_power(ctx, car, rt, car_w)
         rt["session"] = self._session(ctx, car, rt, plan, desired, mode, car_w, amps)
         if desired and mode == "grid":
             ctx.ev_grid_charging = True
@@ -369,6 +373,29 @@ class EvController:
         self._last_amps.pop(car_id, None)
         self._last_amps_at.pop(car_id, None)
         self._force_send.add(car_id)
+
+    NO_POWER_W = 100  # below this the car is not really charging
+    NO_POWER_GRACE_S = 180  # give the charger this long to ramp up after start
+    START_RETRY_S = 300  # re-send the start command this often while the car draws nothing
+
+    async def _verify_power(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], car_w: float | None) -> None:
+        """With a power sensor: a commanded charge that draws nothing is reported as such and the start is re-sent."""
+        cid = car["id"]
+        if not rt["charging"] or car_w is None or car_w >= self.NO_POWER_W:
+            rt["no_power_since"] = None
+            return
+        since = rt.get("no_power_since")
+        if since is None:
+            rt["no_power_since"] = since = ctx.now.isoformat()
+        if (ctx.now - datetime.fromisoformat(since)).total_seconds() < self.NO_POWER_GRACE_S:
+            return
+        rt["status"] = "no_power"
+        last = self._start_retry_at.get(cid)
+        if last is None or (ctx.now - last).total_seconds() >= self.START_RETRY_S:
+            self._start_retry_at[cid] = ctx.now
+            self._force_send.add(cid)
+            _LOGGER.warning("%s: start was sent but the car draws %s W - sending start again", car["name"], round(car_w))
+            await self._apply(car, True)
 
     # ---- notifications
 

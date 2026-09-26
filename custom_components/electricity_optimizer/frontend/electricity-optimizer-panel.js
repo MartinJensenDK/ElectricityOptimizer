@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.22.0";
+const PANEL_JS_VERSION = "0.22.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1502,6 +1502,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     solar: ["Lader fra sol", "low"],
     solar_wait: ["Venter på sol-overskud", "mid"],
     solar_low: ["Venter på solproduktion", "mid"],
+    no_power: ["Starter ikke – 0 W", "high"],
+    cmd_failed: ["Start fejlede", "high"],
     battery_first: ["Venter – husbatteri har prioritet", "mid"],
     no_solar_sensor: ["Mangler solcelle-sensor", "neutral"],
     fuse_wait: ["Venter – hovedsikring", "mid"],
@@ -1736,6 +1738,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         return "Vælg solcelle-effekt under Konfigurer";
       case "fuse_wait":
         return "Hovedsikringen er optaget";
+      case "no_power":
+        return "Start er sendt, men bilen trækker ingen strøm – start gensendes hvert 5. min. Tjek laderen";
+      case "cmd_failed":
+        return rt.last_action && rt.last_action.error ? `${rt.last_action.error} – prøver igen om et minut` : "Kommandoen blev afvist – prøver igen om et minut";
       case "not_plugged":
         return "Sæt bilen i laderen";
       default:
@@ -1833,7 +1839,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       } else {
         meta.push("Ingen aktiv dag i ugeplanen – lader kun fra sol, prisgrænse eller Lad nu");
       }
-      if (rt.charging) meta.push("Lader lige nu");
+      if (rt.charging && rt.status !== "no_power") meta.push("Lader lige nu");
       else if (plan.next_start) {
         const ns = new Date(plan.next_start);
         meta.push(`Næste planlagte ladning ${dayLabel(ns)} kl. ${fmtTime(ns)}`);
@@ -1846,7 +1852,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const parts = [];
       if (rt.amps) parts.push(`${rt.amps} A`);
       if (liveW !== null) parts.push(`${fmtNum(liveW, 0)} W`);
-      meta.push(`${rt.mode === "solar" ? "Lader fra sol" : "Lader"}${parts.length ? " med " + parts.join(" · ") : ""}`);
+      if (rt.status === "no_power") meta.push(`Start er sendt${rt.amps ? ` og ${rt.amps} A er sat` : ""}, men bilen trækker ${fmtNum(liveW || 0, 0)} W – start gensendes hvert 5. minut`);
+      else meta.push(`${rt.mode === "solar" ? "Lader fra sol" : "Lader"}${parts.length ? " med " + parts.join(" · ") : ""}`);
     } else if (liveW !== null && liveW > 50) {
       meta.push(`Bilen trækker ${fmtNum(liveW, 0)} W`);
     }

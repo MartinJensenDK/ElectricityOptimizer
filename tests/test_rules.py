@@ -512,3 +512,52 @@ async def test_amps_interval_is_configurable(hass: HomeAssistant, hass_ws_client
     freezer.tick(timedelta(seconds=61))
     await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
     assert [c.data["value"] for c in set_value] == [7.0]
+
+
+async def test_no_power_after_start_is_reported_and_start_resent(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.grid", "-12000", {"unit_of_measurement": "W"})  # enough for max amps (no current entity)
+    hass.states.async_set("sensor.car_power", "0", {"unit_of_measurement": "W"})
+    press = async_mock_service(hass, "button", "press")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0}})
+    car = {**CAR, "start_entity": "button.authorize", "stop_entity": "button.deauthorize", "current_entity": "", "power_entity": "sensor.car_power"}
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": car})
+    assert res["car"]["runtime"]["status"] == "solar"
+    assert [c.data["entity_id"] for c in press] == ["button.authorize"]
+
+    freezer.tick(timedelta(seconds=60))
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar"  # still within the grace period
+
+    freezer.tick(timedelta(seconds=150))
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    rt = res["cars"][0]["runtime"]
+    assert rt["status"] == "no_power" and rt["charging"] is True
+    assert [c.data["entity_id"] for c in press] == ["button.authorize", "button.authorize"]  # start re-sent
+
+    freezer.tick(timedelta(seconds=60))
+    await _ws(hass, client, 5, {"type": f"{DOMAIN}/evaluate"})
+    assert len(press) == 2  # not more often than every 5 minutes
+
+    hass.states.async_set("sensor.car_power", "4100", {"unit_of_measurement": "W"})  # the car charges now
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar"
+
+    hist = await _ws(hass, client, 7, {"type": f"{DOMAIN}/history/list"})
+    assert hist["open"] and hist["open"][0]["solar_kwh"] == 0  # 0 W measured -> no energy counted
+
+
+async def test_failed_start_is_visible_in_status(hass: HomeAssistant, hass_ws_client) -> None:
+    """A start command the charger integration rejects shows as a failed start, not as charging."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    await _setup(hass)  # no button service registered -> press fails
+    client = await hass_ws_client(hass)
+    car = {**CAR, "source": "plan", "charge_now": True, "start_entity": "button.authorize", "stop_entity": "button.deauthorize", "current_entity": ""}
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/cars/save", "car": car})
+    rt = res["car"]["runtime"]
+    assert rt["status"] == "cmd_failed" and rt["charging"] is False
+    assert rt["last_action"]["ok"] is False and rt["last_action"]["action"] == "start"

@@ -168,7 +168,7 @@ class HistoryTracker:
                 seen.add(key)
                 car_w = rt.get("car_w")
                 amps = rt.get("amps") or car["max_amps"]
-                power_w = car_w if car_w and car_w > 0 else amps * GRID_VOLTAGE * car["phases"]
+                power_w = car_w if car_w is not None else amps * GRID_VOLTAGE * car["phases"]
                 self._touch(key, ctx, kind="ev", item_id=car["id"], name=car["name"], source=rt["mode"], power_w=power_w, soc=rt.get("soc"))
         if battery_cfg is not None and battery_runtime.get("mode") == "charge":
             seen.add("battery")
