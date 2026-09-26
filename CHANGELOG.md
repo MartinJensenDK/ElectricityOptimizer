@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.2
+
+- Forsiden, Status-kortet: mærkatet "Venter – husbatteri har prioritet" hedder nu blot "Venter". Den fulde forklaring står stadig i teksten ved bilen.
+
 ## 0.30.1
 
 - Forsiden, Elbiler-kortet: med én bil vises batteriet i samme størrelse som Hus batteri, med bilens navn, mål og status under. Med flere biler vises den kompakte liste som før.

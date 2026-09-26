@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.1";
+const PANEL_JS_VERSION = "0.30.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1955,6 +1955,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `<div class="statusbar">${chips.join("")}</div>`;
   }
 
+  /** Shorter wording for the badge in the Status card; the full text stays in the description. */
+  static STATUS_BADGE_SHORT = { battery_first: "Venter" };
+
   _renderEvStatusRow() {
     const cars = this._cars;
     if (!cars || !cars.length) {
@@ -1974,7 +1977,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (charging) badge = [`${charging} lader`, "low"];
     else {
       const active = cars.find((c) => c.runtime && c.runtime.status && !["done", "disabled"].includes(c.runtime.status)) || cars.find((c) => c.runtime && c.runtime.status);
-      if (active) badge = K.STATUS_TEXT[active.runtime.status] || ["–", "neutral"];
+      if (active) {
+        const [text, cls] = K.STATUS_TEXT[active.runtime.status] || ["–", "neutral"];
+        badge = [K.STATUS_BADGE_SHORT[active.runtime.status] || text, cls];
+      }
     }
     return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${esc(desc)}</div></div><span class="badge ${badge[1]}">${esc(badge[0])}</span></div>`;
   }
