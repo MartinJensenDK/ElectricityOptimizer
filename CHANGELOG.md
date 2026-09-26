@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.29.0
+
+- Forsiden: nyt kort "Batteri niveau" ved siden af Hus batteri-måleren. Det viser husbatteriet som et batteri, der fyldes op efter ladestanden, i samme farver som måleren (rød ved reserven, orange tæt på, ellers grøn), med reserven som stiplet streg og de kWh, der cirka er tilbage.
+
 ## 0.28.0
 
 - "Regler for opladning" er flyttet fra forsiden og ligger nu nederst på både Elbiler-fanen og Hus batteri-fanen. Det er de samme indstillinger begge steder.

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.28.0";
+const PANEL_JS_VERSION = "0.29.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -158,6 +158,12 @@ const STYLE = `
   .gauge .gu { font-size: 12px; font-weight: 400; fill: var(--secondary-text-color); }
   .gauge .gs { font-size: 12px; fill: var(--secondary-text-color); }
   .gauge .gt { font-size: 9px; fill: var(--secondary-text-color); }
+  .batt .body { fill: var(--secondary-background-color, #eee); stroke: var(--secondary-text-color); stroke-width: 2; }
+  .batt .nub { fill: var(--secondary-text-color); }
+  .batt .fill { transition: width 400ms; }
+  .batt .reserve { stroke: var(--secondary-text-color); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.8; }
+  .batt .bv { font-size: 26px; font-weight: 500; fill: var(--primary-text-color); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 4px; stroke-linejoin: round; }
+  .batt .bu { font-size: 12px; font-weight: 400; }
   .badge {
     display: inline-block;
     padding: 2px 10px;
@@ -1026,6 +1032,29 @@ class ElectricityOptimizerPanel extends HTMLElement {
     });
   }
 
+  /** Battery illustration: a horizontal cell whose fill follows the state of charge, same colours as the SoC gauge. */
+  _renderBatteryLevel(soc) {
+    const K = ElectricityOptimizerPanel;
+    const b = this._battery;
+    const minSoc = b ? Number(b.min_soc) || 0 : 0;
+    const pct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
+    const color = soc === null ? "var(--secondary-text-color)" : soc <= minSoc ? K.COLOR_IN : soc <= minSoc + 10 ? K.COLOR_SUN : K.COLOR_OUT;
+    const x = 22, y = 30, w = 150, h = 64, pad = 5;
+    const inner = w - 2 * pad;
+    const fillW = (inner * pct) / 100;
+    const resX = x + pad + (inner * Math.max(0, Math.min(100, minSoc))) / 100;
+    const kwh = b && soc !== null ? (Number(b.capacity_kwh) * pct) / 100 : null;
+    const sub = !b ? "Ikke sat op" : kwh === null ? `${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %` : `≈ ${fmtNum(kwh, 1)} af ${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %`;
+    return `<svg class="gauge batt" viewBox="0 0 200 128" role="img" aria-label="Batteri niveau ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}">
+      <rect class="body" x="${x}" y="${y}" width="${w}" height="${h}" rx="9"/>
+      <rect class="nub" x="${x + w + 2}" y="${y + h / 2 - 11}" width="7" height="22" rx="2.5"/>
+      ${fillW > 0 ? `<rect class="fill" style="fill:${color}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="5"/>` : ""}
+      ${b && minSoc > 0 ? `<line class="reserve" x1="${resX.toFixed(1)}" x2="${resX.toFixed(1)}" y1="${y + 2}" y2="${y + h - 2}"/>` : ""}
+      <text class="bv" x="${x + w / 2}" y="${y + h / 2 + 9}" text-anchor="middle">${soc === null ? "–" : fmtNum(soc, 0)}<tspan class="bu"> %</tspan></text>
+      <text class="gs" x="100" y="120" text-anchor="middle">${esc(sub)}</text>
+    </svg>`;
+  }
+
   _gridLiveW() {
     // battery's grid sensor first, then the rules' house-level sensor
     const live = this._battery ? this._readBatteryLive() : { gridW: null, houseW: null };
@@ -1066,6 +1095,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand. Rød ved eller under reserven, orange tæt på reserven, ellers grøn.")}</div>
           ${this._renderSocGauge(bat.soc)}
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:battery-medium"></ha-icon>Batteri niveau${I("Husbatteriets ladestand vist som et batteri, der fyldes op. Samme farver som Hus batteri-måleren: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
+          ${this._renderBatteryLevel(bat.soc)}
         </div>
       </div>
       ${sideCard}
