@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.33.3";
+const PANEL_JS_VERSION = "0.33.4";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -208,10 +208,12 @@ const STYLE = `
   .form-grid .cmd .btn { height: 38px; }
   .rules-section { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); margin: 24px 0 2px; }
   .rules-section:first-of-type { margin-top: 4px; }
-  .rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 16px; align-items: end; }
-  .rules-grid .field { height: auto; }
-  .rules-grid .fl { white-space: normal; line-height: 1.25; min-height: 2.5em; align-items: flex-end; display: flex; }
+  .rules-grid { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
+  .rules-grid .field { flex: 0 1 auto; min-width: 90px; height: auto; }
+  .rules-grid .fl { white-space: nowrap; line-height: 1.25; display: flex; align-items: center; }
   .rules-grid input, .rules-grid select { height: 38px; box-sizing: border-box; }
+  .rules-grid .field input { width: 0; min-width: 100%; }
+  .rules-grid .field select { width: auto; min-width: 100%; }
   .prio-field { grid-column: span 2; }
   .prio-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: row; gap: 8px; }
   .prio-list li {

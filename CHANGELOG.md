@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.33.4
+
+- Regler for opladning: felterne er nu lige så brede som deres overskrift. Er indholdet i en dropdown bredere end overskriften, er det indholdet, der bestemmer bredden.
+
 ## 0.33.3
 
 - Hus batteri-fanen (Indstillinger) og bilkortene: inputfelterne er nu lige så brede som deres overskrift, så overskrifterne ikke længere overlapper hinanden.
