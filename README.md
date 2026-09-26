@@ -88,8 +88,8 @@ Kortet **Regler for opladning** nederst på fanerne Elbiler og Hus batteri (samm
 | Regel | Betydning |
 | --- | --- |
 | Sol prioritet | Sorterbar liste (træk eller tryk ⇅): nr. 1 får solstrømmen først. *Elbil* som nr. 1: bilen får eksport + batteriets ladeeffekt. *Husbatteri* som nr. 1: elbilen lader ikke fra sol |
-| Prioriter indtil (%) | Nr. 1 vinder, indtil dens ladestand når denne procent; derover vinder nr. 2. Vinder elbilen, får den eksport + batteriets ladeeffekt |
-| EV buffer (%) | Kun med husbatteri som nr. 1, altid lavere end Prioriter indtil. Under EV buffer lader bilen ikke fra sol; mellem EV buffer og Prioriter indtil har batteriet forrang, og bilen kører højst med min. ladestrøm (starter kun, hvis solen alene dækker den) |
+| Prioriter 1. indtil (%) | Nr. 1 vinder, indtil dens ladestand når denne procent; derover vinder nr. 2. Vinder elbilen, får den eksport + batteriets ladeeffekt |
+| EV buffer (%) | Kun med husbatteri som nr. 1, altid lavere end Prioriter 1. indtil. Under EV buffer lader bilen ikke fra sol; mellem EV buffer og Prioriter 1. indtil har batteriet forrang, og bilen kører højst med min. ladestrøm (starter kun, hvis solen alene dækker den) |
 | Husbatteri må lade bilen over øvre grænse | Vises med husbatteri som nr. 1. Over den øvre grænse må batteriets ledige afladeeffekt bruges til bilen, hvis solen ikke rækker; under grænsen stopper bilen igen |
 | Elbil-sol: sol ≥ (W) | Elbilen lader kun fra sol, når solcellerne (effekt-sensoren fra opsætningen) har produceret mindst så meget i det valgte antal minutter; falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det |
 | Ladestrøm hvert (sek) | Ved solopladning sendes ladestrømmen første gang så mange sekunder efter start og justeres derefter højst så ofte |

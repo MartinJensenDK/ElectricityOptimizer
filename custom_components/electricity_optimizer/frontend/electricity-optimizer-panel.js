@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.5";
+const PANEL_JS_VERSION = "0.30.6";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -218,7 +218,7 @@ const STYLE = `
   .form-grid input, .form-grid select { height: 38px; box-sizing: border-box; }
   .form-grid .cmd-field { grid-column: span 2; }
   .form-grid .cmd .btn { height: 38px; }
-  .rules-section { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); margin: 14px 0 6px; }
+  .rules-section { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); margin: 24px 0 2px; }
   .rules-section:first-of-type { margin-top: 4px; }
   .rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 16px; align-items: end; }
   .rules-grid .field { height: auto; }
@@ -364,6 +364,7 @@ const STYLE = `
   .rules-toggles { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: 12px; }
   .rules-now { margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: var(--secondary-background-color); font-size: 13px; line-height: 1.4; }
   .rules-now strong { color: var(--primary-text-color); font-weight: 500; }
+  .rules-now div + div { margin-top: 2px; }
   .fl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   th .info, h2 .info, h3 .info, .label .info, .toggle .info { text-transform: none; letter-spacing: 0; font-size: 10px; margin-left: 6px; vertical-align: middle; }
   h3 { display: flex; align-items: center; }
@@ -1697,6 +1698,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return res;
   }
 
+  /** Split a text into sentences (a full stop followed by a capital letter), keeping "Nr. 1" and "min. ladestrøm" intact. */
+  static _sentences(text) {
+    return String(text || "")
+      .split(/(?<=\.)\s+(?=[A-ZÆØÅ])/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+
   /** One sentence describing what the current solar rules mean (shared by the rules card and the solar tab). */
   _solarPriorityText(rules) {
     const limit = rules.solar_priority_over;
@@ -1761,7 +1770,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="rules-section">Prioritering</div>
         <div class="rules-grid">
                       <div class="field prio-field"><span class="fl">Sol prioritet${I(
-              "Træk rækkerne: nr. 1 får solstrømmen først, indtil dens ladestand når 'Prioriter indtil'; derover vinder nr. 2. Vinder elbilen, får den eksporten plus det, husbatteriet ellers ville lade med. Med husbatteri som nr. 1 kører bilen med min. ladestrøm mellem EV buffer og Prioriter indtil og stopper under EV buffer. Flere biler får sol i den rækkefølge, de står i under Elbiler."
+              "Træk rækkerne: nr. 1 får solstrømmen først, indtil dens ladestand når 'Prioriter 1. indtil'; derover vinder nr. 2. Vinder elbilen, får den eksporten plus det, husbatteriet ellers ville lade med. Med husbatteri som nr. 1 kører bilen med min. ladestrøm mellem EV buffer og Prioriter 1. indtil og stopper under EV buffer. Flere biler får sol i den rækkefølge, de står i under Elbiler."
             )}</span>
               <ol class="prio-list" data-prio>
                 ${(r.solar_priority === "battery" ? ["battery", "ev"] : ["ev", "battery"])
@@ -1772,14 +1781,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
               </ol>
             </div>
           <label class="field">${head(
-              "Prioriter indtil (%)",
+              "Prioriter 1. indtil (%)",
               "Nr. 1 har solstrømmen først, indtil dens ladestand når denne procent. Derover vinder nr. 2: er det elbilen, får den eksporten plus det, husbatteriet ellers ville lade med."
             )}<input type="number" min="1" max="100" data-rfield="solar_priority_over" value="${r.solar_priority_over}"></label>
           ${
             r.solar_priority === "battery"
               ? `<label class="field">${head(
                   "EV buffer (%)",
-                  "Kun med husbatteri som nr. 1. Under denne ladestand lader elbilen ikke fra sol. Mellem EV buffer og Prioriter indtil har husbatteriet forrang: bilen fortsætter kun med min. ladestrøm og starter kun, hvis solen alene dækker den. Skal være lavere end Prioriter indtil."
+                  "Kun med husbatteri som nr. 1. Under denne ladestand lader elbilen ikke fra sol. Mellem EV buffer og Prioriter 1. indtil har husbatteriet forrang: bilen fortsætter kun med min. ladestrøm og starter kun, hvis solen alene dækker den. Skal være lavere end Prioriter 1. indtil."
                 )}<input type="number" min="0" max="${Math.max(0, r.solar_priority_over - 1)}" data-rfield="ev_buffer_soc" value="${r.ev_buffer_soc}"></label>`
               : ""
           }
@@ -1813,9 +1822,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
             )}<input type="number" min="0" step="1" data-rfield="max_total_amps" value="${r.max_total_amps === null ? "" : r.max_total_amps}" placeholder="ingen grænse"></label>
 
         </div>
-        <div class="rules-now hint"><strong>${esc(this._solarPriorityText(r))}</strong> ${esc(this._solarConditionsText(r))}${
-          hasFuse ? ` Ved fuld hovedsikring (${fmtNum(r.max_total_amps, 0)} A) får ${r.grid_priority === "battery" ? "husbatteriet" : "elbilen"} strømmen først.` : ""
-        }</div>
+        <div class="rules-now hint">${ElectricityOptimizerPanel._sentences(this._solarPriorityText(r))
+          .map((t) => `<div><strong>${esc(t)}</strong></div>`)
+          .join("")}${ElectricityOptimizerPanel._sentences(
+          `${this._solarConditionsText(r)}${hasFuse ? ` Ved fuld hovedsikring (${fmtNum(r.max_total_amps, 0)} A) får ${r.grid_priority === "battery" ? "husbatteriet" : "elbilen"} strømmen først.` : ""}`
+        )
+          .map((t) => `<div>${esc(t)}</div>`)
+          .join("")}</div>
         <div class="rules-toggles">
           ${
             r.solar_priority === "battery"

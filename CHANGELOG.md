@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.6
+
+- Regler for opladning: "Prioriter indtil (%)" hedder nu "Prioriter 1. indtil (%)".
+- Mere luft før hver overskrift (Prioritering, Sol-ladning, Elnet) og mindre afstand fra overskrift til felterne under.
+- Forklaringsboksen viser nu én sætning pr. linje.
+
 ## 0.30.5
 
 - Solceller, "Sådan bruges solstrømmen": den blå cirkel er erstattet af et mellemstort "1." og "2." foran hver række.
