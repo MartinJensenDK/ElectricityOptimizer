@@ -194,6 +194,7 @@ class BatteryController:
         self.price_entity = price_entity
         self.runtime: dict[str, Any] = {}
         self._active: str | None = None  # last commanded mode
+        self.notifier = None  # set by __init__
 
     def _number(self, entity_id: str) -> float | None:
         if not entity_id:
@@ -308,9 +309,13 @@ class BatteryController:
         rt["mode"] = mode
         try:
             await self._apply(cfg, mode)
+            if self.notifier is not None:
+                self.notifier.clear("cmd:battery")
         except HomeAssistantError as err:
             rt["last_action"] = {"at": ctx.now.isoformat(), "mode": mode, "ok": False, "error": str(err)}
             _LOGGER.warning("Battery: could not switch to %s: %s", mode, err)
+            if self.notifier is not None:
+                self.notifier.notify("cmd:battery", "Husbatteri-kommando fejlede", f"Kunne ikke skifte husbatteriet til {mode}: {err}")
 
     async def _run(self, cfg: dict[str, Any], mode: str, action: str) -> bool:
         start = cfg[f"{mode}_start_entity"]

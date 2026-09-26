@@ -221,6 +221,7 @@ class EvController:
         self.runtime: dict[str, dict[str, Any]] = {}
         self._last_cmd: dict[str, bool] = {}
         self._charging_since: dict[str, datetime] = {}
+        self.notifier = None  # set by __init__
         self._last_amps: dict[str, float] = {}
         self._last_amps_at: dict[str, datetime] = {}
 
@@ -302,6 +303,7 @@ class EvController:
 
         target = plan["target_soc"] if plan else car["target_soc"]
         rt["target_soc"] = target
+        self._notify_plan_problems(car, rt, plan, soc, plugged, target)
         if soc >= target:
             rt["status"] = "done"
             if car["charge_now"]:
@@ -350,6 +352,30 @@ class EvController:
             ctx.ev_grid_charging = True
         if desired:
             ctx.ev_amps_total += amps
+
+    # ---- notifications
+
+    def _notify_plan_problems(self, car: dict[str, Any], rt: dict[str, Any], plan: dict[str, Any] | None, soc: float, plugged: bool | None, target: float) -> None:
+        if self.notifier is None or not car["enabled"] or plan is None or not plan.get("deadline") or soc >= target:
+            return
+        source = rt.get("source_today")
+        if source not in ("plan", "solar_plan"):
+            return
+        deadline = datetime.fromisoformat(plan["deadline"])
+        when = deadline.strftime("%H:%M")
+        if not plan["enough_time"]:
+            self.notifier.notify(
+                f"deadline:{car['id']}:{plan['deadline']}",
+                "Elbil når ikke mål-SoC",
+                f"{car['name']} når ikke {target:.0f} % inden kl. {when}: der mangler {plan['need_kwh']:.1f} kWh "
+                f"(ca. {plan['need_hours']:.1f} timer ved {car['charge_power_kw']:.1f} kW), men der er ikke timer nok tilbage.",
+            )
+        if plugged is False and plan["in_plan_now"]:
+            self.notifier.notify(
+                f"unplugged:{car['id']}:{plan['deadline']}",
+                "Elbil ikke tilsluttet",
+                f"{car['name']} skulle lade nu for at nå {target:.0f} % inden kl. {when}, men er ikke tilsluttet laderen.",
+            )
 
     # ---- solar surplus
 
@@ -471,6 +497,8 @@ class EvController:
         except HomeAssistantError as err:
             self.runtime[cid]["last_action"] = {"at": ctx.now.isoformat(), "action": "set_amps", "ok": False, "error": str(err)}
             _LOGGER.warning("%s: could not set current limit: %s", car["name"], err)
+            if self.notifier is not None:
+                self.notifier.notify(f"amps:{cid}", "Elbil-kommando fejlede", f"{car['name']}: kunne ikke sætte ladestrøm til {amps} A – {err}")
 
     def _session(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], plan: dict[str, Any] | None, desired: bool, mode: str | None, car_w: float | None, amps: int) -> dict[str, Any] | None:
         """Charging period for the chart: when charging starts and is expected to finish.
@@ -518,9 +546,13 @@ class EvController:
             self._last_cmd[cid] = desired
             self.runtime[cid]["last_action"] = {"at": dt_util.now().isoformat(), "action": "start" if desired else "stop", "ok": True}
             _LOGGER.info("%s: sent %s", car["name"], "start" if desired else "stop")
+            if self.notifier is not None:
+                self.notifier.clear(f"cmd:{cid}")
         except HomeAssistantError as err:
             self.runtime[cid]["last_action"] = {"at": dt_util.now().isoformat(), "action": "start" if desired else "stop", "ok": False, "error": str(err)}
             _LOGGER.warning("%s: could not send %s: %s", car["name"], "start" if desired else "stop", err)
+            if self.notifier is not None:
+                self.notifier.notify(f"cmd:{cid}", "Elbil-kommando fejlede", f"{car['name']}: kunne ikke sende {'start' if desired else 'stop'} – {err}")
 
     async def _activate(self, car: dict[str, Any]) -> None:
         await async_run_command(self.hass, car["start_entity"], car.get("start_value") or None)

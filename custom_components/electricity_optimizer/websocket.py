@@ -106,7 +106,15 @@ async def ws_evaluate(hass: HomeAssistant, connection: websocket_api.ActiveConne
 
 
 @callback
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/history/list"})
+@websocket_api.async_response
+async def ws_history_list(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    history = hass.data[DOMAIN].get("history")
+    connection.send_result(msg["id"], history.snapshot() if history else {"entries": [], "open": []})
+
+
 def async_register(hass: HomeAssistant) -> None:
+    websocket_api.async_register_command(hass, ws_history_list)
     websocket_api.async_register_command(hass, ws_cars_list)
     websocket_api.async_register_command(hass, ws_cars_save)
     websocket_api.async_register_command(hass, ws_cars_delete)

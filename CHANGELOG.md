@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.19.0
+
+- Ny fane **Historik**: ladeperioder for elbiler og husbatteri med start/slut, kilde (sol/net), kWh, betalt, gennemsnitspris, sparet og SoC, samt sum for i dag, 7 dage og 30 dage. Sparet regnes som det, solstrømmen ville have kostet fra nettet, og for netopladning i forhold til dagens gennemsnitspris. Der gemmes 90 dage.
+- Notifikationer i Home Assistant, når en elbil ikke kan nå mål-SoC inden deadline, når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil eller husbatteri fejler. Kan slås fra under Regler for opladning. Hændelsen `electricity_optimizer_notification` sendes altid til brug i automationer.
+- Diagnostik-download under Integrationer → Electricity Optimizer.
+
 ## 0.18.0
 
 - Regler: "Sol først til" er nu en sorterbar liste "Sol prioritet" (træk rækkerne eller tryk ⇅), hvor nr. 1 altid vinder. To nye felter, "Prioriter over (%)" og "Prioriter under (%)", afgrænser nr. 1's ladestand: uden for intervallet prioriteres der ikke, og solstrømmen bruges normalt. Feltet "Elbil-sol: batteri ≥ (%)" er erstattet af intervallet (gamle værdier migreres).

@@ -108,6 +108,7 @@ RULES_DEFAULTS = {
     "hold_battery_while_ev_grid_charging": True,
     "solar_min_w": None,  # EV solar charging requires production >= this (None = off)
     "solar_min_minutes": 2,  # how long production/surplus must be above (start) or below (stop)
+    "notify_enabled": True,  # persistent notifications (events are always fired)
     "grid_power_entity": "",  # used when the battery has none
     "grid_sign": "import_positive",
 }

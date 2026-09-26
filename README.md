@@ -16,6 +16,9 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
   en deadline, styret via de start/stop-entiteter du vælger (lader eller bil).
 - **Hus batteri** – live SoC, batteri-, net- og husforbrugs-effekt, modus lige nu (Normal / Hold /
   Lad fra nettet), planstrimmel, manuel styring og indstillinger.
+- **Historik** – ladeperioder for elbiler og husbatteri: hvornår, fra sol eller net, kWh, betalt, gennemsnitspris
+  og sparet (sol = hvad energien ville have kostet fra nettet; net = i forhold til dagens gennemsnitspris),
+  med sum for i dag, 7 dage og 30 dage. Der gemmes 90 dage.
 
 ## Krav
 
@@ -171,3 +174,13 @@ custom_components/electricity_optimizer/
 ```
 
 Release notes for hver version står i [CHANGELOG.md](CHANGELOG.md) og vises i HACS ved opdatering.
+
+## Notifikationer og fejlsøgning
+
+Electricity Optimizer viser en notifikation i Home Assistant, når en elbil ikke kan nå sit mål-SoC inden deadline,
+når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil eller husbatteri fejler. Slå dem fra
+under Regler for opladning. Hændelsen `electricity_optimizer_notification` (med `key`, `title` og `message`)
+sendes altid, så du kan bygge automationer, fx en besked til din telefon.
+
+Under Indstillinger → Integrationer → Electricity Optimizer kan du hente diagnostik (konfiguration, regler, biler
+med status, husbatteri, seneste beregning, sensorernes tilstand og de seneste ladeperioder) til fejlsøgning.

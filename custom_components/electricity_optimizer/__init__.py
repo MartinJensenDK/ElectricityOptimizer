@@ -32,6 +32,8 @@ from .const import (
 )
 from .battery_controller import BatteryController
 from .ev_controller import EvController
+from .history import HistoryStore, HistoryTracker
+from .notify import Notifier
 from .optimizer import Optimizer
 from .storage import BatteryStore, CarStore, RulesStore
 
@@ -104,6 +106,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     optimizer = Optimizer(hass, config[CONF_PRICE_ENTITY], controller, battery_controller, rules_store, config)
     domain_data["optimizer"] = optimizer
 
+    history_store = HistoryStore(hass)
+    await history_store.async_load()
+    history = HistoryTracker(hass, history_store)
+    optimizer.history = history
+    domain_data["history"] = history
+
+    notifier = Notifier(hass, rules_store)
+    controller.notifier = notifier
+    battery_controller.notifier = notifier
+    domain_data["notifier"] = notifier
+
     if not domain_data.get("_ws_registered"):
         websocket.async_register(hass)
         domain_data["_ws_registered"] = True
@@ -155,5 +168,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN].pop("ev", None)
     hass.data[DOMAIN].pop("battery", None)
     hass.data[DOMAIN].pop("optimizer", None)
+    history = hass.data[DOMAIN].pop("history", None)
+    hass.data[DOMAIN].pop("notifier", None)
+    if history is not None:
+        await history.store.async_save()
     frontend.async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
     return True

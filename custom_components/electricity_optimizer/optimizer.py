@@ -33,6 +33,7 @@ class Optimizer:
         self.battery = battery
         self.rules_store = rules
         self.last_context: Context | None = None
+        self.history = None  # HistoryTracker, set by __init__
 
     def _grid_w_from_rules(self) -> float | None:
         rules = self.rules_store.rules
@@ -124,6 +125,11 @@ class Optimizer:
         await self.ev.async_evaluate(ctx)
         await self.battery.async_apply(ctx, battery_mode)
         self.last_context = ctx
+        if self.history is not None:
+            try:
+                await self.history.async_update(ctx, self.ev.store.cars, self.ev.runtime, self.battery.store.battery, self.battery.runtime)
+            except Exception:  # noqa: BLE001 - history must never break control
+                _LOGGER.exception("History update failed")
 
     def watched_entities(self) -> set[str]:
         ids = {self.price_entity}

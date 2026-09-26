@@ -343,6 +343,7 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     for key, cast in RULES_OPTIONAL_NUMERIC.items():
         rules[key] = _optional_number(rules[key], cast)
     rules["hold_battery_while_ev_grid_charging"] = bool(rules["hold_battery_while_ev_grid_charging"])
+    rules["notify_enabled"] = bool(rules["notify_enabled"])
     rules["solar_min_minutes"] = max(0.0, rules["solar_min_minutes"])
     under = max(0, min(100, rules["solar_priority_under"]))
     over = max(0, min(100, rules["solar_priority_over"]))

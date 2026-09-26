@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.18.0";
+const PANEL_JS_VERSION = "0.19.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -34,6 +34,7 @@ const TABS = [
   { id: "solar", label: "Solceller", icon: "mdi:solar-power-variant" },
   { id: "ev", label: "Elbiler", icon: "mdi:car-electric" },
   { id: "battery", label: "Hus batteri", icon: "mdi:home-battery" },
+  { id: "history", label: "Historik", icon: "mdi:history" },
 ];
 
 const STYLE = `
@@ -301,6 +302,8 @@ const STYLE = `
   table.sched tr.today td:first-child { font-weight: 600; color: var(--primary-color); }
   .sched-wrap h3 { margin-top: 12px; }
   .hint { font-size: 12px; color: var(--secondary-text-color); }
+  table.history { min-width: 720px; }
+  table.history tr.running td { background: var(--secondary-background-color); }
   .rules-now { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--secondary-background-color); font-size: 13px; line-height: 1.4; }
   .rules-now strong { color: var(--primary-text-color); font-weight: 500; }
   .fl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -341,6 +344,7 @@ const fmtNum = (v, d = 2) =>
 
 const pad2 = (n) => String(n).padStart(2, "0");
 const fmtTime = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+const fmtDate = (d) => `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}`;
 
 class ElectricityOptimizerPanel extends HTMLElement {
   constructor() {
@@ -349,6 +353,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._tab = "home";
     this._lastKey = null;
     this._cars = null;
+    this._history = null;
     this._carsStamp = 0;
     this._battery = undefined; // undefined = not loaded, null = not configured
     this._batteryRuntime = {};
@@ -476,6 +481,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       solarKey,
       this._solarHistoryStamp || 0,
       this._carsStamp,
+      this._historyStamp || 0,
       now.getHours(),
       Math.floor(now.getMinutes() / 15),
       this._hass.language,
@@ -610,8 +616,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     else if (this._tab === "solar") html = this._renderSolar(this._readSolar());
     else if (this._tab === "ev") html = this._renderEv();
     else if (this._tab === "battery") html = this._renderBattery();
+    else if (this._tab === "history") html = this._renderHistory();
     if (this._tab === "ev" || this._tab === "home") this._loadCars();
     if (this._tab === "battery" || this._tab === "home") this._loadBattery();
+    if (this._tab === "history") this._loadHistory();
     this._loadRules();
     if (this._tab === "solar") {
       this._loadCars();
@@ -1611,6 +1619,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="hint rules-now"><strong>${esc(this._solarPriorityText(r))}</strong> ${esc(this._solarConditionsText(r))}${
           hasFuse ? ` Ved fuld hovedsikring (${fmtNum(r.max_total_amps, 0)} A) får ${r.grid_priority === "battery" ? "husbatteriet" : "elbilen"} strømmen først.` : ""
         }</div>
+        <label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="notify_enabled" ${r.notify_enabled === false ? "" : "checked"}> Notifikationer${info(
+          "Vis en notifikation i Home Assistant, når en elbil ikke kan nå sit mål-SoC inden deadline, når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil eller husbatteri fejler. Hændelsen electricity_optimizer_notification sendes altid, så du kan lave automationer."
+        )}</label>
         <label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri ved net-ladning${info(
           "Når en elbil lader fra nettet, sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer."
         )}</label>
@@ -2081,6 +2092,107 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="picker"><input name="${entityKey}" data-domains="${ElectricityOptimizerPanel.CMD_DOMAINS}" value="${v(entityKey)}" placeholder="entitet" autocomplete="off"><div class="picker-list" hidden></div></div>
           <input name="${valueKey}" value="${v(valueKey)}" placeholder="værdi (select/number)">
         </div>
+      </div>`;
+  }
+
+  /* ---------- history ---------- */
+
+  async _loadHistory(force = false) {
+    if (!this._hass || !this._hass.callWS) return;
+    const now = Date.now();
+    if (!force && this._historyLoadedAt && now - this._historyLoadedAt < 10000) return;
+    if (this._historyLoading) return;
+    this._historyLoading = true;
+    try {
+      const res = await this._hass.callWS({ type: "electricity_optimizer/history/list" });
+      this._historyLoadedAt = Date.now();
+      const json = JSON.stringify(res);
+      if (json !== this._historyJson) {
+        this._history = res;
+        this._historyJson = json;
+        this._historyStamp = Date.now();
+        this._maybeRender();
+      }
+    } catch (err) {
+      this._historyError = err && err.message ? err.message : String(err);
+    } finally {
+      this._historyLoading = false;
+    }
+  }
+
+  static _sumHistory(items, since) {
+    const out = { kwh: 0, solar: 0, cost: 0, saved: 0, n: 0 };
+    for (const e of items) {
+      const t = new Date(e.end || e.last || e.start).getTime();
+      if (t < since) continue;
+      out.kwh += e.kwh || 0;
+      out.solar += e.solar_kwh || 0;
+      out.cost += e.cost || 0;
+      out.saved += e.saved || 0;
+      out.n++;
+    }
+    return out;
+  }
+
+  _renderHistory() {
+    const h = this._history;
+    if (!h) return `<div class="card"><div class="empty"><ha-icon icon="mdi:timer-sand"></ha-icon>Henter historik…</div></div>`;
+    const all = [...(h.open || []), ...(h.entries || [])];
+    const now = new Date();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const periods = [
+      ["I dag", dayStart],
+      ["7 dage", now.getTime() - 7 * 864e5],
+      ["30 dage", now.getTime() - 30 * 864e5],
+    ];
+    const kr = (v) => `${fmtNum(v, 2)}<small>kr</small>`;
+    const cards = periods
+      .map(([label, since]) => {
+        const t = ElectricityOptimizerPanel._sumHistory(all, since);
+        return `
+          <div class="card kpi">
+            <div class="label"><ha-icon icon="mdi:calendar-range"></ha-icon>${label}${I(`Summen af ladeperioder, der er afsluttet (eller i gang) i perioden: ${label.toLowerCase()}.`)}</div>
+            <div class="value">${fmtNum(t.kwh + t.solar, 1)}<small>kWh ladet</small></div>
+            <div class="sub">heraf ${fmtNum(t.solar, 1)} kWh fra sol · ${fmtNum(t.kwh, 1)} kWh fra nettet</div>
+            <div class="sub">Betalt ${kr(t.cost)} · sparet <strong>${kr(t.saved)}</strong> · ${t.n} ${t.n === 1 ? "periode" : "perioder"}</div>
+          </div>`;
+      })
+      .join("");
+    const src = (e) => (e.source === "solar" ? '<span class="badge low">Sol</span>' : '<span class="badge mid">Net</span>');
+    const rows = all
+      .map((e) => {
+        const start = new Date(e.start);
+        const end = e.end ? new Date(e.end) : null;
+        const total = (e.kwh || 0) + (e.solar_kwh || 0);
+        const avg = e.kwh > 0 && e.price_kwh !== undefined ? e.price_kwh / e.kwh : e.kwh > 0 ? e.cost / e.kwh : null;
+        const soc = e.soc_start !== null && e.soc_start !== undefined && e.soc_end !== null && e.soc_end !== undefined ? `${fmtNum(e.soc_start, 0)} → ${fmtNum(e.soc_end, 0)} %` : "–";
+        return `<tr class="${e.running ? "running" : ""}">
+          <td>${fmtDate(start)} ${fmtTime(start)}</td>
+          <td>${end ? `${fmtDate(end) === fmtDate(start) ? "" : fmtDate(end) + " "}${fmtTime(end)}` : '<span class="badge info">i gang</span>'}</td>
+          <td>${esc(e.name)}</td>
+          <td>${src(e)}</td>
+          <td class="num">${fmtNum(total, 2)}</td>
+          <td class="num">${fmtNum(e.cost || 0, 2)}</td>
+          <td class="num">${avg === null ? "–" : fmtNum(avg, 2)}</td>
+          <td class="num">${fmtNum(e.saved || 0, 2)}</td>
+          <td class="num">${soc}</td>
+        </tr>`;
+      })
+      .join("");
+    return `
+      <div class="grid">${cards}</div>
+      <div class="card">
+        <h2><ha-icon icon="mdi:history"></ha-icon>Ladeperioder${I(
+          "Hver periode, hvor en elbil eller husbatteriet har ladet. kWh regnes ud fra ladeeffekt-sensoren (ellers ladestrøm × 230 V × faser) for hvert minut. Betalt = kWh fra nettet × elprisen i den time. Sparet: solstrøm regnes som det, samme energi ville have kostet fra nettet; netopladning regnes i forhold til dagens gennemsnitspris. Der gemmes 90 dage."
+        )}</h2>
+        ${
+          all.length
+            ? `<div class="chart-wrap"><table class="history">
+          <thead><tr><th>Start</th><th>Slut</th><th>Hvad</th><th>Kilde</th><th style="text-align:right">kWh</th><th style="text-align:right">Betalt kr</th><th style="text-align:right">Gns. kr/kWh</th><th style="text-align:right">Sparet kr</th><th style="text-align:right">SoC</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>`
+            : `<div class="empty"><ha-icon icon="mdi:battery-clock"></ha-icon>Ingen ladeperioder endnu. De dukker op her, når en bil eller husbatteriet har ladet.</div>`
+        }
+        ${this._historyError ? `<div class="err">${esc(this._historyError)}</div>` : ""}
       </div>`;
   }
 
