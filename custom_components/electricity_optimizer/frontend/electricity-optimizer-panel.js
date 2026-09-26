@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.6";
+const PANEL_JS_VERSION = "0.30.7";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -365,6 +365,7 @@ const STYLE = `
   .rules-now { margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: var(--secondary-background-color); font-size: 13px; line-height: 1.4; }
   .rules-now strong { color: var(--primary-text-color); font-weight: 500; }
   .rules-now div + div { margin-top: 2px; }
+  .rules-now .rules-now-title { font-weight: 500; color: var(--primary-text-color); margin-bottom: 6px; }
   .fl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   th .info, h2 .info, h3 .info, .label .info, .toggle .info { text-transform: none; letter-spacing: 0; font-size: 10px; margin-left: 6px; vertical-align: middle; }
   h3 { display: flex; align-items: center; }
@@ -1822,7 +1823,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             )}<input type="number" min="0" step="1" data-rfield="max_total_amps" value="${r.max_total_amps === null ? "" : r.max_total_amps}" placeholder="ingen grænse"></label>
 
         </div>
-        <div class="rules-now hint">${ElectricityOptimizerPanel._sentences(this._solarPriorityText(r))
+        <div class="rules-now hint"><div class="rules-now-title">Forklaring på nuværende indstillinger</div>${ElectricityOptimizerPanel._sentences(this._solarPriorityText(r))
           .map((t) => `<div><strong>${esc(t)}</strong></div>`)
           .join("")}${ElectricityOptimizerPanel._sentences(
           `${this._solarConditionsText(r)}${hasFuse ? ` Ved fuld hovedsikring (${fmtNum(r.max_total_amps, 0)} A) får ${r.grid_priority === "battery" ? "husbatteriet" : "elbilen"} strømmen først.` : ""}`
