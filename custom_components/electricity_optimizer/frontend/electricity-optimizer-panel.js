@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.21.0";
+const PANEL_JS_VERSION = "0.21.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -94,6 +94,19 @@ const STYLE = `
   .tab[aria-selected="true"] { opacity: 1; border-bottom-color: currentColor; }
   .tab ha-icon { --mdc-icon-size: 20px; }
   .content { padding: 16px; max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
+  .statusbar {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 12px;
+  }
+  .sb-item {
+    display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 6px 12px 6px 10px; border-radius: 999px; cursor: pointer;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--ha-card-border-color, var(--divider-color, #e0e0e0));
+    font-size: 13px; color: var(--primary-text-color);
+  }
+  .sb-item ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
+  .sb-item .sb-name { font-weight: 500; }
+  .sb-item .sb-detail { color: var(--secondary-text-color); }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -735,6 +748,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
     return `
+      ${this._renderStatusBar()}
       ${this._renderLiveRow()}
       <div class="card">
         <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, lyseblå felt med lodrette kanter = ladeperiode for en bil eller husbatteriet fra start til forventet slut (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
@@ -1686,6 +1700,80 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._maybeRender(true);
   }
 
+  /** One short reason line per car for the status bar (why it is or is not charging right now). */
+  _carStatusDetail(car, rt) {
+    const r = this._rules;
+    const plan = rt.plan;
+    switch (rt.status) {
+      case "solar_low":
+        return r ? `Solproduktion ${fmtNum(rt.solar_w || 0, 0)} W – kræver ${fmtNum(r.solar_min_w, 0)} W i ${r.solar_min_minutes} min` : "";
+      case "solar_wait":
+        return rt.surplus_w !== undefined ? `Sol-overskud ${fmtNum(rt.surplus_w, 0)} W – kræver ${fmtNum(car.min_amps * 230 * car.phases, 0)} W` : "";
+      case "battery_first":
+        return r ? `Husbatteriet har sol først, mens det er ${r.solar_priority_under}–${r.solar_priority_over} %` : "";
+      case "waiting":
+        if (plan && plan.next_start) {
+          const ns = new Date(plan.next_start);
+          return `Næste planlagte ladning ${ns.getDate() === new Date().getDate() ? "i dag" : "i morgen"} kl. ${fmtTime(ns)}`;
+        }
+        return "";
+      case "solar":
+      case "charging":
+      case "below_limit":
+      case "charge_now":
+        return rt.amps ? `${rt.amps} A` : "";
+      case "done":
+        return `${fmtNum(rt.soc, 0)} % – mål ${rt.target_soc !== undefined ? rt.target_soc : car.target_soc} % nået`;
+      case "no_soc":
+        return `Ingen værdi fra ${car.soc_entity}`;
+      case "no_grid_sensor":
+        return "Vælg sensorer under Regler for opladning";
+      case "no_solar_sensor":
+        return "Vælg solcelle-effekt under Konfigurer";
+      case "fuse_wait":
+        return "Hovedsikringen er optaget";
+      case "not_plugged":
+        return "Sæt bilen i laderen";
+      default:
+        return "";
+    }
+  }
+
+  static BATTERY_NOTE = {
+    no_soc: "SoC-sensoren har ingen værdi",
+    no_prices: "Ingen priser fra EnergiDataService",
+    disabled: "Smart styring er slået fra",
+    override: "Manuel styring – tryk Auto for at følge planen",
+    full: "Batteriet er fyldt til maks-SoC",
+    ev_hold: "Holdes, fordi en elbil lader fra nettet (regel)",
+    day_off: "Slået fra i ugeplanen i dag – batteriet kører selv",
+    fuse_wait: "Venter – hovedsikringen er optaget af elbil (regel)",
+  };
+
+  /** Status bar under the tabs: what every car and the house battery is doing right now, and why. */
+  _renderStatusBar() {
+    const K = ElectricityOptimizerPanel;
+    const chips = [];
+    for (const car of this._cars || []) {
+      const rt = car.runtime || {};
+      const [text, cls] = K.STATUS_TEXT[rt.status] || ["–", "neutral"];
+      const detail = this._carStatusDetail(car, rt);
+      chips.push(`<div class="sb-item" data-goto="ev"><ha-icon icon="mdi:car-electric"></ha-icon><span class="sb-name">${esc(car.name)}</span><span class="badge ${cls}">${text}</span>${
+        detail ? `<span class="sb-detail">${esc(detail)}</span>` : ""
+      }</div>`);
+    }
+    if (this._battery) {
+      const rt = this._batteryRuntime || {};
+      const [modeText, modeCls, modeWhy] = K.MODE_TEXT[rt.mode] || ["–", "neutral", ""];
+      const detail = K.BATTERY_NOTE[rt.status] || modeWhy || "";
+      chips.push(`<div class="sb-item" data-goto="battery"><ha-icon icon="mdi:home-battery"></ha-icon><span class="sb-name">Husbatteri</span><span class="badge ${modeCls}">${modeText}</span>${
+        detail ? `<span class="sb-detail">${esc(detail)}</span>` : ""
+      }</div>`);
+    }
+    if (!chips.length) return "";
+    return `<div class="statusbar">${chips.join("")}</div>`;
+  }
+
   _renderEvStatusRow() {
     const cars = this._cars;
     if (!cars || !cars.length) {
@@ -2405,17 +2493,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const plan = rt.plan || null;
     const mode = rt.mode || "normal";
     const [modeText, modeCls, modeWhy] = ElectricityOptimizerPanel.MODE_TEXT[mode] || ["–", "neutral", ""];
-    const statusNote = {
-      no_soc: "SoC-sensoren har ingen værdi",
-      no_prices: "Ingen priser fra EnergiDataService",
-      disabled: "Smart styring er slået fra",
-      override: "Manuel styring – tryk Auto for at følge planen",
-      full: "Batteriet er fyldt til maks-SoC",
-      ev_hold: "Holdes, fordi en elbil lader fra nettet (regel)",
-      day_off: "Slået fra i ugeplanen i dag – batteriet kører selv",
-      fuse_wait: "Venter – hovedsikringen er optaget af elbil (regel)",
-      auto: modeWhy,
-    }[rt.status] || "";
+    const statusNote = { ...ElectricityOptimizerPanel.BATTERY_NOTE, auto: modeWhy }[rt.status] || "";
     const cmds = rt.commands_configured || {};
     const socPct = live.soc === null ? 0 : Math.max(0, Math.min(100, live.soc));
     const why = plan

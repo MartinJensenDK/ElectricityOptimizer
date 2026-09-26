@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.21.1
+
+- Forsiden: statusbar under fanerne med én chip pr. elbil og for husbatteriet: status (fx "Venter på solproduktion", "Lader fra sol", "Hold") og den korte årsag, fx "Solproduktion 300 W – kræver 1.500 W i 2 min" eller "Batteriet spares til dyrere timer senere". Klik på en chip for at gå til fanen.
+
 ## 0.21.0
 
 - Regler: nyt valg "Sol-overskud beregnes fra". Med "Solproduktion − husforbrug" er den effekt, der er til rådighed for opladning, solcellernes produktion minus husets forbrug (minus det, husbatteriet lader med), så ladestrømmen følger solproduktionen direkte ved "Kun sol" og "Sol + billige timer". Standard er stadig elnet-sensoren (eksport).
