@@ -505,6 +505,12 @@ class EvController:
             # the car's own draw is already inside the export / house load; give it back
             own = car_w if car_w is not None else (self._last_amps.get(car["id"]) or car["min_amps"]) * per_amp
             available += own
+        if ctx.battery_cfg is not None and ctx.battery_w is not None and ctx.battery_w < 0:
+            # the house battery is covering part of the load: that energy is not solar surplus
+            available += ctx.battery_w
+            rt["battery_discharge_w"] = round(-ctx.battery_w)
+        else:
+            rt["battery_discharge_w"] = 0
         modulating = bool(car.get("current_entity"))
         need_w = (car["min_amps"] if modulating else car["max_amps"]) * per_amp
         rt["surplus_w"] = round(available)

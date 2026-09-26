@@ -92,7 +92,7 @@ Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem el
 | Elbil-sol: sol ≥ (W) | Elbilen lader kun fra sol, når solcellerne (effekt-sensoren fra opsætningen) har produceret mindst så meget i det valgte antal minutter; falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det |
 | Ladestrøm hvert (sek) | Ved solopladning sendes ladestrømmen første gang så mange sekunder efter start og justeres derefter højst så ofte |
 | … i mindst (min) | Hvor længe produktion og overskud skal være over grænsen, før der startes, og under, før der stoppes |
-| Sol-overskud beregnes fra | *Elnet-sensor*: overskud = det, der sælges til nettet. *Solproduktion − husforbrug*: overskud = solcelle-effekt (Konfigurer) − husforbrug − det, husbatteriet lader med, så ladestrømmen følger produktionen direkte. Med "Husforbruget inkluderer elbilens ladning" lægges bilens eget træk til, mens den lader |
+| Sol-overskud beregnes fra | *Elnet-sensor*: overskud = det, der sælges til nettet. *Solproduktion − husforbrug*: overskud = solcelle-effekt (Konfigurer) − husforbrug − det, husbatteriet lader med, så ladestrømmen følger produktionen direkte. Med "Husforbruget inkluderer elbilens ladning" lægges bilens eget træk til, mens den lader. Det, husbatteriet aflader med, trækkes altid fra |
 | Hovedsikring (A) | Valgfri øvre grænse pr. fase for elbiler + batteri-opladning fra nettet. Tom = ingen grænse |
 | Ved sikring først til | Vises kun når hovedsikringen er sat: *Elbil* holder batteriet tilbage, *Husbatteri* begrænser eller udsætter bilen |
 | Hold husbatteri ved net-ladning | Standard til: batteriet tømmes ikke ned i bilen om natten |

@@ -561,3 +561,35 @@ async def test_failed_start_is_visible_in_status(hass: HomeAssistant, hass_ws_cl
     rt = res["car"]["runtime"]
     assert rt["status"] == "cmd_failed" and rt["charging"] is False
     assert rt["last_action"]["ok"] is False and rt["last_action"]["action"] == "start"
+
+
+async def test_battery_discharge_is_not_solar_surplus(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """Grid sensor at 0 while the house battery feeds the car: no surplus -> the car stops."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.bat_soc", "95")
+    hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.grid", "-6000", {"unit_of_measurement": "W"})
+    async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc", "power_entity": "sensor.bat_power", "grid_power_entity": "sensor.grid"}})
+    await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "ev", "solar_min_minutes": 0}})
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": CAR})
+    assert res["car"]["runtime"]["status"] == "solar"
+    hass.states.async_set("sensor.grid", "-1170", {"unit_of_measurement": "W"})  # the car draws at the charger's old limit
+    freezer.tick(timedelta(seconds=31))
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["amps"] == 7  # 1170 + 4140 (assumed min-amps draw) = 5310 W
+
+    # clouds: the battery now covers 3 kW of the car's draw and the grid shows balance
+    hass.states.async_set("sensor.grid", "0", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.bat_power", "-3000", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=31))
+    res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/evaluate"})
+    rt = res["cars"][0]["runtime"]
+    # 0 + 4830 (own at 7 A) - 3000 = 1830 W < 4140 W -> stop instead of draining the battery
+    assert rt["status"] == "solar_wait" and rt["battery_discharge_w"] == 3000
+    assert len(turn_off) >= 1

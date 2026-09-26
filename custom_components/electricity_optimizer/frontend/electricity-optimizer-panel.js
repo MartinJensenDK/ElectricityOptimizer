@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.22.2";
+const PANEL_JS_VERSION = "0.22.3";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1640,7 +1640,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="rules-grid">
                       <label class="field">${head(
               "Sol-overskud beregnes fra",
-              "Elnet-sensor: overskuddet er det, der sælges til nettet lige nu. Solproduktion − husforbrug: overskuddet er solcellernes produktion minus husets forbrug (minus det, husbatteriet lader med), så ladehastigheden følger produktionen direkte. Kræver solcelle-effekt under Konfigurer og en husforbrugs-sensor."
+              "Elnet-sensor: overskuddet er det, der sælges til nettet lige nu. Solproduktion − husforbrug: overskuddet er solcellernes produktion minus husets forbrug (minus det, husbatteriet lader med), så ladehastigheden følger produktionen direkte. Kræver solcelle-effekt under Konfigurer og en husforbrugs-sensor. I begge tilfælde trækkes det fra, som husbatteriet aflader med, så bilen ikke lader på batteriet."
             )}${sel("surplus_source", [["grid", "Elnet-sensor (eksport)"], ["solar_house", "Solproduktion − husforbrug"]])}</label>
           <label class="field">${head(
               "Elbil-sol: sol ≥ (W)",
@@ -1869,7 +1869,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     } else if (liveW !== null && liveW > 50) {
       meta.push(`Bilen trækker ${fmtNum(liveW, 0)} W`);
     }
-    if (rt.status === "solar_wait" && rt.surplus_w !== undefined) meta.push(`Sol-overskud lige nu ${fmtNum(rt.surplus_w, 0)} W – kræver ${car.min_amps * 230 * car.phases} W`);
+    if (rt.status === "solar_wait" && rt.surplus_w !== undefined) meta.push(`Sol-overskud lige nu ${fmtNum(rt.surplus_w, 0)} W – kræver ${car.min_amps * 230 * car.phases} W${rt.battery_discharge_w ? ` (husbatteriet aflader ${fmtNum(rt.battery_discharge_w, 0)} W, som er trukket fra)` : ""}`);
     if (rt.status === "solar_low" && rt.solar_w !== undefined && this._rules) meta.push(`Solproduktion ${fmtNum(rt.solar_w, 0)} W – kræver ${fmtNum(this._rules.solar_min_w, 0)} W i ${this._rules.solar_min_minutes} min`);
     if (rt.status === "battery_first" && this._rules) meta.push(`Husbatteriet har prioritet, mens det er ${this._rules.solar_priority_under}–${this._rules.solar_priority_over} %`);
     if (rt.last_action) {

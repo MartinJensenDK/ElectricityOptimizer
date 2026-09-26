@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.22.3
+
+- Solopladning: det, husbatteriet aflader med, trækkes nu fra sol-overskuddet, uanset om overskuddet beregnes fra elnet-sensoren eller fra solproduktion − husforbrug. Før kunne bilen blive ved med at lade på husbatteriet, fordi batteriet dækkede underskuddet og nettet viste balance.
+
 ## 0.22.2
 
 - Regler for opladning er sat op i tre ryddelige sektioner (Prioritering, Sol-ladning, Elnet) med ens kolonner og felter på linje. Sol prioritet er en vandret liste, der stadig kan trækkes eller byttes, og afkrydsningerne står samlet på én række.
