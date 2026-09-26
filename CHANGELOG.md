@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.8
+
+- Forsiden, Status-kortet: Solceller viser nu det gule mærkat "Venter" i stedet for "Inaktiv", når der ikke produceres.
+
 ## 0.30.7
 
 - Regler for opladning: forklaringsboksen har fået overskriften "Forklaring på nuværende indstillinger".
