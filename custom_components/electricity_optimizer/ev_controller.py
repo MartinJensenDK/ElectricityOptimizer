@@ -31,6 +31,8 @@ class Context:
     grid_w: float | None = None  # + = import
     battery_grid_charging: bool = False  # battery intends to charge from grid this slot
     solar_w: float | None = None  # current solar production
+    house_w: float | None = None  # current house load
+    surplus_from: str = "grid"  # grid | solar_house - how surplus_w was derived
     surplus_w: float | None = None  # solar export available for EVs (decremented as cars take it)
     battery_charge_w: float = 0.0  # what the house battery is charging with; a prioritised EV may claim it
     solar_forecast_kwh: dict[Any, float] = field(default_factory=dict)  # date -> forecast kWh (today/tomorrow)
@@ -470,8 +472,8 @@ class EvController:
             # the car outranks the battery: what the battery is charging with is up for grabs
             available += ctx.battery_charge_w
             ctx.battery_charge_w = 0.0
-        if currently_solar:
-            # the car's own draw is already inside the house load; give it back
+        if currently_solar and (ctx.surplus_from == "grid" or rules.get("house_includes_ev", True)):
+            # the car's own draw is already inside the export / house load; give it back
             own = car_w if car_w is not None else (self._last_amps.get(car["id"]) or car["min_amps"]) * per_amp
             available += own
         modulating = bool(car.get("current_entity"))

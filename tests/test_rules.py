@@ -416,3 +416,57 @@ async def test_charge_now_works_when_smart_charging_is_off_and_above_target(hass
     hass.states.async_set("sensor.car_soc", "100")
     res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["charge_now"] is False and res["cars"][0]["runtime"]["status"] == "done"
+
+
+async def test_surplus_from_solar_minus_house(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """Kun sol with surplus_source=solar_house: available = solar - house (own draw credited while charging)."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.pv", "6000", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.house", "1500", {"unit_of_measurement": "W"})
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    set_value = async_mock_service(hass, "number", "set_value")
+    entry = MockConfigEntry(domain=DOMAIN, data={"price_entity": PRICE_ENTITY, "solar_power_entity": "sensor.pv"}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+    rules = await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"surplus_source": "solar_house", "house_power_entity": "sensor.house", "solar_min_minutes": 0}})
+    assert rules["rules"]["surplus_source"] == "solar_house" and rules["context"]["surplus_from"] == "solar_house"
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": CAR})
+    rt = res["car"]["runtime"]
+    # 6000 - 1500 = 4500 W / 690 = 6.5 -> 6 A
+    assert rt["status"] == "solar" and rt["amps"] == 6 and rt["surplus_w"] == 4500
+    assert len(turn_on) == 1 and [c.data["value"] for c in set_value] == [6.0]
+
+    # the house sensor now includes the car's draw (6 A = 4140 W); production up -> 8 A
+    hass.states.async_set("sensor.house", "5640", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.pv", "7500", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=31))  # amps changes in solar mode are rate limited
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/evaluate"})
+    rt = res["cars"][0]["runtime"]
+    # 7500 - 5640 + 4140 (own draw) = 6000 W -> 8 A (a debounced evaluation may already have credited 8 A)
+    assert rt["status"] == "solar" and rt["amps"] == 8 and rt["surplus_w"] >= 6000
+
+    # clouds: 3000 W production, house 5640 incl. car -> 3000 - 5640 + 4140 = 1500 < 4140 -> stop
+    hass.states.async_set("sensor.pv", "3000", {"unit_of_measurement": "W"})
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar_wait"
+    assert len(turn_off) >= 1
+
+    # house sensor without the car: no own-draw credit
+    await _ws(hass, client, 5, {"type": f"{DOMAIN}/rules/save", "rules": {"house_includes_ev": False}})
+    hass.states.async_set("sensor.pv", "7000", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.house", "1500", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=31))
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar" and res["cars"][0]["runtime"]["amps"] == 7  # 5500/690
+    freezer.tick(timedelta(seconds=31))
+    res = await _ws(hass, client, 7, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["amps"] == 7  # still 5500 W, no credit added
+
+    # missing house sensor -> falls back to the grid sensor, which is absent here
+    await _ws(hass, client, 8, {"type": f"{DOMAIN}/rules/save", "rules": {"house_power_entity": ""}})
+    res = await _ws(hass, client, 9, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "no_grid_sensor"

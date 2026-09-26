@@ -35,21 +35,34 @@ class Optimizer:
         self.last_context: Context | None = None
         self.history = None  # HistoryTracker, set by __init__
 
-    def _grid_w_from_rules(self) -> float | None:
-        rules = self.rules_store.rules
-        entity = rules.get("grid_power_entity")
-        if not entity:
+    def _watts(self, entity_id: str | None) -> float | None:
+        if not entity_id:
             return None
-        st = self.hass.states.get(entity)
+        st = self.hass.states.get(entity_id)
         if st is None or st.state in ("unknown", "unavailable"):
             return None
         try:
             v = float(st.state)
         except ValueError:
             return None
-        if (st.attributes.get("unit_of_measurement") or "").lower() == "kw":
+        unit = (st.attributes.get("unit_of_measurement") or "").lower()
+        if unit == "kw":
             v *= 1000
+        elif unit == "mw":
+            v *= 1_000_000
+        return v
+
+    def _grid_w_from_rules(self) -> float | None:
+        rules = self.rules_store.rules
+        v = self._watts(rules.get("grid_power_entity"))
+        if v is None:
+            return None
         return v * (-1 if rules["grid_sign"] == "export_positive" else 1)
+
+    def _house_w(self, live: dict) -> float | None:
+        if live.get("house_w") is not None:
+            return live["house_w"]
+        return self._watts(self.rules_store.rules.get("house_power_entity"))
 
     def _kwh(self, entity_id: str | None) -> float | None:
         if not entity_id:
@@ -101,8 +114,16 @@ class Optimizer:
         rules = self.rules_store.rules
         live = self.battery.read_live()
         grid_w = live["grid_w"] if live["grid_w"] is not None else self._grid_w_from_rules()
+        solar_w = self.solar_w()
+        house_w = self._house_w(live)
+        battery_charge = max(0.0, live["battery_w"]) if live["battery_w"] is not None else 0.0
         surplus = None
-        if grid_w is not None:
+        surplus_from = "grid"
+        if rules["surplus_source"] == "solar_house" and solar_w is not None and house_w is not None:
+            # what is left of the production after the house (and what the battery is taking) - the export equivalent
+            surplus = solar_w - house_w - battery_charge
+            surplus_from = "solar_house"
+        elif grid_w is not None:
             surplus = -grid_w  # export positive, import negative
         return Context(
             now=dt_util.now(),
@@ -113,9 +134,11 @@ class Optimizer:
             battery_w=live["battery_w"],
             grid_w=grid_w,
             surplus_w=surplus,
-            battery_charge_w=max(0.0, live["battery_w"]) if live["battery_w"] is not None else 0.0,
+            surplus_from=surplus_from,
+            house_w=house_w,
+            battery_charge_w=battery_charge,
             solar_forecast_kwh=self.solar_forecast(),
-            solar_w=self.solar_w(),
+            solar_w=solar_w,
         )
 
     async def async_evaluate(self) -> None:
@@ -139,8 +162,9 @@ class Optimizer:
         if bat:
             ids.update(v for k, v in bat.items() if k in ("soc_entity", "power_entity", "charge_power_entity", "discharge_power_entity", "grid_power_entity") and v)
         ids.update(v for k, v in self.config.items() if k in ("solar_forecast_today_entity", "solar_forecast_tomorrow_entity", "solar_power_entity") and v)
-        if self.rules_store.rules.get("grid_power_entity"):
-            ids.add(self.rules_store.rules["grid_power_entity"])
+        for key in ("grid_power_entity", "house_power_entity"):
+            if self.rules_store.rules.get(key):
+                ids.add(self.rules_store.rules[key])
         return ids
 
     def context_summary(self) -> dict:
@@ -151,6 +175,8 @@ class Optimizer:
             "grid_w": ctx.grid_w,
             "battery_w": ctx.battery_w,
             "surplus_w": ctx.surplus_w,
+            "surplus_from": ctx.surplus_from,
+            "house_w": ctx.house_w,
             "solar_w": ctx.solar_w,
             "ev_grid_charging": ctx.ev_grid_charging,
             "ev_amps_total": ctx.ev_amps_total,

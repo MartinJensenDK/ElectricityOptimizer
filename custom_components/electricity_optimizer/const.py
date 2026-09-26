@@ -109,6 +109,9 @@ RULES_DEFAULTS = {
     "solar_min_w": None,  # EV solar charging requires production >= this (None = off)
     "solar_min_minutes": 2,  # how long production/surplus must be above (start) or below (stop)
     "notify_enabled": True,  # persistent notifications (events are always fired)
+    "surplus_source": "grid",  # grid: export from the grid sensor | solar_house: solar production - house load
+    "house_includes_ev": True,  # the house load sensor includes the EV charger's draw
     "grid_power_entity": "",  # used when the battery has none
+    "house_power_entity": "",  # used when the battery has none (solar_house mode)
     "grid_sign": "import_positive",
 }

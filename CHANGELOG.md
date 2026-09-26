@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.21.0
+
+- Regler: nyt valg "Sol-overskud beregnes fra". Med "Solproduktion − husforbrug" er den effekt, der er til rådighed for opladning, solcellernes produktion minus husets forbrug (minus det, husbatteriet lader med), så ladestrømmen følger solproduktionen direkte ved "Kun sol" og "Sol + billige timer". Standard er stadig elnet-sensoren (eksport).
+- Nyt felt "Husforbruget inkluderer elbilens ladning" og en husforbrugs-sensor under "Vælg sensorer", hvis husbatteriet ikke har én.
+- Regel-kortet viser solproduktion og husforbrug fra sidste beregning.
+
 ## 0.20.2
 
 - "Lad nu" er nu en ægte manuel overstyring: den starter opladning med det samme, også når Smart opladning er slået fra, og også når bilen allerede er over sit mål-SoC. Den kører, til bilen er fuld, tages ud af laderen, eller du trykker "Stop Lad nu". Før blev trykket afvist stille, hvis Smart opladning var fra eller SoC var over målet.

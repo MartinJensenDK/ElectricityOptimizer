@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.20.2";
+const PANEL_JS_VERSION = "0.21.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1491,7 +1491,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     battery_first: ["Venter – husbatteri har prioritet", "mid"],
     no_solar_sensor: ["Mangler solcelle-sensor", "neutral"],
     fuse_wait: ["Venter – hovedsikring", "mid"],
-    no_grid_sensor: ["Mangler net-sensor til sol", "neutral"],
+    no_grid_sensor: ["Mangler sensor til sol-overskud", "neutral"],
     no_deadline: ["Ingen planlagt dag", "neutral"],
   };
 
@@ -1543,7 +1543,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const conds = [];
     if (rules.solar_min_w !== null) conds.push(`solcellerne har produceret mindst ${fmtNum(rules.solar_min_w, 0)} W i ${rules.solar_min_minutes} min`);
     conds.push(`der har været overskud nok i ${rules.solar_min_minutes} min (stopper efter ${rules.solar_min_minutes} min uden)`);
-    return `Elbilen lader fra sol, når ${conds.join(", og ")}.`;
+    const src = rules.surplus_source === "solar_house" ? "Overskud = solproduktion − husforbrug; ladestrømmen følger produktionen." : "Overskud = det, der sælges til nettet.";
+    return `Elbilen lader fra sol, når ${conds.join(", og ")}. ${src}`;
   }
 
   async _setSolarPriority(first) {
@@ -1568,13 +1569,20 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ? `<form class="rules-form" style="margin-top:10px">
            <div class="fields">
              <label class="field"><span class="fl">Net import/eksport (W)${I("Sensor med effekt til og fra nettet. Bruges til at beregne sol-overskud til elbiler, når husbatteriet ikke har sin egen net-sensor.")}</span><div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${esc(r.grid_power_entity)}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+             <label class="field"><span class="fl">Husforbrug (W)${I("Sensor med husets samlede forbrug. Bruges til sol-overskud, når beregningen er sat til solproduktion minus husforbrug, og husbatteriet ikke har sin egen husforbrugs-sensor.")}</span><div class="picker"><input name="house_power_entity" data-domains="sensor" value="${esc(r.house_power_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
              <label class="field"><span class="fl">Fortegn${I("Om sensoren viser positive tal, når huset køber fra nettet, eller når huset sælger til nettet.")}</span><select name="grid_sign"><option value="import_positive" ${r.grid_sign === "import_positive" ? "selected" : ""}>Positiv = køber</option><option value="export_positive" ${r.grid_sign === "export_positive" ? "selected" : ""}>Positiv = sælger</option></select></label>
            </div>
            <div class="row" style="margin-top:10px"><button class="btn primary" type="submit" data-raction="save-sensor">Gem</button><button class="btn" type="button" data-raction="cancel-sensor">Annuller</button></div>
          </form>`
-      : `<div class="hint" style="margin-top:8px">Net-sensor til sol-overskud: ${
-          r.grid_power_entity ? `<code>${esc(r.grid_power_entity)}</code>${gridLive.value !== null ? ` (${fmtNum(gridLive.value, 0)} W)` : ""}` : "bruger husbatteriets net-sensor"
-        } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-sensor">Vælg sensor</button></div>`;
+      : `<div class="hint" style="margin-top:8px">${
+          r.surplus_source === "solar_house"
+            ? `Sol-overskud = solproduktion (Konfigurer) − husforbrug: ${
+                r.house_power_entity ? `<code>${esc(r.house_power_entity)}</code>` : "bruger husbatteriets husforbrugs-sensor"
+              }`
+            : `Net-sensor til sol-overskud: ${
+                r.grid_power_entity ? `<code>${esc(r.grid_power_entity)}</code>${gridLive.value !== null ? ` (${fmtNum(gridLive.value, 0)} W)` : ""}` : "bruger husbatteriets net-sensor"
+              }`
+        } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-sensor">Vælg sensorer</button></div>`;
     const info = I;
     const head = (text, tip) => `<span class="fl">${text}${info(tip)}</span>`;
     const hasFuse = r.max_total_amps !== null && r.max_total_amps !== "" && Number(r.max_total_amps) > 0;
@@ -1602,6 +1610,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
             "Nedre grænse for nr. 1's ladestand. Når ladestanden er under denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
           )}<input type="number" min="0" max="100" data-rfield="solar_priority_under" value="${r.solar_priority_under}"></label>
           <label class="field">${head(
+            "Sol-overskud beregnes fra",
+            "Elnet-sensor: overskuddet er det, der sælges til nettet lige nu. Solproduktion − husforbrug: overskuddet er solcellernes produktion minus husets forbrug (minus det, husbatteriet lader med), så ladehastigheden følger produktionen direkte. Kræver solcelle-effekt under Konfigurer og en husforbrugs-sensor."
+          )}${sel("surplus_source", [["grid", "Elnet-sensor (eksport)"], ["solar_house", "Solproduktion − husforbrug"]])}</label>
+          <label class="field">${head(
             "Elbil-sol: sol ≥ (W)",
             "Elbilen lader kun fra sol, når solcellerne producerer mindst dette i mindst det antal minutter, der står ved siden af. Falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det."
           )}<input type="number" min="0" step="100" data-rfield="solar_min_w" value="${r.solar_min_w === null ? "" : r.solar_min_w}" placeholder="fra"></label>
@@ -1625,6 +1637,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="hint rules-now"><strong>${esc(this._solarPriorityText(r))}</strong> ${esc(this._solarConditionsText(r))}${
           hasFuse ? ` Ved fuld hovedsikring (${fmtNum(r.max_total_amps, 0)} A) får ${r.grid_priority === "battery" ? "husbatteriet" : "elbilen"} strømmen først.` : ""
         }</div>
+        ${
+          r.surplus_source === "solar_house"
+            ? `<label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="house_includes_ev" ${r.house_includes_ev === false ? "" : "checked"}> Husforbruget inkluderer elbilens ladning${info(
+                "Slå til, hvis husforbrugs-sensoren også tæller det, elbilen trækker (typisk for inverterens load-sensor). Så lægges bilens eget træk til overskuddet, mens den lader, så den ikke skruer sig selv ned."
+              )}</label>`
+            : ""
+        }
         <label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="notify_enabled" ${r.notify_enabled === false ? "" : "checked"}> Notifikationer${info(
           "Vis en notifikation i Home Assistant, når en elbil ikke kan nå sit mål-SoC inden deadline, når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil eller husbatteri fejler. Hændelsen electricity_optimizer_notification sendes altid, så du kan lave automationer."
         )}</label>
@@ -1634,7 +1653,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         ${sensorForm}
         ${
           ctx.surplus_w !== undefined && ctx.surplus_w !== null
-            ? `<div class="hint" style="margin-top:8px">Ved sidste beregning: sol-overskud ${fmtNum(ctx.surplus_w, 0)} W${ctx.solar_w !== undefined && ctx.solar_w !== null ? ` · solproduktion ${fmtNum(ctx.solar_w, 0)} W` : ""}.</div>`
+            ? `<div class="hint" style="margin-top:8px">Ved sidste beregning: sol-overskud ${fmtNum(ctx.surplus_w, 0)} W${ctx.solar_w !== undefined && ctx.solar_w !== null ? ` · solproduktion ${fmtNum(ctx.solar_w, 0)} W` : ""}${ctx.house_w !== undefined && ctx.house_w !== null ? ` · husforbrug ${fmtNum(ctx.house_w, 0)} W` : ""}.</div>`
             : ""
         }
         ${this._rulesError ? `<div class="err">${esc(this._rulesError)}</div>` : ""}
