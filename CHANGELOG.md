@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.32.2
+
+- Forsiden, Status-kortet: mærkaterne viser igen den fulde status (fx "Venter på sol", "Venter på solproduktion", "Hold"), nu i en blå boks i stedet for gul. Ingen "Afventer…" og ingen tooltips på mærkaterne.
+- Begrundelsen (fx "Solproduktion 0 W – kræver 1.500 W i 2 min") står som en ekstra linje under hver bil og under Hus batteri.
+
 ## 0.32.1
 
 - Forsiden, Status-kortet: Solceller, Elbiler og Hus batteri viser nu det blå mærkat "Afventer…", når de venter. Hold musen over mærkatet for at se den fulde besked om, hvad der ventes på.
