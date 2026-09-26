@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.19.0";
+const PANEL_JS_VERSION = "0.19.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1753,7 +1753,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="controls">
           <label class="toggle"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}> Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen.")}</label>
           <label class="field"><span class="fl">Prisgrænse (kr/kWh)${I("Bilen lader altid, når prisen lige nu er under denne grænse, uanset planen. Tom = ingen prisgrænse.")}</span><input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
-          <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til. Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
+          <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til (må ikke være højere end maks.). Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
           <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
         </div>
         ${this._renderSchedule(car)}
@@ -1850,6 +1850,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       soc_required: "Vælg en SoC-sensor.",
       start_stop_required: "Vælg både start- og stop-entitet.",
       capacity_power_positive: "Kapacitet og ladestrøm skal være større end 0.",
+      min_amps_above_max: "Min. ladestrøm må ikke være højere end maks. ladestrøm.",
       current_entity_number: "Strømgrænse-entiteten skal være en number- eller input_number-entitet.",
       ready_by_invalid: "Ugyldigt klokkeslæt.",
     };
@@ -1866,7 +1867,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${this._cmdFields("Stop opladning", "stop_entity", "stop_value", v)}
             <label class="field"><span class="fl">Tilsluttet-sensor (valgfri)${I("binary_sensor der er tændt, når bilen sidder i laderen. Uden den antages bilen altid tilsluttet.")}</span><div class="picker"><input name="plugged_entity" data-domains="binary_sensor" value="${v("plugged_entity")}" placeholder="binary_sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field"><span class="fl">Batterikapacitet (kWh)${I("Bilens batteristørrelse. Bruges til at beregne, hvor mange kWh og timer der skal lades for at nå mål-SoC.")}</span><input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
-            <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til. Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input name="min_amps" type="number" step="1" min="1" max="64" value="${v("min_amps", 6)}"></label>
+            <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til (må ikke være højere end maks.). Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input name="min_amps" type="number" step="1" min="1" max="64" value="${v("min_amps", 6)}"></label>
             <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input name="max_amps" type="number" step="1" min="1" max="64" value="${v("max_amps", 16)}"></label>
             <label class="field"><span class="fl">Kilde (alle dage)${I("Startværdi for alle ugedage; kan ændres pr. dag bagefter. Kun sol: kun sol-overskud. Sol + billige timer: sol om dagen og billigste timer inden deadline. Kun billige timer: kun netopladning.")}</span><select name="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([val, l]) => `<option value="${val}" ${(car.source || "solar_plan") === val ? "selected" : ""}>${l}</option>`).join("")}</select></label>
             <label class="field"><span class="fl">Ladeeffekt-sensor (W, valgfri)${I("Bilens eller laderens faktiske effekt. Vises live og bruges i sol-regnestykket, så bilens eget træk ikke tæller som husforbrug.")}</span><div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… bilens/laderens effekt" autocomplete="off"><div class="picker-list" hidden></div></div></label>

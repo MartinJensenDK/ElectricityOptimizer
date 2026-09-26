@@ -57,6 +57,9 @@ async def ws_cars_save(hass: HomeAssistant, connection: websocket_api.ActiveConn
         connection.send_error(msg["id"], "invalid_car", error)
         return
     car = await ev["store"].async_upsert(raw)
+    if existing is None or any(k in raw for k in ("charge_now", "start_entity", "stop_entity", "start_value", "stop_value", "current_entity", "enabled")):
+        # a manual action or an edited command: the charger may not be in the state we remember, so send again
+        ev["controller"].forget_command(car["id"])
     await _optimizer(hass).async_evaluate()
     connection.send_result(msg["id"], {"car": {**car, "runtime": ev["controller"].runtime.get(car["id"], {})}})
 

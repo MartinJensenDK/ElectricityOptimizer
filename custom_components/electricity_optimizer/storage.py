@@ -60,8 +60,10 @@ def normalize_car(raw: dict[str, Any], existing: dict[str, Any] | None = None) -
             car["max_amps"] = int(float(legacy["charge_amps"]))
         else:
             car["max_amps"] = round(car["charge_power_kw"] * 1000 / (GRID_VOLTAGE * car["phases"]))
-    car["min_amps"] = max(1, min(car["min_amps"], car["max_amps"]))
-    car["max_amps"] = max(car["min_amps"], car["max_amps"])
+    car["min_amps"] = max(1, car["min_amps"])
+    car["max_amps"] = max(1, car["max_amps"])
+    if "max_amps" not in legacy and existing is None and car["min_amps"] > car["max_amps"]:
+        car["min_amps"] = car["max_amps"]  # old data: keep it usable; new saves are validated instead
     if car["source"] not in ("solar", "solar_plan", "plan"):
         car["source"] = "solar_plan"
     car["charge_power_kw"] = amps_to_kw(car["max_amps"], car["phases"])
@@ -126,6 +128,8 @@ def validate_car(car: dict[str, Any]) -> str | None:
         return "start_stop_required"
     if car["capacity_kwh"] <= 0 or car["max_amps"] <= 0:
         return "capacity_power_positive"
+    if car["min_amps"] > car["max_amps"]:
+        return "min_amps_above_max"
     if car["current_entity"] and car["current_entity"].split(".")[0] not in ("number", "input_number"):
         return "current_entity_number"
     parts = car["ready_by"].split(":")

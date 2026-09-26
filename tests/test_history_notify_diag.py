@@ -94,7 +94,7 @@ async def test_solar_session_is_recorded_with_savings(hass: HomeAssistant, hass_
 
 async def test_grid_session_costs_and_saves_vs_day_mean(hass: HomeAssistant, hass_ws_client, freezer) -> None:
     now = dt_util.now()
-    _set_prices(hass, {now.hour: 0.5}, default=2.5)  # cheap now, mean ~2.42
+    _set_prices(hass, {now.hour: 0.5, now.hour + 1: 0.5}, default=2.5)  # cheap now (and next hour, in case the clock rolls over)
     hass.states.async_set("sensor.car_soc", "50")
     async_mock_service(hass, "switch", "turn_on")
     async_mock_service(hass, "switch", "turn_off")
@@ -110,7 +110,7 @@ async def test_grid_session_costs_and_saves_vs_day_mean(hass: HomeAssistant, has
     kwh = 16 * 690 * 120 / 3600 / 1000  # max amps, 2 minutes
     assert abs(running["kwh"] - kwh) < 0.001 and running["solar_kwh"] == 0
     assert abs(running["cost"] - kwh * 0.5) < 0.01  # rounded to 2 decimals
-    mean = (0.5 + 23 * 2.5) / 24
+    mean = (2 * 0.5 + 22 * 2.5) / 24 if now.hour < 23 else (0.5 + 23 * 2.5) / 24
     assert abs(running["saved"] - kwh * (mean - 0.5)) < 0.01
 
 

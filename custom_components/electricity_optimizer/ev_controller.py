@@ -353,6 +353,12 @@ class EvController:
         if desired:
             ctx.ev_amps_total += amps
 
+    def forget_command(self, car_id: str) -> None:
+        """Re-send start/stop and the current limit on the next evaluation (after a manual action or an edit)."""
+        self._last_cmd.pop(car_id, None)
+        self._last_amps.pop(car_id, None)
+        self._last_amps_at.pop(car_id, None)
+
     # ---- notifications
 
     def _notify_plan_problems(self, car: dict[str, Any], rt: dict[str, Any], plan: dict[str, Any] | None, soc: float, plugged: bool | None, target: float) -> None:

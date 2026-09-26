@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.19.1
+
+- Elbil: "Lad nu", stop af "Lad nu" og ændring af start-/stop-entiteter sender nu altid kommandoen igen, også hvis integrationen troede, at laderen allerede var i den tilstand. Det gør, at stateless button-entiteter (fx Zaptec authorize/deauthorize) virker pålideligt.
+- Elbil: min. ladestrøm højere end maks. ladestrøm afvises nu med en tydelig fejl i stedet for at blive rettet i det skjulte.
+
 ## 0.19.0
 
 - Ny fane **Historik**: ladeperioder for elbiler og husbatteri med start/slut, kilde (sol/net), kWh, betalt, gennemsnitspris, sparet og SoC, samt sum for i dag, 7 dage og 30 dage. Sparet regnes som det, solstrømmen ville have kostet fra nettet, og for netopladning i forhold til dagens gennemsnitspris. Der gemmes 90 dage.

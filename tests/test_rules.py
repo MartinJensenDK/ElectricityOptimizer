@@ -332,3 +332,38 @@ def test_rules_migrate_from_start_stop_minutes() -> None:
     old_battery_first = {**old, "solar_priority": "battery"}
     migrated = normalize_rules({}, old_battery_first)
     assert (migrated["solar_priority_under"], migrated["solar_priority_over"]) == (0, 90)
+
+
+async def test_min_amps_above_max_is_rejected(hass: HomeAssistant, hass_ws_client) -> None:
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": f"{DOMAIN}/cars/save", "car": {**CAR, "min_amps": 16, "max_amps": 10}})
+    msg = await client.receive_json()
+    assert not msg["success"] and msg["error"]["message"] == "min_amps_above_max"
+
+
+async def test_charge_now_resends_button_press(hass: HomeAssistant, hass_ws_client) -> None:
+    """Stateless buttons (e.g. Zaptec authorize/deauthorize) are pressed again on every manual action."""
+    now = dt_util.now()
+    _set_prices(hass, {now.hour: 5.0, now.hour + 1: 5.0})  # expensive now -> the plan waits
+    hass.states.async_set("sensor.car_soc", "50")
+    press = async_mock_service(hass, "button", "press")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    ready_by = (now + timedelta(hours=10)).strftime("%H:%M")  # plenty of cheaper slots before the deadline
+    car = {**CAR, "source": "plan", "ready_by": ready_by, "start_entity": "button.authorize", "stop_entity": "button.deauthorize", "current_entity": ""}
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/cars/save", "car": car})
+    cid = res["car"]["id"]
+    assert res["car"]["runtime"]["status"] == "waiting"
+    assert [c.data["entity_id"] for c in press] == ["button.deauthorize"]  # sync: stop on first run
+
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {"id": cid, "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "charge_now"
+    assert [c.data["entity_id"] for c in press] == ["button.deauthorize", "button.authorize"]
+
+    # pressing "Lad nu" again while the controller already thinks it is charging still presses the button
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": cid, "charge_now": False}})
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/cars/save", "car": {"id": cid, "charge_now": True}})
+    assert [c.data["entity_id"] for c in press] == ["button.deauthorize", "button.authorize", "button.deauthorize", "button.authorize"]
