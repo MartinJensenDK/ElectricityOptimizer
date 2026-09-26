@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.29.1";
+const PANEL_JS_VERSION = "0.30.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -164,6 +164,14 @@ const STYLE = `
   .batt .reserve { stroke: var(--secondary-text-color); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.8; }
   .batt .bv { font-size: 26px; font-weight: 500; fill: var(--primary-text-color); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 4px; stroke-linejoin: round; }
   .batt .bu { font-size: 12px; font-weight: 400; }
+  .cars-batt { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .cb-row { display: flex; flex-direction: column; gap: 2px; }
+  .cb-row .cb-name { min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; justify-content: space-between; gap: 8px; }
+  .cb-row .cb-name small { font-size: 11px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; }
+  .cb-row .batt { width: 100%; max-width: none; margin: 0; }
+  .cb-row .batt .bv { font-size: 14px; stroke-width: 3px; }
+  .cb-row .batt .bu { font-size: 9px; }
+  .cb-row .batt .bolt { fill: var(--primary-text-color); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 2px; }
   .badge {
     display: inline-block;
     padding: 2px 10px;
@@ -1012,6 +1020,38 @@ class ElectricityOptimizerPanel extends HTMLElement {
     });
   }
 
+  /** One compact battery per car: fill = SoC, dashed line = target SoC, bolt = charging now. */
+  _renderCarBatteries() {
+    const K = ElectricityOptimizerPanel;
+    const cars = this._cars;
+    if (cars === null) return `<div class="sub" style="color:var(--secondary-text-color)">Henter biler…</div>`;
+    if (!cars.length) return `<div class="sub" style="color:var(--secondary-text-color)">Ingen biler tilføjet – se fanen Elbiler</div>`;
+    const rows = cars.map((car) => {
+      const rt = car.runtime || {};
+      const soc = this._numState(car.soc_entity).value;
+      const target = Number(rt.plan && rt.plan.target_soc ? rt.plan.target_soc : car.target_soc) || 0;
+      const pct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
+      const color = soc === null ? "var(--secondary-text-color)" : soc <= 20 ? K.COLOR_IN : soc <= 40 ? K.COLOR_SUN : K.COLOR_OUT;
+      const x = 2, y = 3, w = 186, h = 24, pad = 3;
+      const inner = w - 2 * pad;
+      const fillW = (inner * pct) / 100;
+      const tX = x + pad + (inner * Math.max(0, Math.min(100, target))) / 100;
+      const [statusText] = K.STATUS_TEXT[rt.status] || [""];
+      return `<div class="cb-row">
+        <span class="cb-name" title="${esc(car.name)}"><span>${esc(car.name)}</span><small>mål ${target} %${statusText ? ` · ${esc(statusText)}` : ""}</small></span>
+        <svg class="batt" viewBox="0 0 200 30" role="img" aria-label="${esc(car.name)} ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}">
+          <rect class="body" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/>
+          <rect class="nub" x="${x + w + 1.5}" y="${y + h / 2 - 5}" width="5" height="10" rx="1.5"/>
+          ${fillW > 0 ? `<rect class="fill" style="fill:${color}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="3"/>` : ""}
+          ${target > 0 && target < 100 ? `<line class="reserve" x1="${tX.toFixed(1)}" x2="${tX.toFixed(1)}" y1="${y + 1.5}" y2="${y + h - 1.5}"/>` : ""}
+          <text class="bv" x="${x + w / 2}" y="${y + h / 2 + 5}" text-anchor="middle">${soc === null ? "–" : fmtNum(soc, 0)}<tspan class="bu"> %</tspan></text>
+          ${rt.charging ? `<path class="bolt" transform="translate(${x + 8} ${y + 4}) scale(0.8)" d="M7 0 L0 11 h5 l-1 8 7-11 h-5 z"/>` : ""}
+        </svg>
+      </div>`;
+    });
+    return `<div class="cars-batt">${rows.join("")}</div>`;
+  }
+
   /** Battery illustration: a horizontal cell whose fill follows the state of charge, same colours as the SoC gauge. */
   _renderBatteryLevel(soc) {
     const K = ElectricityOptimizerPanel;
@@ -1075,6 +1115,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand vist som et batteri, der fyldes op: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
           ${this._renderBatteryLevel(bat.soc)}
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:car-electric"></ha-icon>Elbiler${I("Hver bils ladestand vist som et batteri: rød under 20 %, orange under 40 %, ellers grøn. Den stiplede streg er dagens mål-SoC, og lynet viser, at bilen lader lige nu.")}</div>
+          ${this._renderCarBatteries()}
         </div>
       </div>
       ${sideCard}
