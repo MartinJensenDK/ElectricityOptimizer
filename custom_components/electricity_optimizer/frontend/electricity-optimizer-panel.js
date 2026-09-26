@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.8";
+const PANEL_JS_VERSION = "0.30.9";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -842,14 +842,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderStatusCard(d) {
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, husbatteri, elnet, elbiler og prisdata lige nu. Detaljer findes på de enkelte faner.")}</h2>
+        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, husbatteri, elnet og elbiler lige nu. Detaljer findes på de enkelte faner.")}</h2>
         <div class="status-list">
           ${this._renderSolarStatusRow()}
           ${this._renderBatteryStatusRow()}
           ${this._renderEvStatusRow()}
-          <div class="status-row"><ha-icon icon="mdi:database-clock-outline"></ha-icon><div class="t"><div class="n">Prisdata</div><div class="d">${esc(d.attribution || "EnergiDataService")}${
-            d.nextUpdate ? ` · næste opdatering ${fmtTime(new Date(d.nextUpdate))}` : ""
-          }</div></div><span class="badge low">OK</span></div>
         </div>
       </div>`;
   }
