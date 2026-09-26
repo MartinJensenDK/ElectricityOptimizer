@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.31.2
+
+- Forsiden, prisgrafen: timetallet står nu under hver søjle (på smalle skærme hver 2. eller 3. time, så tallene ikke overlapper).
+- Forsiden, Status-kortet: Solceller viser "Venter på sol" i stedet for "Venter".
+
 ## 0.31.1
 
 - Solceller, Anlæg-kortet: tallene er delt i "I dag" (produceret, importeret, eksporteret) og "Denne måned" (produceret, importeret, eksporteret).

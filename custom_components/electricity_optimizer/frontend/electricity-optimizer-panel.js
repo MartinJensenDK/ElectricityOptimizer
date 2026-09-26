@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.31.1";
+const PANEL_JS_VERSION = "0.31.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -194,6 +194,7 @@ const STYLE = `
   .axis { stroke: var(--divider-color, #ccc); stroke-width: 1; }
   .mean { stroke: var(--secondary-text-color); stroke-dasharray: 4 3; stroke-width: 1; }
   .tick { font-size: 10px; fill: var(--secondary-text-color); }
+  .tick.hour { font-size: 9px; }
   .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--secondary-text-color); margin-top: 8px; }
   .legend span::before {
     content: "";
@@ -1168,7 +1169,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (s.powerKw !== null) parts.push(`${fmtNum(Math.round(s.powerKw * 1000), 0)} W lige nu`);
     if (s.todayKwh !== null) parts.push(`${fmtNum(s.todayKwh, 1)} kWh i dag`);
     const producing = s.powerKw !== null && s.powerKw > 0.05;
-    return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div><span class="badge ${producing ? "low" : "mid"}">${producing ? "Producerer" : "Venter"}</span></div>`;
+    return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div><span class="badge ${producing ? "low" : "mid"}">${producing ? "Producerer" : "Venter på sol"}</span></div>`;
   }
 
   _renderChart(d) {
@@ -1202,14 +1203,18 @@ class ElectricityOptimizerPanel extends HTMLElement {
       })
       .join("");
 
-    // x ticks: every 3 hours, plus day boundary
+    // x ticks: the hour under every bar when there is room (else every 2nd/3rd hour), plus day boundary
     const ticks = [];
+    const perHour = points.filter((p) => p.time.getMinutes() === 0).length || 1;
+    const hourW = innerW / perHour;
+    const every = hourW >= 13 ? 1 : hourW >= 8 ? 2 : 3;
     points.forEach((p, i) => {
       const hr = p.time.getHours();
       const mn = p.time.getMinutes();
-      if (mn === 0 && hr % 3 === 0) {
-        const x = padL + i * bw + bw / 2;
-        ticks.push(`<text class="tick" x="${x.toFixed(1)}" y="${H - 10}" text-anchor="middle">${pad2(hr)}</text>`);
+      if (mn === 0 && hr % every === 0) {
+        const span = points.filter((q) => q.time.getTime() >= p.time.getTime() && q.time.getTime() < p.time.getTime() + 3600000).length || 1;
+        const x = padL + i * bw + (bw * span) / 2;
+        ticks.push(`<text class="tick hour" x="${x.toFixed(1)}" y="${H - 10}" text-anchor="middle">${pad2(hr)}</text>`);
       }
       if (i > 0 && p.day === "tomorrow" && points[i - 1].day === "today") {
         const x = padL + i * bw;
