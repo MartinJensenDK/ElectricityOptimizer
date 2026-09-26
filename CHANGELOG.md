@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.32.3
+
+- Hus batteri-fanen: kortet "Batteri" med bjælken er erstattet af de samme kort "Hus batteri" (batteri-ikon) og "Batteri effekt" (måler) som på forsiden.
+
 ## 0.32.2
 
 - Forsiden, Status-kortet: mærkaterne viser igen den fulde status (fx "Venter på sol", "Venter på solproduktion", "Hold"), nu i en blå boks i stedet for gul. Ingen "Afventer…" og ingen tooltips på mærkaterne.

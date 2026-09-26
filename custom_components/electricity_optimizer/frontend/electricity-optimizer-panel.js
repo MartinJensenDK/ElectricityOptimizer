@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.32.2";
+const PANEL_JS_VERSION = "0.32.3";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -2762,7 +2762,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const [modeText, modeCls, modeWhy] = ElectricityOptimizerPanel.MODE_TEXT[mode] || ["–", "neutral", ""];
     const statusNote = { ...ElectricityOptimizerPanel.BATTERY_NOTE, auto: modeWhy }[rt.status] || "";
     const cmds = rt.commands_configured || {};
-    const socPct = live.soc === null ? 0 : Math.max(0, Math.min(100, live.soc));
     const why = plan
       ? [
           plan.current_price !== null ? `Pris nu ${fmtNum(plan.current_price)}` : "",
@@ -2779,11 +2778,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
     return `
       <div class="grid">
-        <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Batteri${I("Ladestand, kapacitet og reserve. Stregen på bjælken er reserven, som batteriet ikke aflades under.")}</div>
-          <div class="value">${live.soc === null ? "–" : fmtNum(live.soc, 0) + " %"}<small>${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %</small></div>
-          <div class="soc-bar"><div class="fill ${live.batW > 0 ? "charging" : ""}" style="width:${socPct}%"></div><div class="target" style="left:${b.min_soc}%"></div></div>
-          <div class="sub">${live.batW === null ? "Ingen effekt-sensor" : live.batW >= 0 ? `Lader med ${fmtNum(live.batW, 0)} W` : `Aflader med ${fmtNum(-live.batW, 0)} W`}</div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand vist som et batteri, der fyldes op: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
+          ${this._renderBatteryLevel(live.soc)}
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
+          ${this._renderBatteryGauge(live.batW)}
         </div>
         <div class="card kpi">
           <div class="label"><ha-icon icon="mdi:state-machine"></ha-icon>Modus lige nu${I("Normal: batteriet styres af sin egen inverter. Hold: batteriet spares til dyrere timer senere. Lad fra nettet: batteriet lades i billige timer. Teksten under forklarer hvorfor.")}</div>
