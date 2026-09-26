@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.4";
+const PANEL_JS_VERSION = "0.30.5";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -250,6 +250,7 @@ const STYLE = `
   .status-row { display: flex; align-items: center; gap: 12px; }
   .status-row ha-icon { --mdc-icon-size: 24px; color: var(--secondary-text-color); }
   .status-row .t { flex: 1; }
+  .status-row .rank { font-size: 22px; font-weight: 500; line-height: 1; min-width: 28px; text-align: right; color: var(--primary-text-color); }
   .status-row .t .n { font-weight: 500; }
   .status-row .t .d { font-size: 13px; color: var(--secondary-text-color); }
   .empty {
@@ -1530,12 +1531,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
       rows = `<div class="status-row"><ha-icon icon="mdi:timer-sand"></ha-icon><div class="t"><div class="d">Henter regler…</div></div></div>`;
     } else if (rules.solar_priority === "battery") {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Op til ${rules.solar_priority_over} % har batteriet forrang: under ${rules.ev_buffer_soc || 0} % venter bilen, derover kører den højst med min. ladestrøm.` : "Intet husbatteri sat op – bilen får solstrømmen."}</div></div></div>
-        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Over ${rules.solar_priority_over} % vinder bilen og får eksporten plus det, batteriet ellers ville lade med. ${esc(carText)}.</div></div></div>`;
+        <div class="status-row"><span class="rank">1.</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Op til ${rules.solar_priority_over} % har batteriet forrang: under ${rules.ev_buffer_soc || 0} % venter bilen, derover kører den højst med min. ladestrøm.` : "Intet husbatteri sat op – bilen får solstrømmen."}</div></div></div>
+        <div class="status-row"><span class="rank">2.</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Over ${rules.solar_priority_over} % vinder bilen og får eksporten plus det, batteriet ellers ville lade med. ${esc(carText)}.</div></div></div>`;
     } else {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Op til ${rules.solar_priority_over} % får bilen eksporten plus det, batteriet lader med; derover vinder batteriet. ${esc(carText)}.</div></div></div>
-        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${battery ? "Får det overskud, bilen ikke bruger, og bruges i de dyre timer." : "Intet husbatteri sat op."}</div></div></div>`;
+        <div class="status-row"><span class="rank">1.</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Op til ${rules.solar_priority_over} % får bilen eksporten plus det, batteriet lader med; derover vinder batteriet. ${esc(carText)}.</div></div></div>
+        <div class="status-row"><span class="rank">2.</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${battery ? "Får det overskud, bilen ikke bruger, og bruges i de dyre timer." : "Intet husbatteri sat op."}</div></div></div>`;
     }
     const ctx = this._context || {};
     return `

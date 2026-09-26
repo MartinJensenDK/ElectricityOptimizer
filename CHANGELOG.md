@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.5
+
+- Solceller, "Sådan bruges solstrømmen": den blå cirkel er erstattet af et mellemstort "1." og "2." foran hver række.
+
 ## 0.30.4
 
 - Solceller, Anlæg-kortet: rækkerne "Installeret effekt" og "Solens retning" er fjernet. Kortet viser nu produceret i dag og produceret denne måned.
