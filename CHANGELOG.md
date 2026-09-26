@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.20.2
+
+- "Lad nu" er nu en ægte manuel overstyring: den starter opladning med det samme, også når Smart opladning er slået fra, og også når bilen allerede er over sit mål-SoC. Den kører, til bilen er fuld, tages ud af laderen, eller du trykker "Stop Lad nu". Før blev trykket afvist stille, hvis Smart opladning var fra eller SoC var over målet.
+- "Stop Lad nu" sender altid stop-kommandoen, også når Smart opladning er fra.
+
 ## 0.20.1
 
 - Hus batteri: knappen "Rediger sensorer og kommandoer" i overskriften er erstattet af en knaprække nederst på Indstillinger-kortet med "Rediger" og "Slet", magen til bilkortene under Elbiler.

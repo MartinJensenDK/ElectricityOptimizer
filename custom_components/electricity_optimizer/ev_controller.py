@@ -221,6 +221,7 @@ class EvController:
         self.runtime: dict[str, dict[str, Any]] = {}
         self._last_cmd: dict[str, bool] = {}
         self._charging_since: dict[str, datetime] = {}
+        self._force_send: set[str] = set()  # cars whose next start/stop must be sent even if unchanged
         self.notifier = None  # set by __init__
         self._last_amps: dict[str, float] = {}
         self._last_amps_at: dict[str, datetime] = {}
@@ -289,8 +290,12 @@ class EvController:
 
         plan = plan_car(now, ctx.slots, soc, car) if ctx.slots else None
         rt["plan"] = plan
-        if not car["enabled"]:
+        cid = car["id"]
+        if not car["enabled"] and not car["charge_now"]:
             rt["status"] = "disabled"
+            if self._last_cmd.get(cid):
+                await self._apply(car, False)  # stop what we started manually ("Stop Lad nu")
+                rt["charging"] = self._last_cmd.get(cid, False)
             return
 
         desired = False
@@ -304,15 +309,17 @@ class EvController:
         target = plan["target_soc"] if plan else car["target_soc"]
         rt["target_soc"] = target
         self._notify_plan_problems(car, rt, plan, soc, plugged, target)
-        if soc >= target:
+        if car["charge_now"] and soc < 100 and plugged is not False:
+            # manual: charge regardless of plan, target and "Smart opladning" until full, unplugged or stopped
+            desired, mode, rt["status"] = True, "grid", "charge_now"
+        elif car["charge_now"]:
+            car["charge_now"] = False  # full or unplugged: the manual charge is over
+            await self.store.async_save()
+            rt["status"] = "done" if soc >= 100 else "not_plugged"
+        elif soc >= target:
             rt["status"] = "done"
-            if car["charge_now"]:
-                car["charge_now"] = False
-                await self.store.async_save()
         elif plugged is False:
             rt["status"] = "not_plugged"
-        elif car["charge_now"]:
-            desired, mode, rt["status"] = True, "grid", "charge_now"
         elif uses_grid and plan and car["price_limit"] is not None and plan["current_price"] is not None and plan["current_price"] <= car["price_limit"]:
             desired, mode, rt["status"] = True, "grid", "below_limit"
         elif uses_grid and plan and plan["in_plan_now"]:
@@ -355,9 +362,9 @@ class EvController:
 
     def forget_command(self, car_id: str) -> None:
         """Re-send start/stop and the current limit on the next evaluation (after a manual action or an edit)."""
-        self._last_cmd.pop(car_id, None)
         self._last_amps.pop(car_id, None)
         self._last_amps_at.pop(car_id, None)
+        self._force_send.add(car_id)
 
     # ---- notifications
 
@@ -536,8 +543,9 @@ class EvController:
 
     async def _apply(self, car: dict[str, Any], desired: bool) -> None:
         cid = car["id"]
-        if self._last_cmd.get(cid) is desired:
+        if cid not in self._force_send and self._last_cmd.get(cid) is desired:
             return
+        self._force_send.discard(cid)
         if desired:
             self._charging_since[cid] = dt_util.now()
         else:

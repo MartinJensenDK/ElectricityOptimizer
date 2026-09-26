@@ -162,8 +162,14 @@ async def test_buttons_used_for_start_and_stop(hass: HomeAssistant, hass_ws_clie
     assert msg["result"]["car"]["runtime"]["status"] == "charge_now"
     assert [c.data["entity_id"] for c in press] == ["button.start"]
 
-    hass.states.async_set("sensor.car_soc", "80", {"unit_of_measurement": "%"})
+    hass.states.async_set("sensor.car_soc", "80", {"unit_of_measurement": "%"})  # target reached, but "Lad nu" keeps going
     await client.send_json({"id": 2, "type": f"{DOMAIN}/evaluate"})
+    msg = await client.receive_json()
+    assert [c.data["entity_id"] for c in press] == ["button.start"]
+    assert msg["result"]["cars"][0]["charge_now"] is True
+
+    hass.states.async_set("sensor.car_soc", "100", {"unit_of_measurement": "%"})  # full -> stop, charge_now cleared
+    await client.send_json({"id": 3, "type": f"{DOMAIN}/evaluate"})
     msg = await client.receive_json()
     assert [c.data["entity_id"] for c in press] == ["button.start", "button.stop"]
     assert msg["result"]["cars"][0]["charge_now"] is False

@@ -386,3 +386,33 @@ async def test_command_test_presses_button_and_reports_errors(hass: HomeAssistan
     await client.send_json({"id": 3, "type": f"{DOMAIN}/command/test", "entity_id": "select.mode"})
     msg = await client.receive_json()
     assert not msg["success"] and "value" in msg["error"]["message"]
+
+
+async def test_charge_now_works_when_smart_charging_is_off_and_above_target(hass: HomeAssistant, hass_ws_client) -> None:
+    """'Lad nu' is a manual override: it charges even with Smart opladning off and SoC above the target, and 'Stop' sends stop."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "85")  # above target 80
+    press = async_mock_service(hass, "button", "press")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    car = {**CAR, "source": "plan", "enabled": False, "start_entity": "button.authorize", "stop_entity": "button.deauthorize", "current_entity": ""}
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/cars/save", "car": car})
+    cid = res["car"]["id"]
+    assert res["car"]["runtime"]["status"] == "disabled" and press == []
+
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {"id": cid, "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "charge_now" and res["car"]["runtime"]["charging"] is True
+    assert [c.data["entity_id"] for c in press] == ["button.authorize"]
+
+    await _ws(hass, client, 3, {"type": f"{DOMAIN}/evaluate"})
+    assert len(press) == 1  # nothing re-sent while unchanged
+
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/cars/save", "car": {"id": cid, "charge_now": False}})
+    assert res["car"]["runtime"]["status"] == "disabled" and res["car"]["runtime"]["charging"] is False
+    assert [c.data["entity_id"] for c in press] == ["button.authorize", "button.deauthorize"]
+
+    # full -> the manual charge ends by itself and charge_now is cleared
+    await _ws(hass, client, 5, {"type": f"{DOMAIN}/cars/save", "car": {"id": cid, "charge_now": True, "enabled": True}})
+    hass.states.async_set("sensor.car_soc", "100")
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["charge_now"] is False and res["cars"][0]["runtime"]["status"] == "done"

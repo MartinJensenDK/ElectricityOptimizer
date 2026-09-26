@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.20.1";
+const PANEL_JS_VERSION = "0.20.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1758,14 +1758,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
         ${plan ? this._renderPlanStrip(plan) : ""}
         <div class="controls">
-          <label class="toggle"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}> Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen.")}</label>
+          <label class="toggle"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}> Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen, bortset fra når du trykker Lad nu.")}</label>
           <label class="field"><span class="fl">Prisgrænse (kr/kWh)${I("Bilen lader altid, når prisen lige nu er under denne grænse, uanset planen. Tom = ingen prisgrænse.")}</span><input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
           <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til (må ikke være højere end maks.). Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
           <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
         </div>
         ${this._renderSchedule(car)}
         <div class="row" style="margin-top:12px">
-          <button class="btn ${car.charge_now ? "active" : ""}" data-action="charge-now">${car.charge_now ? "Stop 'Lad nu'" : "Lad nu"}</button>
+          <button class="btn ${car.charge_now ? "active" : ""}" data-action="charge-now" title="Starter opladning med det samme uanset plan, mål-SoC og Smart opladning. Kører til bilen er fuld, tages ud af laderen, eller du trykker Stop.">${car.charge_now ? "Stop 'Lad nu'" : "Lad nu"}</button>
           <button class="btn" data-action="edit-car">Rediger</button>
           <button class="btn danger" data-action="delete-car">Slet</button>
           ${total > 1 ? `<span class="seg" style="margin-left:auto"><button class="btn" data-action="move-up" ${index === 0 ? "disabled" : ""} title="Højere prioritet">▲</button><button class="btn" data-action="move-down" ${index === total - 1 ? "disabled" : ""} title="Lavere prioritet">▼</button></span>` : ""}
