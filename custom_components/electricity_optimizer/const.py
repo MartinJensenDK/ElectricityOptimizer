@@ -120,5 +120,7 @@ RULES_DEFAULTS = {
     "house_power_entity": "",  # used when the battery has none (solar_house mode)
     "grid_import_energy_entity": "",  # kWh bought from the grid (shown on the solar tab)
     "grid_export_energy_entity": "",  # kWh sold to the grid (shown on the solar tab)
+    "grid_import_energy_month_entity": "",  # kWh bought this month
+    "grid_export_energy_month_entity": "",  # kWh sold this month
     "grid_sign": "import_positive",
 }

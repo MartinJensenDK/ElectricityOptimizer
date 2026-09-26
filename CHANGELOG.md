@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.31.1
+
+- Solceller, Anlæg-kortet: tallene er delt i "I dag" (produceret, importeret, eksporteret) og "Denne måned" (produceret, importeret, eksporteret).
+- "Vælg sensorer" har nu fire felter: import og eksport i dag samt import og eksport denne måned.
+
 ## 0.31.0
 
 - Solceller, Anlæg-kortet: nye rækker "Importeret fra nettet" og "Eksporteret til nettet". Tryk "Vælg sensorer" på kortet for at pege på de to energi-sensorer (kWh), fx dagens eller samlede tal fra elmåleren.

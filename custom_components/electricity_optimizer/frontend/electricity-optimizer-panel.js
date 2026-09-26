@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.31.0";
+const PANEL_JS_VERSION = "0.31.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -242,6 +242,8 @@ const STYLE = `
   .now-pill { fill: var(--primary-text-color); }
   .now-pill-text { font-size: 11px; font-weight: 600; fill: var(--card-background-color, #fff); }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  tr.tsec td { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); padding-top: 14px; padding-bottom: 2px; border-bottom: none; }
+  tr.tsec:first-child td { padding-top: 0; }
   th { text-align: left; font-weight: 500; color: var(--secondary-text-color); padding: 6px 4px; border-bottom: 1px solid var(--divider-color); font-size: 12px; text-transform: uppercase; }
   td { padding: 8px 4px; border-bottom: 1px solid var(--divider-color); }
   tr:last-child td { border-bottom: 0; }
@@ -485,6 +487,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return [
       r.grid_import_energy_entity,
       r.grid_export_energy_entity,
+      r.grid_import_energy_month_entity,
+      r.grid_export_energy_month_entity,
       c.solar_power_entity,
       c.solar_energy_today_entity,
       c.solar_energy_total_entity,
@@ -1372,6 +1376,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const r = this._rules || {};
     const imp = this._numState(r.grid_import_energy_entity);
     const exp = this._numState(r.grid_export_energy_entity);
+    const impM = this._numState(r.grid_import_energy_month_entity);
+    const expM = this._numState(r.grid_export_energy_month_entity);
     const fcToday = this._numState(c.solar_forecast_today_entity);
     const fcTomorrow = this._numState(c.solar_forecast_tomorrow_entity);
     const sun = this._hass.states["sun.sun"];
@@ -1385,6 +1391,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
       monthKwh: ElectricityOptimizerPanel._toKwh(month.value, month.unit),
       importKwh: ElectricityOptimizerPanel._toKwh(imp.value, imp.unit),
       exportKwh: ElectricityOptimizerPanel._toKwh(exp.value, exp.unit),
+      importMonthKwh: ElectricityOptimizerPanel._toKwh(impM.value, impM.unit),
+      exportMonthKwh: ElectricityOptimizerPanel._toKwh(expM.value, expM.unit),
       fcTodayKwh: ElectricityOptimizerPanel._toKwh(fcToday.value, fcToday.unit),
       fcTomorrowKwh: ElectricityOptimizerPanel._toKwh(fcTomorrow.value, fcTomorrow.unit),
       peakKw: typeof c.solar_peak_kw === "number" ? c.solar_peak_kw : null,
@@ -1511,13 +1519,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="grid">
         <div class="card">
-          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Anlæggets produktion i dag og denne måned fra energi-sensorerne under Konfigurer, samt importeret og eksporteret strøm fra de to valgfrie energi-sensorer, du vælger her på kortet (fx dagens eller samlede kWh fra elmåleren).")}</h2>
+          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Produktion i dag og denne måned fra energi-sensorerne under Konfigurer, samt importeret og eksporteret strøm i dag og denne måned fra de valgfrie energi-sensorer (kWh), du vælger med 'Vælg sensorer' her på kortet.")}</h2>
           <table>
             <tbody>
+              <tr class="tsec"><td colspan="2">I dag</td></tr>
               <tr><td>Produceret i dag</td><td class="num">${s.todayKwh !== null ? `${fmtNum(s.todayKwh, 1)} kWh` : "–"}</td></tr>
+              <tr><td>Importeret i dag</td><td class="num">${s.importKwh !== null ? `${fmtNum(s.importKwh, 1)} kWh` : "–"}</td></tr>
+              <tr><td>Eksporteret i dag</td><td class="num">${s.exportKwh !== null ? `${fmtNum(s.exportKwh, 1)} kWh` : "–"}</td></tr>
+              <tr class="tsec"><td colspan="2">Denne måned</td></tr>
               <tr><td>Produceret denne måned</td><td class="num">${s.monthKwh !== null ? `${fmtNum(s.monthKwh, 0)} kWh` : "–"}</td></tr>
-              <tr><td>Importeret fra nettet</td><td class="num">${s.importKwh !== null ? `${fmtNum(s.importKwh, 1)} kWh` : "–"}</td></tr>
-              <tr><td>Eksporteret til nettet</td><td class="num">${s.exportKwh !== null ? `${fmtNum(s.exportKwh, 1)} kWh` : "–"}</td></tr>
+              <tr><td>Importeret denne måned</td><td class="num">${s.importMonthKwh !== null ? `${fmtNum(s.importMonthKwh, 0)} kWh` : "–"}</td></tr>
+              <tr><td>Eksporteret denne måned</td><td class="num">${s.exportMonthKwh !== null ? `${fmtNum(s.exportMonthKwh, 0)} kWh` : "–"}</td></tr>
             </tbody>
           </table>
           ${this._renderGridEnergyForm()}
@@ -1532,13 +1544,15 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (!r) return "";
     if (!this._editingGridEnergy) {
       return `<div class="hint" style="margin-top:8px">${
-        r.grid_import_energy_entity || r.grid_export_energy_entity ? "Import/eksport fra de valgte energi-sensorer." : "Vælg energi-sensorer (kWh) for import og eksport for at vise dem her."
+        r.grid_import_energy_entity || r.grid_export_energy_entity || r.grid_import_energy_month_entity || r.grid_export_energy_month_entity ? "Import/eksport fra de valgte energi-sensorer." : "Vælg energi-sensorer (kWh) for import og eksport for at vise dem her."
       } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-grid-energy">Vælg sensorer</button></div>`;
     }
     return `<form class="rules-form" style="margin-top:10px">
       <div class="fields">
-        <label class="field"><span class="fl">Importeret fra nettet (kWh)${I("Energi-sensor med den strøm, der er købt fra nettet, fx dagens eller samlede kWh fra elmåleren. Vises kun her.")}</span><div class="picker"><input name="grid_import_energy_entity" data-domains="sensor" value="${esc(r.grid_import_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-        <label class="field"><span class="fl">Eksporteret til nettet (kWh)${I("Energi-sensor med den strøm, der er solgt til nettet, fx dagens eller samlede kWh fra elmåleren. Vises kun her.")}</span><div class="picker"><input name="grid_export_energy_entity" data-domains="sensor" value="${esc(r.grid_export_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+        <label class="field"><span class="fl">Importeret i dag (kWh)${I("Energi-sensor med den strøm, der er købt fra nettet i dag (nulstilles dagligt). Vises kun her.")}</span><div class="picker"><input name="grid_import_energy_entity" data-domains="sensor" value="${esc(r.grid_import_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+        <label class="field"><span class="fl">Eksporteret i dag (kWh)${I("Energi-sensor med den strøm, der er solgt til nettet i dag (nulstilles dagligt). Vises kun her.")}</span><div class="picker"><input name="grid_export_energy_entity" data-domains="sensor" value="${esc(r.grid_export_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+        <label class="field"><span class="fl">Importeret denne måned (kWh)${I("Energi-sensor med den strøm, der er købt fra nettet denne måned (fx en månedlig utility meter). Vises kun her.")}</span><div class="picker"><input name="grid_import_energy_month_entity" data-domains="sensor" value="${esc(r.grid_import_energy_month_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+        <label class="field"><span class="fl">Eksporteret denne måned (kWh)${I("Energi-sensor med den strøm, der er solgt til nettet denne måned (fx en månedlig utility meter). Vises kun her.")}</span><div class="picker"><input name="grid_export_energy_month_entity" data-domains="sensor" value="${esc(r.grid_export_energy_month_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
       </div>
       <div class="row" style="margin-top:10px"><button class="btn primary" type="submit" data-raction="save-grid-energy">Gem</button><button class="btn" type="button" data-raction="cancel-grid-energy">Annuller</button></div>
       ${this._rulesError ? `<div class="err">${esc(this._rulesError)}</div>` : ""}
