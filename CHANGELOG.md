@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.33.2
+
+- Mere luft før og efter skydeknapperne "Smart styring" (Hus batteri) og "Smart opladning" (Elbiler).
+
 ## 0.33.1
 
 - Forsiden, prisgrafen: når musen holdes over en søjle, vises prisen på første linje og tidsrummet (fx "I dag 14:00 – 15:00") på næste linje i en boks ved musen, i stedet for browserens langsomme standard-tooltip.

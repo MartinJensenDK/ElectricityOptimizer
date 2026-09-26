@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.33.1";
+const PANEL_JS_VERSION = "0.33.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -308,7 +308,7 @@ const STYLE = `
   .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; align-items: end; }
   .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; min-height: 36px; }
   .toggle input { width: auto; }
-  .switch { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--primary-text-color); cursor: pointer; margin: 4px 0 6px; user-select: none; }
+  .switch { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--primary-text-color); cursor: pointer; margin: 16px 0 18px; user-select: none; }
   .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
   .switch .slider { position: relative; width: 40px; height: 22px; border-radius: 11px; background: var(--secondary-background-color, #ccc); border: 1px solid var(--divider-color, #bbb); transition: background 150ms; flex: none; box-sizing: border-box; }
   .switch .slider::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgba(0,0,0,0.35); transition: transform 150ms; }
