@@ -364,6 +364,8 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
         rules["grid_sign"] = "import_positive"
     rules["grid_power_entity"] = str(rules["grid_power_entity"] or "").strip()
     rules["house_power_entity"] = str(rules["house_power_entity"] or "").strip()
+    rules["grid_import_energy_entity"] = str(rules.get("grid_import_energy_entity") or "").strip()
+    rules["grid_export_energy_entity"] = str(rules.get("grid_export_energy_entity") or "").strip()
     if rules["surplus_source"] not in ("grid", "solar_house"):
         rules["surplus_source"] = "grid"
     rules["house_includes_ev"] = bool(rules["house_includes_ev"])

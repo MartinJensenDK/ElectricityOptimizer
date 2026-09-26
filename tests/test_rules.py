@@ -661,3 +661,17 @@ async def test_battery_above_upper_limit_feeds_the_car_until_it_drops_below(hass
     res = await _ws(hass, client, 43, {"type": f"{DOMAIN}/evaluate"})
     rt = res["cars"][0]["runtime"]
     assert rt["status"] == "solar_wait" and rt["battery_assist_w"] == 0 and rt["surplus_w"] == -2000
+
+
+async def test_grid_energy_sensors_are_stored_in_rules(hass: HomeAssistant, hass_ws_client) -> None:
+    _set_prices(hass)
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_import_energy_entity": " sensor.grid_import ", "grid_export_energy_entity": "sensor.grid_export"}})
+    assert res["rules"]["grid_import_energy_entity"] == "sensor.grid_import"
+    assert res["rules"]["grid_export_energy_entity"] == "sensor.grid_export"
+    rules = (await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/get"}))["rules"]
+    assert rules["grid_import_energy_entity"] == "sensor.grid_import" and rules["grid_export_energy_entity"] == "sensor.grid_export"
+    # clearing works too
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_import_energy_entity": ""}})
+    assert res["rules"]["grid_import_energy_entity"] == "" and res["rules"]["grid_export_energy_entity"] == "sensor.grid_export"

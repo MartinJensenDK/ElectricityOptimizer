@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.31.0
+
+- Solceller, Anlæg-kortet: nye rækker "Importeret fra nettet" og "Eksporteret til nettet". Tryk "Vælg sensorer" på kortet for at pege på de to energi-sensorer (kWh), fx dagens eller samlede tal fra elmåleren.
+
 ## 0.30.11
 
 - Forsiden, Status-kortet: de to oplysninger under hver status står nu på hver sin linje i stedet for adskilt af en prik. Under Elbiler står hver bil på sin egen linje.

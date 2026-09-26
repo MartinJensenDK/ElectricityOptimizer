@@ -46,6 +46,8 @@ Sensorerne kan altid ændres under Indstillinger → Enheder og tjenester → El
 | Prognose i dag / i morgen | sensor i kWh | Solcast eller Forecast.Solar |
 | Installeret effekt | tal i kWp | 6,4 |
 
+Import og eksport af strøm (kWh) vælges direkte på Anlæg-kortet på Solceller-fanen med "Vælg sensorer" og vises der som "Importeret fra nettet" og "Eksporteret til nettet".
+
 ## Elbiler
 
 Under fanen **Elbiler** tilføjer du en bil med:

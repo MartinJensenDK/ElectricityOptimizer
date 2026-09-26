@@ -118,5 +118,7 @@ RULES_DEFAULTS = {
     "house_includes_ev": True,  # the house load sensor includes the EV charger's draw
     "grid_power_entity": "",  # used when the battery has none
     "house_power_entity": "",  # used when the battery has none (solar_house mode)
+    "grid_import_energy_entity": "",  # kWh bought from the grid (shown on the solar tab)
+    "grid_export_energy_entity": "",  # kWh sold to the grid (shown on the solar tab)
     "grid_sign": "import_positive",
 }

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.11";
+const PANEL_JS_VERSION = "0.31.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -423,6 +423,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._rules = null;
     this._rulesStamp = 0;
     this._editingRulesSensor = false;
+    this._editingGridEnergy = false;
     this._rulesError = null;
     this._editing = null; // null | {} (new) | car object being edited
     this._formError = null;
@@ -480,7 +481,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   get _solarEntityIds() {
     const c = this._config;
+    const r = this._rules || {};
     return [
+      r.grid_import_energy_entity,
+      r.grid_export_energy_entity,
       c.solar_power_entity,
       c.solar_energy_today_entity,
       c.solar_energy_total_entity,
@@ -533,6 +537,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       .map((id) => (this._hass.states[id] ? this._hass.states[id].last_updated : "x"))
       .join(",");
     if (this._editingRulesSensor && (this._tab === "ev" || this._tab === "battery") && !force) return;
+    if (this._editingGridEnergy && this._tab === "solar" && !force) return;
     const key = [
       liveKey,
       this._batteryStamp,
@@ -1364,6 +1369,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const today = this._numState(c.solar_energy_today_entity);
     const total = this._numState(c.solar_energy_total_entity);
     const month = this._numState(c.solar_energy_month_entity);
+    const r = this._rules || {};
+    const imp = this._numState(r.grid_import_energy_entity);
+    const exp = this._numState(r.grid_export_energy_entity);
     const fcToday = this._numState(c.solar_forecast_today_entity);
     const fcTomorrow = this._numState(c.solar_forecast_tomorrow_entity);
     const sun = this._hass.states["sun.sun"];
@@ -1375,6 +1383,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
       todayKwh: ElectricityOptimizerPanel._toKwh(today.value, today.unit),
       totalKwh: ElectricityOptimizerPanel._toKwh(total.value, total.unit),
       monthKwh: ElectricityOptimizerPanel._toKwh(month.value, month.unit),
+      importKwh: ElectricityOptimizerPanel._toKwh(imp.value, imp.unit),
+      exportKwh: ElectricityOptimizerPanel._toKwh(exp.value, exp.unit),
       fcTodayKwh: ElectricityOptimizerPanel._toKwh(fcToday.value, fcToday.unit),
       fcTomorrowKwh: ElectricityOptimizerPanel._toKwh(fcTomorrow.value, fcTomorrow.unit),
       peakKw: typeof c.solar_peak_kw === "number" ? c.solar_peak_kw : null,
@@ -1501,16 +1511,38 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="grid">
         <div class="card">
-          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Anlæggets produktion i dag og denne måned fra energi-sensorerne under Konfigurer.")}</h2>
+          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Anlæggets produktion i dag og denne måned fra energi-sensorerne under Konfigurer, samt importeret og eksporteret strøm fra de to valgfrie energi-sensorer, du vælger her på kortet (fx dagens eller samlede kWh fra elmåleren).")}</h2>
           <table>
             <tbody>
               <tr><td>Produceret i dag</td><td class="num">${s.todayKwh !== null ? `${fmtNum(s.todayKwh, 1)} kWh` : "–"}</td></tr>
               <tr><td>Produceret denne måned</td><td class="num">${s.monthKwh !== null ? `${fmtNum(s.monthKwh, 0)} kWh` : "–"}</td></tr>
+              <tr><td>Importeret fra nettet</td><td class="num">${s.importKwh !== null ? `${fmtNum(s.importKwh, 1)} kWh` : "–"}</td></tr>
+              <tr><td>Eksporteret til nettet</td><td class="num">${s.exportKwh !== null ? `${fmtNum(s.exportKwh, 1)} kWh` : "–"}</td></tr>
             </tbody>
           </table>
+          ${this._renderGridEnergyForm()}
         </div>
         ${this._renderSolarUsageCard()}
       </div>`;
+  }
+
+  /** Import/export energy sensors: a "Vælg sensorer" button that opens two pickers, saved into the rules. */
+  _renderGridEnergyForm() {
+    const r = this._rules;
+    if (!r) return "";
+    if (!this._editingGridEnergy) {
+      return `<div class="hint" style="margin-top:8px">${
+        r.grid_import_energy_entity || r.grid_export_energy_entity ? "Import/eksport fra de valgte energi-sensorer." : "Vælg energi-sensorer (kWh) for import og eksport for at vise dem her."
+      } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-grid-energy">Vælg sensorer</button></div>`;
+    }
+    return `<form class="rules-form" style="margin-top:10px">
+      <div class="fields">
+        <label class="field"><span class="fl">Importeret fra nettet (kWh)${I("Energi-sensor med den strøm, der er købt fra nettet, fx dagens eller samlede kWh fra elmåleren. Vises kun her.")}</span><div class="picker"><input name="grid_import_energy_entity" data-domains="sensor" value="${esc(r.grid_import_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+        <label class="field"><span class="fl">Eksporteret til nettet (kWh)${I("Energi-sensor med den strøm, der er solgt til nettet, fx dagens eller samlede kWh fra elmåleren. Vises kun her.")}</span><div class="picker"><input name="grid_export_energy_entity" data-domains="sensor" value="${esc(r.grid_export_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" type="submit" data-raction="save-grid-energy">Gem</button><button class="btn" type="button" data-raction="cancel-grid-energy">Annuller</button></div>
+      ${this._rulesError ? `<div class="err">${esc(this._rulesError)}</div>` : ""}
+    </form>`;
   }
 
   _renderSolarUsageCard() {
@@ -1870,6 +1902,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
         this._editingRulesSensor = true;
       } else if (action === "cancel-sensor") {
         this._editingRulesSensor = false;
+      } else if (action === "edit-grid-energy") {
+        this._editingGridEnergy = true;
+      } else if (action === "cancel-grid-energy") {
+        this._editingGridEnergy = false;
+      } else if (action === "save-grid-energy") {
+        ev.preventDefault();
+        const form = btn.closest("form");
+        const data = {};
+        for (const el of form.querySelectorAll("input[name]")) data[el.name] = el.value.trim();
+        await this._saveRules(data);
+        this._editingGridEnergy = false;
       } else if (action === "save-sensor") {
         ev.preventDefault();
         const form = btn.closest("form");
