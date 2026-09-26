@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.32.3";
+const PANEL_JS_VERSION = "0.32.4";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -570,7 +570,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const el = ev.target.closest && ev.target.closest("[data-tip]");
       if (!el || !el.dataset.tip) return;
       const tip = this._tipEl;
-      tip.textContent = el.dataset.tip;
+      tip.textContent = ElectricityOptimizerPanel._sentences(el.dataset.tip).join("\n");
       tip.hidden = false;
       const r = el.getBoundingClientRect();
       const tw = tip.offsetWidth, th = tip.offsetHeight;

@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.32.4
+
+- Alle (i)-infobokse viser nu én sætning pr. linje, så de er lettere at læse.
+
 ## 0.32.3
 
 - Hus batteri-fanen: kortet "Batteri" med bjælken er erstattet af de samme kort "Hus batteri" (batteri-ikon) og "Batteri effekt" (måler) som på forsiden.
