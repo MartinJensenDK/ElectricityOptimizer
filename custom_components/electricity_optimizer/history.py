@@ -16,6 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 
 STORAGE_KEY_HISTORY = f"{DOMAIN}.history"
 HISTORY_MAX_ENTRIES = 500
+COMMANDS_MAX = 300
 HISTORY_MAX_DAYS = 90
 MAX_STEP_SECONDS = 180  # ignore gaps longer than this (restart, HA paused)
 STALE_OPEN_SECONDS = 600  # an open session not updated for this long is closed at its last tick
@@ -33,12 +34,15 @@ class HistoryStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_HISTORY)
         self.entries: list[dict[str, Any]] = []
         self.open: dict[str, dict[str, Any]] = {}
+        self.commands: list[dict[str, Any]] = []
+        self.dirty = False
         self._last_save: datetime | None = None
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
         self.entries = list(data.get("entries") or [])
         self.open = dict(data.get("open") or {})
+        self.commands = list(data.get("commands") or [])[-COMMANDS_MAX:]
         now = dt_util.now()
         for key in list(self.open):
             session = self.open[key]
@@ -48,8 +52,16 @@ class HistoryStore:
         self.prune(now)
 
     async def async_save(self) -> None:
-        await self._store.async_save({"entries": self.entries, "open": self.open})
+        await self._store.async_save({"entries": self.entries, "open": self.open, "commands": self.commands})
         self._last_save = dt_util.now()
+        self.dirty = False
+
+    def add_command(self, entry: dict[str, Any]) -> None:
+        entry = {"at": dt_util.now().isoformat(), **entry}
+        self.commands.append(entry)
+        if len(self.commands) > COMMANDS_MAX:
+            del self.commands[: len(self.commands) - COMMANDS_MAX]
+        self.dirty = True
 
     def prune(self, now: datetime) -> None:
         cutoff = (now - timedelta(days=HISTORY_MAX_DAYS)).isoformat()
@@ -165,14 +177,17 @@ class HistoryTracker:
         for key in list(self.store.open):
             if key not in seen:
                 self.store.close(key, now)
-                self._dirty = True
         self.store.prune(now)
 
     async def async_update(self, ctx: Any, cars: list[dict[str, Any]], car_runtime: dict[str, dict[str, Any]], battery_cfg: dict[str, Any] | None, battery_runtime: dict[str, Any]) -> None:
         before = len(self.store.entries)
         self.update(ctx, cars, car_runtime, battery_cfg, battery_runtime)
-        if len(self.store.entries) != before or self.store.needs_save(ctx.now):
+        if len(self.store.entries) != before or self.store.dirty or self.store.needs_save(ctx.now):
             await self.store.async_save()
+
+    def log_command(self, entry: dict[str, Any]) -> None:
+        """Called from commands.py for every command sent (ok or failed)."""
+        self.store.add_command(entry)
 
     def snapshot(self) -> dict[str, Any]:
         """For the panel: closed sessions newest first, plus running ones."""
@@ -185,4 +200,4 @@ class HistoryTracker:
             for k in ("cost", "saved"):
                 s[k] = _round(s[k], 2)
             running.append(s)
-        return {"entries": list(reversed(self.store.entries)), "open": running}
+        return {"entries": list(reversed(self.store.entries)), "open": running, "commands": list(reversed(self.store.commands[-200:]))}

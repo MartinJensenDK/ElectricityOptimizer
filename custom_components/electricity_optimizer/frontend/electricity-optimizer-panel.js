@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.19.1";
+const PANEL_JS_VERSION = "0.20.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -283,7 +283,11 @@ const STYLE = `
   .seg button { border: 0; border-right: 1px solid var(--divider-color); border-radius: 0; }
   .seg button:last-child { border-right: 0; }
   .seg button.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
-  .cmd { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; align-items: end; }
+  .cmd { display: grid; grid-template-columns: 2fr 1fr auto; gap: 8px; align-items: end; }
+  .cmd .btn { padding: 8px 10px; }
+  .cmd-result { min-height: 0; margin-top: 4px; }
+  .cmd-result.ok { color: var(--success-color, #43a047); }
+  .cmd-result.fail { color: var(--error-color, #db4437); }
   .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
   .flow .item { display: flex; gap: 10px; align-items: center; }
   .flow .item ha-icon { --mdc-icon-size: 28px; color: var(--secondary-text-color); }
@@ -304,6 +308,8 @@ const STYLE = `
   .hint { font-size: 12px; color: var(--secondary-text-color); }
   table.history { min-width: 720px; }
   table.history tr.running td { background: var(--secondary-background-color); }
+  table.cmdlog tr.failed td { background: rgba(219, 68, 55, 0.08); }
+  table.cmdlog code { font-size: 12px; }
   .rules-now { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--secondary-background-color); font-size: 13px; line-height: 1.4; }
   .rules-now strong { color: var(--primary-text-color); font-weight: 500; }
   .fl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -1738,7 +1744,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (rt.status === "battery_first" && this._rules) meta.push(`Husbatteriet har prioritet, mens det er ${this._rules.solar_priority_under}–${this._rules.solar_priority_over} %`);
     if (rt.last_action) {
       const la = rt.last_action;
-      meta.push(`Sidste kommando: ${la.action === "start" ? "start" : "stop"} kl. ${fmtTime(new Date(la.at))}${la.ok ? "" : ` – fejlede: ${la.error || ""}`}`);
+      const actionText = { start: "start", stop: "stop", set_amps: "sæt ladestrøm" }[la.action] || la.action;
+      meta.push(`Sidste kommando: ${actionText} kl. ${fmtTime(new Date(la.at))}${la.ok ? " (sendt)" : ` – fejlede: ${la.error || ""}`}`);
     }
     const socPct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
     return `
@@ -1995,6 +2002,45 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
   }
 
+  /** "Test" next to a start/stop entity: run it now and show the outcome under the field. */
+  async _testCommand(btn) {
+    const form = btn.closest("form");
+    const entityKey = btn.dataset.testcmd;
+    const val = (name) => {
+      const el = form && form.querySelector(`[name="${name}"]`);
+      return el ? el.value.trim() : "";
+    };
+    const entityId = val(entityKey);
+    const value = val(btn.dataset.valuekey);
+    const isStop = /stop/.test(entityKey);
+    const startKey = entityKey.replace("stop", "start");
+    const out = form.querySelector(`[data-testresult="${entityKey}"]`);
+    if (!entityId) {
+      out.className = "cmd-result hint fail";
+      out.textContent = "Vælg en entitet først.";
+      return;
+    }
+    out.className = "cmd-result hint";
+    out.textContent = `Sender til ${entityId}…`;
+    btn.disabled = true;
+    try {
+      await this._hass.callWS({
+        type: "electricity_optimizer/command/test",
+        entity_id: entityId,
+        value: value || null,
+        is_stop: isStop,
+        start_entity: isStop ? val(startKey) || null : null,
+      });
+      out.className = "cmd-result hint ok";
+      out.textContent = `Sendt kl. ${fmtTime(new Date())} – tjek at laderen reagerer.`;
+    } catch (err) {
+      out.className = "cmd-result hint fail";
+      out.textContent = `Fejlede: ${err && err.message ? err.message : err}`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   async _onContentClick(ev) {
     const goto = ev.target.closest && ev.target.closest("[data-goto]");
     if (goto) {
@@ -2006,6 +2052,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
         /* ignore */
       }
       this._maybeRender(true);
+      return;
+    }
+    const testBtn = ev.target.closest && ev.target.closest("[data-testcmd]");
+    if (testBtn) {
+      await this._testCommand(testBtn);
       return;
     }
     const pick = ev.target.closest && ev.target.closest("[data-pick]");
@@ -2092,7 +2143,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="cmd">
           <div class="picker"><input name="${entityKey}" data-domains="${ElectricityOptimizerPanel.CMD_DOMAINS}" value="${v(entityKey)}" placeholder="entitet" autocomplete="off"><div class="picker-list" hidden></div></div>
           <input name="${valueKey}" value="${v(valueKey)}" placeholder="værdi (select/number)">
+          <button type="button" class="btn" data-testcmd="${entityKey}" data-valuekey="${valueKey}" title="Send kommandoen nu og se, om den virker">Test</button>
         </div>
+        <div class="cmd-result hint" data-testresult="${entityKey}"></div>
       </div>`;
   }
 
@@ -2194,6 +2247,36 @@ class ElectricityOptimizerPanel extends HTMLElement {
             : `<div class="empty"><ha-icon icon="mdi:battery-clock"></ha-icon>Ingen ladeperioder endnu. De dukker op her, når en bil eller husbatteriet har ladet.</div>`
         }
         ${this._historyError ? `<div class="err">${esc(this._historyError)}</div>` : ""}
+      </div>
+      ${this._renderCommandLog(h.commands || [])}`;
+  }
+
+  _renderCommandLog(commands) {
+    const rows = commands
+      .map((c) => {
+        const at = new Date(c.at);
+        return `<tr class="${c.ok ? "" : "failed"}">
+          <td>${fmtDate(at)} ${fmtTime(at)}</td>
+          <td>${esc(c.who || "")}</td>
+          <td>${esc(c.action || "")}</td>
+          <td><code>${esc(c.entity_id || "")}</code>${c.value ? ` = ${esc(c.value)}` : ""}</td>
+          <td>${esc(c.service || "")}</td>
+          <td>${c.ok ? '<span class="badge low">OK</span>' : `<span class="badge high">Fejl</span> ${esc(c.error || "")}`}</td>
+        </tr>`;
+      })
+      .join("");
+    return `
+      <div class="card">
+        <h2><ha-icon icon="mdi:console-line"></ha-icon>Sendte kommandoer${I(
+          "Alle kommandoer, integrationen har sendt til ladere og husbatteri: start, stop, ladestrøm og manuelle tests fra formularen. Service er det kald, Home Assistant fik. OK betyder, at kaldet blev accepteret; om laderen faktisk reagerede, ses på bilens status. De seneste 300 gemmes."
+        )}</h2>
+        ${
+          rows
+            ? `<div class="chart-wrap"><table class="history cmdlog">
+          <thead><tr><th>Tid</th><th>Hvem</th><th>Handling</th><th>Entitet</th><th>Service</th><th>Resultat</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>`
+            : `<div class="empty"><ha-icon icon="mdi:console-line"></ha-icon>Ingen kommandoer sendt endnu.</div>`
+        }
       </div>`;
   }
 

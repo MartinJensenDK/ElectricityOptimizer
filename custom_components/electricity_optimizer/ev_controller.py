@@ -496,7 +496,7 @@ class EvController:
         if rate_limited and last is not None and last_at is not None and (ctx.now - last_at).total_seconds() < AMPS_CHANGE_MIN_SECONDS:
             return
         try:
-            await async_run_command(self.hass, entity, str(amps))
+            await async_run_command(self.hass, entity, str(amps), who=car["name"], action=f"ladestrøm {amps} A")
             self._last_amps[cid] = amps
             self._last_amps_at[cid] = ctx.now
             _LOGGER.info("%s: set current limit to %s A", car["name"], amps)
@@ -561,7 +561,7 @@ class EvController:
                 self.notifier.notify(f"cmd:{cid}", "Elbil-kommando fejlede", f"{car['name']}: kunne ikke sende {'start' if desired else 'stop'} – {err}")
 
     async def _activate(self, car: dict[str, Any]) -> None:
-        await async_run_command(self.hass, car["start_entity"], car.get("start_value") or None)
+        await async_run_command(self.hass, car["start_entity"], car.get("start_value") or None, who=car["name"], action="start")
 
     async def _deactivate(self, car: dict[str, Any]) -> None:
-        await async_run_command(self.hass, car["stop_entity"], car.get("stop_value") or None, is_stop=True, start_entity=car["start_entity"])
+        await async_run_command(self.hass, car["stop_entity"], car.get("stop_value") or None, is_stop=True, start_entity=car["start_entity"], who=car["name"], action="stop")

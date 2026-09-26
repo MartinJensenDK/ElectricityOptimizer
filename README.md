@@ -18,7 +18,7 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
   Lad fra nettet), planstrimmel, manuel styring og indstillinger.
 - **Historik** – ladeperioder for elbiler og husbatteri: hvornår, fra sol eller net, kWh, betalt, gennemsnitspris
   og sparet (sol = hvad energien ville have kostet fra nettet; net = i forhold til dagens gennemsnitspris),
-  med sum for i dag, 7 dage og 30 dage. Der gemmes 90 dage.
+  med sum for i dag, 7 dage og 30 dage, samt en log over alle kommandoer, integrationen har sendt. Der gemmes 90 dage.
 
 ## Krav
 
@@ -182,5 +182,6 @@ når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil elle
 under Regler for opladning. Hændelsen `electricity_optimizer_notification` (med `key`, `title` og `message`)
 sendes altid, så du kan bygge automationer, fx en besked til din telefon.
 
-Under Indstillinger → Integrationer → Electricity Optimizer kan du hente diagnostik (konfiguration, regler, biler
+Ved hver start-/stop-entitet i Rediger-formularen er der en Test-knap, der sender kommandoen med det samme og viser
+resultatet. Under Indstillinger → Integrationer → Electricity Optimizer kan du hente diagnostik (konfiguration, regler, biler
 med status, husbatteri, seneste beregning, sensorernes tilstand og de seneste ladeperioder) til fejlsøgning.

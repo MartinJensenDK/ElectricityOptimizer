@@ -30,7 +30,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
     history = data.get("history")
     if history is not None:
         snap = history.snapshot()
-        out["history"] = {"closed_entries": len(snap["entries"]), "open": snap["open"], "last_entries": snap["entries"][:10]}
+        out["history"] = {"closed_entries": len(snap["entries"]), "open": snap["open"], "last_entries": snap["entries"][:10], "last_commands": snap["commands"][:50]}
     states: dict[str, Any] = {}
     for entity_id in sorted(optimizer.watched_entities()):
         st = hass.states.get(entity_id)

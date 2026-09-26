@@ -367,3 +367,22 @@ async def test_charge_now_resends_button_press(hass: HomeAssistant, hass_ws_clie
     res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": cid, "charge_now": False}})
     res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/cars/save", "car": {"id": cid, "charge_now": True}})
     assert [c.data["entity_id"] for c in press] == ["button.deauthorize", "button.authorize", "button.deauthorize", "button.authorize"]
+
+
+async def test_command_test_presses_button_and_reports_errors(hass: HomeAssistant, hass_ws_client) -> None:
+    _set_prices(hass)
+    press = async_mock_service(hass, "button", "press")
+    hass.states.async_set("button.authorize", "unknown")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/command/test", "entity_id": "button.authorize"})
+    assert res == {"ok": True} and [c.data["entity_id"] for c in press] == ["button.authorize"]
+
+    await client.send_json({"id": 2, "type": f"{DOMAIN}/command/test", "entity_id": "button.does_not_exist"})
+    msg = await client.receive_json()
+    assert not msg["success"] and "findes ikke" in msg["error"]["message"]
+
+    hass.states.async_set("select.mode", "Self-use")
+    await client.send_json({"id": 3, "type": f"{DOMAIN}/command/test", "entity_id": "select.mode"})
+    msg = await client.receive_json()
+    assert not msg["success"] and "value" in msg["error"]["message"]

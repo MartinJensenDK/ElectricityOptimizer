@@ -321,8 +321,9 @@ class BatteryController:
         start = cfg[f"{mode}_start_entity"]
         if not start:
             return False
+        label = {"charge": "lad fra net", "hold": "hold"}[mode]
         if action == "start":
-            await async_run_command(self.hass, start, cfg[f"{mode}_start_value"] or None)
+            await async_run_command(self.hass, start, cfg[f"{mode}_start_value"] or None, who="Husbatteri", action=f"{label}: start")
         else:
             await async_run_command(
                 self.hass,
@@ -330,6 +331,8 @@ class BatteryController:
                 cfg[f"{mode}_stop_value"] or None,
                 is_stop=True,
                 start_entity=start,
+                who="Husbatteri",
+                action=f"{label}: stop",
             )
         return True
 

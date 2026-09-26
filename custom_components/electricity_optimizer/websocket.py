@@ -116,7 +116,39 @@ async def ws_history_list(hass: HomeAssistant, connection: websocket_api.ActiveC
     connection.send_result(msg["id"], history.snapshot() if history else {"entries": [], "open": []})
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command/test",
+        vol.Required("entity_id"): str,
+        vol.Optional("value"): vol.Any(str, None),
+        vol.Optional("is_stop", default=False): bool,
+        vol.Optional("start_entity"): vol.Any(str, None),
+    }
+)
+@websocket_api.async_response
+async def ws_command_test(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    """Run one start/stop command right now so the user can see whether it works."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from .commands import async_run_command
+
+    entity_id = msg["entity_id"].strip()
+    if hass.states.get(entity_id) is None:
+        connection.send_error(msg["id"], "command_failed", f"{entity_id} findes ikke i Home Assistant")
+        return
+    try:
+        await async_run_command(hass, entity_id, msg.get("value") or None, is_stop=msg["is_stop"], start_entity=msg.get("start_entity") or None, who="Test fra panelet", action="stop" if msg["is_stop"] else "start")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "command_failed", str(err))
+        return
+    except Exception as err:  # noqa: BLE001 - show whatever the service raised
+        connection.send_error(msg["id"], "command_failed", f"{type(err).__name__}: {err}")
+        return
+    connection.send_result(msg["id"], {"ok": True})
+
+
 def async_register(hass: HomeAssistant) -> None:
+    websocket_api.async_register_command(hass, ws_command_test)
     websocket_api.async_register_command(hass, ws_history_list)
     websocket_api.async_register_command(hass, ws_cars_list)
     websocket_api.async_register_command(hass, ws_cars_save)

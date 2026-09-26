@@ -176,3 +176,29 @@ async def test_diagnostics(hass: HomeAssistant, hass_client, hass_ws_client) -> 
     assert "rules" in diag and "context" in diag and "history" in diag
     assert diag["entities"][PRICE_ENTITY]["state"] == "1.5"
     assert "raw_today" not in diag["entities"][PRICE_ENTITY]["attributes"]
+
+
+async def test_commands_are_logged(hass: HomeAssistant, hass_ws_client) -> None:
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("button.authorize", "unknown")
+    press = async_mock_service(hass, "button", "press")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "source": "plan", "start_entity": "button.authorize", "stop_entity": "button.deauthorize", "current_entity": ""}})
+    await _ws(hass, client, 2, {"type": f"{DOMAIN}/command/test", "entity_id": "button.authorize"})
+    hist = await _ws(hass, client, 3, {"type": f"{DOMAIN}/history/list"})
+    cmds = hist["commands"]
+    assert cmds[0]["who"] == "Test fra panelet" and cmds[0]["entity_id"] == "button.authorize" and cmds[0]["ok"] and cmds[0]["service"] == "button.press"
+    tesla = [c for c in cmds if c["who"] == "Tesla"]
+    assert tesla and tesla[0]["action"] in ("start", "stop") and tesla[0]["entity_id"] in ("button.authorize", "button.deauthorize")
+    assert len(press) == 2
+
+    # a failing command is logged with its error
+    await client.send_json({"id": 4, "type": f"{DOMAIN}/command/test", "entity_id": "select.mode", "value": None})
+    hass.states.async_set("select.mode", "x")
+    await client.receive_json()
+    await client.send_json({"id": 5, "type": f"{DOMAIN}/command/test", "entity_id": "select.mode"})
+    await client.receive_json()
+    hist = await _ws(hass, client, 6, {"type": f"{DOMAIN}/history/list"})
+    assert hist["commands"][0]["ok"] is False and "value" in hist["commands"][0]["error"]

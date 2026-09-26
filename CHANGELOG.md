@@ -2,6 +2,13 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.20.0
+
+- Historik: nyt kort "Sendte kommandoer" med alle kommandoer, integrationen har sendt til ladere og husbatteri (tid, hvem, handling, entitet, service, OK/fejl). De seneste 300 gemmes og er også med i diagnostik.
+- Elbil og husbatteri: "Test"-knap ved hver start-/stop-entitet i Rediger-formularen. Sender kommandoen med det samme og viser, om Home Assistant tog imod den, eller hvad der gik galt (fx en entitet, der ikke findes).
+- Bilens kort viser nu også "sæt ladestrøm" som sidste kommando og markerer, at kommandoen blev sendt.
+- Alle kommandoer logges på info-niveau i Home Assistants log.
+
 ## 0.19.1
 
 - Elbil: "Lad nu", stop af "Lad nu" og ændring af start-/stop-entiteter sender nu altid kommandoen igen, også hvis integrationen troede, at laderen allerede var i den tilstand. Det gør, at stateless button-entiteter (fx Zaptec authorize/deauthorize) virker pålideligt.
