@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.29.1
+
+- Forsiden: målerne står nu 4 på første række (Solceller, Forbrug, Elnet, Batteri effekt). Hus batteri-måleren er fjernet, og batteri-ikonet hedder nu "Hus batteri" og står alene på anden række.
+- På skærme under 1100 px lægger Status-kortet sig under målerne, så de ikke bliver for små.
+
 ## 0.29.0
 
 - Forsiden: nyt kort "Batteri niveau" ved siden af Hus batteri-måleren. Det viser husbatteriet som et batteri, der fyldes op efter ladestanden, i samme farver som måleren (rød ved reserven, orange tæt på, ellers grøn), med reserven som stiplet streg og de kWh, der cirka er tilbage.

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.29.0";
+const PANEL_JS_VERSION = "0.29.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -125,10 +125,10 @@ const STYLE = `
   .grid .card { margin-bottom: 0; }
   .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 12px; margin-bottom: 12px; align-items: stretch; }
   .top .card { margin-bottom: 0; }
-  .gauges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr 1fr; gap: 12px; }
-  @media (max-width: 900px) {
+  .gauges { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 1100px) {
     .top { grid-template-columns: 1fr; }
-    .gauges { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); grid-template-rows: auto; }
+    .gauges { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
   }
   .card h2 {
     margin: 0 0 12px;
@@ -1012,26 +1012,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
     });
   }
 
-  /** Battery state of charge 0–100 %: red at/below the reserve, orange just above, green otherwise. */
-  _renderSocGauge(soc) {
-    const K = ElectricityOptimizerPanel;
-    const b = this._battery;
-    const minSoc = b ? Number(b.min_soc) || 0 : 0;
-    const color = soc === null ? "var(--primary-text-color)" : soc <= minSoc ? K.COLOR_IN : soc <= minSoc + 10 ? K.COLOR_SUN : K.COLOR_OUT;
-    return this._renderGauge({
-      value: soc,
-      min: 0,
-      max: 100,
-      color,
-      valueText: soc === null ? "–" : fmtNum(soc, 0),
-      unit: "%",
-      sub: b ? `${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %` : "Ikke sat op",
-      leftLabel: "0 %",
-      rightLabel: "100 %",
-      aria: `Hus batteri ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}`,
-    });
-  }
-
   /** Battery illustration: a horizontal cell whose fill follows the state of charge, same colours as the SoC gauge. */
   _renderBatteryLevel(soc) {
     const K = ElectricityOptimizerPanel;
@@ -1045,7 +1025,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const resX = x + pad + (inner * Math.max(0, Math.min(100, minSoc))) / 100;
     const kwh = b && soc !== null ? (Number(b.capacity_kwh) * pct) / 100 : null;
     const sub = !b ? "Ikke sat op" : kwh === null ? `${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %` : `≈ ${fmtNum(kwh, 1)} af ${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %`;
-    return `<svg class="gauge batt" viewBox="0 0 200 128" role="img" aria-label="Batteri niveau ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}">
+    return `<svg class="gauge batt" viewBox="0 0 200 128" role="img" aria-label="Hus batteri ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}">
       <rect class="body" x="${x}" y="${y}" width="${w}" height="${h}" rx="9"/>
       <rect class="nub" x="${x + w + 2}" y="${y + h / 2 - 11}" width="7" height="22" rx="2.5"/>
       ${fillW > 0 ? `<rect class="fill" style="fill:${color}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="5"/>` : ""}
@@ -1093,11 +1073,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${this._renderBatteryGauge(bat.batW)}
         </div>
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand. Rød ved eller under reserven, orange tæt på reserven, ellers grøn.")}</div>
-          ${this._renderSocGauge(bat.soc)}
-        </div>
-        <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:battery-medium"></ha-icon>Batteri niveau${I("Husbatteriets ladestand vist som et batteri, der fyldes op. Samme farver som Hus batteri-måleren: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
+          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand vist som et batteri, der fyldes op: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
           ${this._renderBatteryLevel(bat.soc)}
         </div>
       </div>
