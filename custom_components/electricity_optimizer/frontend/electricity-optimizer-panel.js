@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.32.4";
+const PANEL_JS_VERSION = "0.32.5";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1025,7 +1025,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const cars = this._cars;
     if (cars === null) return `<div class="sub" style="color:var(--secondary-text-color)">Henter biler…</div>`;
     if (!cars.length) return `<div class="sub" style="color:var(--secondary-text-color)">Ingen biler tilføjet – se fanen Elbiler</div>`;
-    const carColor = (soc) => (soc === null ? "var(--secondary-text-color)" : soc <= 20 ? K.COLOR_IN : soc <= 40 ? K.COLOR_SUN : K.COLOR_OUT);
+    const carColor = K._carSocColor;
     if (cars.length === 1) {
       const car = cars[0];
       const rt = car.runtime || {};
@@ -1078,6 +1078,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const kwh = b && soc !== null ? (Number(b.capacity_kwh) * pct) / 100 : null;
     const sub = !b ? "Ikke sat op" : kwh === null ? `${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %` : `≈ ${fmtNum(kwh, 1)} af ${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %`;
     return this._renderBigBattery({ soc, color, marker: b && minSoc > 0 ? minSoc : null, sub, aria: "Hus batteri" });
+  }
+
+  /** Car battery colour: red at/below 20 %, orange at/below 40 %, otherwise green. */
+  static _carSocColor(soc) {
+    const K = ElectricityOptimizerPanel;
+    return soc === null ? "var(--secondary-text-color)" : soc <= 20 ? K.COLOR_IN : soc <= 40 ? K.COLOR_SUN : K.COLOR_OUT;
   }
 
   /** Large battery illustration (same size as a gauge): fill = SoC, optional dashed marker, optional charging bolt. */
@@ -2105,14 +2111,18 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const actionText = { start: "start", stop: "stop", set_amps: "sæt ladestrøm" }[la.action] || la.action;
       meta.push(`Sidste kommando: ${actionText} kl. ${fmtTime(new Date(la.at))}${la.ok ? " (sendt)" : ` – fejlede: ${la.error || ""}`}`);
     }
-    const socPct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
+    const targetSoc = Number(plan && plan.target_soc ? plan.target_soc : car.target_soc) || 0;
     return `
       <div class="card" data-car="${car.id}">
         <h2><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="hint" style="font-weight:400">#${index + 1}</span>${I("Nummeret er bilens prioritet: ved sol-overskud og ved hovedsikringen får bil #1 strøm først. Flyt rækkefølgen med pilene nederst på kortet. Mærkatet viser bilens status lige nu.")} <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span></h2>
-        <div class="kpi">
-          <div class="value">${soc === null ? "–" : fmtNum(soc, 0) + " %"}<small>mål ${plan && plan.target_soc ? plan.target_soc : car.target_soc} %</small></div>
-        </div>
-        <div class="soc-bar"><div class="fill ${rt.charging ? "charging" : ""}" style="width:${socPct}%"></div><div class="target" style="left:${car.target_soc}%"></div></div>
+        ${this._renderBigBattery({
+          soc,
+          color: ElectricityOptimizerPanel._carSocColor(soc),
+          marker: targetSoc > 0 && targetSoc < 100 ? targetSoc : null,
+          sub: `mål ${targetSoc} %`,
+          aria: car.name,
+          charging: !!rt.charging,
+        })}
         <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
         ${plan ? this._renderPlanStrip(plan) : ""}
         <div class="controls">

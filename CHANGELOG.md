@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.32.5
+
+- Elbiler-fanen: hvert bilkort viser nu bilens batteri som det samme batteri-ikon som på forsiden (fyldt efter ladestand, mål som stiplet streg, lyn ved opladning) i stedet for tal og bjælke.
+
 ## 0.32.4
 
 - Alle (i)-infobokse viser nu én sætning pr. linje, så de er lettere at læse.
