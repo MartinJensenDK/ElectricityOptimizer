@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.25.2
+
+- Rediger-formularerne for elbil og husbatteri er sat op i sektioner med ens kolonner og felter på linje: Bil / Lader / Plan for elbiler, og Sensorer / Batteri / Kommandoer for husbatteriet.
+
 ## 0.25.1
 
 - Forsiden: "Husforbrug" hedder nu "Forbrug". Gaugen viser husforbruget i blå og elbilernes ladning som et ekstra segment i lilla, og teksten under siger "heraf X W husforbrug · Y W elbil".
