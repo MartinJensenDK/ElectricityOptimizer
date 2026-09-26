@@ -351,7 +351,9 @@ class EvController:
                 amps = min(amps, int(allowed))
 
         rt["mode"] = mode if desired else None
-        if desired:
+        starting = desired and not self._last_cmd.get(cid)
+        if desired and not (mode == "solar" and starting):
+            # solar: the start command goes alone; the current limit follows after the chosen interval
             await self._apply_amps(ctx, car, amps, rate_limited=(mode == "solar"))
         await self._apply(car, desired)
         rt["charging"] = self._last_cmd.get(car["id"], False)
@@ -501,8 +503,10 @@ class EvController:
         last = self._last_amps.get(cid)
         if last == amps:
             return
-        last_at = self._last_amps_at.get(cid)
-        if rate_limited and last is not None and last_at is not None and (ctx.now - last_at).total_seconds() < AMPS_CHANGE_MIN_SECONDS:
+        # rate limit from the last change, or from when charging started (solar start sends no amps)
+        reference = self._last_amps_at.get(cid) or self._charging_since.get(cid)
+        interval = ctx.rules.get("amps_interval_seconds") or AMPS_CHANGE_MIN_SECONDS
+        if rate_limited and reference is not None and (ctx.now - reference).total_seconds() < interval:
             return
         try:
             await async_run_command(self.hass, entity, str(amps), who=car["name"], action=f"ladestrøm {amps} A")

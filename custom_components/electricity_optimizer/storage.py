@@ -303,6 +303,7 @@ class BatteryStore:
 
 RULES_NUMERIC = {
     "solar_min_minutes": float,
+    "amps_interval_seconds": int,
     "solar_priority_under": int,
     "solar_priority_over": int,
 }
@@ -349,6 +350,7 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     rules["hold_battery_while_ev_grid_charging"] = bool(rules["hold_battery_while_ev_grid_charging"])
     rules["notify_enabled"] = bool(rules["notify_enabled"])
     rules["solar_min_minutes"] = max(0.0, rules["solar_min_minutes"])
+    rules["amps_interval_seconds"] = max(5, rules["amps_interval_seconds"])
     under = max(0, min(100, rules["solar_priority_under"]))
     over = max(0, min(100, rules["solar_priority_over"]))
     rules["solar_priority_under"], rules["solar_priority_over"] = min(under, over), max(under, over)

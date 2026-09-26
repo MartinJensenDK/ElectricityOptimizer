@@ -58,7 +58,7 @@ Under fanen **Elbiler** tilføjer du en bil med:
 | Tilsluttet-sensor | Valgfri `binary_sensor`; er den `off`, startes der ikke |
 | Kapacitet | kWh, bruges sammen med ladestrømmen til at beregne hvor mange timer der skal lades |
 | Min./maks. ladestrøm / faser | A og 1–3 faser; planen regner med maks. × 230 V × faser. Ved solopladning justeres strømmen mellem min. og maks. Begge kan ændres direkte på bilens kort |
-| Strømgrænse-entitet | Valgfri `number`/`input_number`; sættes til den ønskede strøm når opladning starter, og løbende ved solopladning (højst hvert 30. sekund) |
+| Strømgrænse-entitet | Valgfri `number`/`input_number`. Ved netopladning sættes den før start; ved solopladning sendes kun start-kommandoen, og strømmen sendes første gang efter det valgte interval og justeres derefter løbende |
 | Ladeeffekt-sensor | Valgfri sensor (W/kW) med bilens faktiske ladeeffekt; vises live og bruges i sol-regnestykket |
 | Kilde | *Kun sol*, *Sol + billige timer* (standard) eller *Kun billige timer* – vælges pr. ugedag i ugeplanen (formularens valg gælder alle dage ved oprettelse) |
 
@@ -90,6 +90,7 @@ Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem el
 | Sol prioritet | Sorterbar liste (træk eller tryk ⇅): nr. 1 får solstrømmen først. *Elbil* som nr. 1: bilen får eksport + batteriets ladeeffekt. *Husbatteri* som nr. 1: elbilen lader ikke fra sol |
 | Prioriter over / under (%) | Interval for nr. 1's ladestand. Er ladestanden over den øvre eller under den nedre grænse, prioriteres der ikke længere, og solstrømmen bruges normalt (bilen får kun den rene eksport) |
 | Elbil-sol: sol ≥ (W) | Elbilen lader kun fra sol, når solcellerne (effekt-sensoren fra opsætningen) har produceret mindst så meget i det valgte antal minutter; falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det |
+| Ladestrøm hvert (sek) | Ved solopladning sendes ladestrømmen første gang så mange sekunder efter start og justeres derefter højst så ofte |
 | … i mindst (min) | Hvor længe produktion og overskud skal være over grænsen, før der startes, og under, før der stoppes |
 | Sol-overskud beregnes fra | *Elnet-sensor*: overskud = det, der sælges til nettet. *Solproduktion − husforbrug*: overskud = solcelle-effekt (Konfigurer) − husforbrug − det, husbatteriet lader med, så ladestrømmen følger produktionen direkte. Med "Husforbruget inkluderer elbilens ladning" lægges bilens eget træk til, mens den lader |
 | Hovedsikring (A) | Valgfri øvre grænse pr. fase for elbiler + batteri-opladning fra nettet. Tom = ingen grænse |

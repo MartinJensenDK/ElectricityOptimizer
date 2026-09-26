@@ -63,10 +63,10 @@ async def test_solar_session_is_recorded_with_savings(hass: HomeAssistant, hass_
     client = await hass_ws_client(hass)
     await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0}})
     res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": CAR})
-    assert res["car"]["runtime"]["status"] == "solar" and res["car"]["runtime"]["amps"] == 8  # 6000/690
+    assert res["car"]["runtime"]["status"] == "solar"  # start alone; power counted at max amps until the limit is sent
 
-    # after a minute the own draw is credited and the car is modulated up to 16 A (11 040 W):
-    # 60 s * 11 040 W = 0.184 kWh of solar, worth 2.0 kr/kWh
+    # after 60 s the limit is set to 14 A ((6000 + 4140 own draw) / 690) in the same round, so the tracker counts
+    # 60 s * 14 A * 690 W = 0.161 kWh of solar, worth 2.0 kr/kWh
     freezer.tick(timedelta(seconds=60))
     await _ws(hass, client, 3, {"type": f"{DOMAIN}/evaluate"})
     hist = await _ws(hass, client, 4, {"type": f"{DOMAIN}/history/list"})
@@ -74,8 +74,8 @@ async def test_solar_session_is_recorded_with_savings(hass: HomeAssistant, hass_
     assert len(hist["open"]) == 1
     running = hist["open"][0]
     assert running["kind"] == "ev" and running["source"] == "solar" and running["running"]
-    assert abs(running["solar_kwh"] - 0.184) < 0.001
-    assert abs(running["saved"] - 0.368) < 0.01  # rounded to 2 decimals
+    assert abs(running["solar_kwh"] - 0.161) < 0.001
+    assert abs(running["saved"] - 0.322) < 0.01  # rounded to 2 decimals
 
     # heavy import -> stop charging -> the session closes and is stored (nothing added at the stop tick)
     hass.states.async_set("sensor.grid", "9000", {"unit_of_measurement": "W"})
@@ -86,8 +86,8 @@ async def test_solar_session_is_recorded_with_savings(hass: HomeAssistant, hass_
     assert len(hist["entries"]) == 1
     entry = hist["entries"][0]
     assert entry["name"] == "Tesla" and entry["source"] == "solar"
-    assert abs(entry["solar_kwh"] - 0.184) < 0.002 and entry["kwh"] == 0
-    assert entry["cost"] == 0 and abs(entry["saved"] - 0.37) < 0.01
+    assert abs(entry["solar_kwh"] - 0.161) < 0.002 and entry["kwh"] == 0
+    assert entry["cost"] == 0 and abs(entry["saved"] - 0.32) < 0.01
     assert entry["soc_start"] == 50 and "end" in entry and not entry.get("running")
     assert hass_storage[f"{DOMAIN}.history"]["data"]["entries"][0]["name"] == "Tesla"
 

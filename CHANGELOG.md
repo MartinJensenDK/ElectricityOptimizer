@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.22.0
+
+- Solopladning: når bilen starter, sendes kun start-kommandoen. Ladestrømmen (A) sendes første gang efter det valgte interval og justeres derefter højst så ofte. Nyt felt "Ladestrøm hvert (sek)" under Regler for opladning (standard 30 s). Stop sender som før kun stop-kommandoen.
+
 ## 0.21.1
 
 - Forsiden: statusbar under fanerne med én chip pr. elbil og for husbatteriet: status (fx "Venter på solproduktion", "Lader fra sol", "Hold") og den korte årsag, fx "Solproduktion 300 W – kræver 1.500 W i 2 min" eller "Batteriet spares til dyrere timer senere". Klik på en chip for at gå til fanen.

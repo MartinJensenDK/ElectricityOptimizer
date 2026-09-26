@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.21.1";
+const PANEL_JS_VERSION = "0.22.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1636,6 +1636,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
             "Hvor længe produktionen og sol-overskuddet skal være over grænsen, før bilen starter, og under grænsen, før den stopper. Forhindrer tænd/sluk, når skyer passerer."
           )}<input type="number" min="0" step="0.5" data-rfield="solar_min_minutes" value="${r.solar_min_minutes}"></label>
           <label class="field">${head(
+            "Ladestrøm hvert (sek)",
+            "Ved solopladning sendes kun start-kommandoen, når bilen starter. Ladestrømmen (A) sendes første gang efter dette antal sekunder og justeres derefter højst så ofte, så laderen ikke bombarderes, når skyer passerer. Gælder kun biler med en strøm-entitet."
+          )}<input type="number" min="5" step="5" data-rfield="amps_interval_seconds" value="${r.amps_interval_seconds}"></label>
+          <label class="field">${head(
             "Hovedsikring (A)",
             "Maks. strøm pr. fase, som elbiler og husbatteri må trække fra nettet tilsammen. Tom = ingen grænse. Kun med en grænse har rækkefølgen ved sikringen betydning."
           )}<input type="number" min="0" step="1" data-rfield="max_total_amps" value="${r.max_total_amps === null ? "" : r.max_total_amps}" placeholder="ingen grænse"></label>
@@ -1986,7 +1990,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             <label class="field"><span class="fl">Kilde (alle dage)${I("Startværdi for alle ugedage; kan ændres pr. dag bagefter. Kun sol: kun sol-overskud. Sol + billige timer: sol om dagen og billigste timer inden deadline. Kun billige timer: kun netopladning.")}</span><select name="source">${Object.entries(ElectricityOptimizerPanel.SOURCE_TEXT).map(([val, l]) => `<option value="${val}" ${(car.source || "solar_plan") === val ? "selected" : ""}>${l}</option>`).join("")}</select></label>
             <label class="field"><span class="fl">Ladeeffekt-sensor (W, valgfri)${I("Bilens eller laderens faktiske effekt. Vises live og bruges i sol-regnestykket, så bilens eget træk ikke tæller som husforbrug.")}</span><div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… bilens/laderens effekt" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field"><span class="fl">Faser${I("Antal faser laderen bruger. Effekt = ladestrøm × 230 V × faser.")}</span><select name="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
-            <label class="field"><span class="fl">Laderens strøm-entitet (valgfri)${I("number-entitet på laderen, som ladestrømmen i ampere sendes til. Med den justeres strømmen løbende efter sol-overskuddet (højst hvert 30. sekund). Uden den lades altid med maks. ladestrøm.")}</span><div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… fx laderens 'charger current limit'" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            <label class="field"><span class="fl">Laderens strøm-entitet (valgfri)${I("number-entitet på laderen, som ladestrømmen i ampere sendes til. Ved solopladning sendes den først efter det interval, der er valgt under Regler, og justeres derefter løbende efter overskuddet. Uden den lades altid med maks. ladestrøm.")}</span><div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… fx laderens 'charger current limit'" autocomplete="off"><div class="picker-list" hidden></div></div></label>
           </div>
           <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Maks. ladestrøm × 230 V × faser er effekten, planen regner med. Ved solopladning justeres strømgrænse-entiteten løbende mellem min. og maks. efter overskuddet; uden strømgrænse-entitet startes solopladning kun, når overskuddet dækker maks. ladestrøm. Ladeeffekt-sensoren bruges til at vise og regne med bilens faktiske forbrug.</div>
           ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}

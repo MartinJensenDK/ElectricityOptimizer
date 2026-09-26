@@ -108,6 +108,7 @@ RULES_DEFAULTS = {
     "hold_battery_while_ev_grid_charging": True,
     "solar_min_w": None,  # EV solar charging requires production >= this (None = off)
     "solar_min_minutes": 2,  # how long production/surplus must be above (start) or below (stop)
+    "amps_interval_seconds": 30,  # solar mode: the current limit is adjusted at most this often (and first after this delay)
     "notify_enabled": True,  # persistent notifications (events are always fired)
     "surplus_source": "grid",  # grid: export from the grid sensor | solar_house: solar production - house load
     "house_includes_ev": True,  # the house load sensor includes the EV charger's draw
