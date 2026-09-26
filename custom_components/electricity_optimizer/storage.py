@@ -306,6 +306,7 @@ RULES_NUMERIC = {
     "amps_interval_seconds": int,
     "solar_priority_under": int,
     "solar_priority_over": int,
+    "ev_buffer_soc": int,
 }
 RULES_OPTIONAL_NUMERIC = {
     "solar_min_w": float,
@@ -352,9 +353,9 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     rules["battery_to_ev_above_limit"] = bool(rules["battery_to_ev_above_limit"])
     rules["solar_min_minutes"] = max(0.0, rules["solar_min_minutes"])
     rules["amps_interval_seconds"] = max(5, rules["amps_interval_seconds"])
-    under = max(0, min(100, rules["solar_priority_under"]))
-    over = max(0, min(100, rules["solar_priority_over"]))
-    rules["solar_priority_under"], rules["solar_priority_over"] = min(under, over), max(under, over)
+    rules["solar_priority_under"] = 0
+    rules["solar_priority_over"] = max(1, min(100, rules["solar_priority_over"]))
+    rules["ev_buffer_soc"] = max(0, min(rules["solar_priority_over"] - 1, rules["ev_buffer_soc"]))  # always below "indtil"
     if rules["solar_priority"] not in ("ev", "battery"):
         rules["solar_priority"] = "ev"
     if rules["grid_priority"] not in ("ev", "battery"):

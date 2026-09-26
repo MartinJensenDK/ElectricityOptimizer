@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.25.0
+
+- Sol prioritet i tre zoner for husbatteriet som nr. 1: over "Prioriter indtil (%)" vinder bilen (eksport + batteriets ladeeffekt, og batteriet må aflade til bilen); mellem det nye "EV buffer (%)" og "Prioriter indtil" har batteriet forrang, og bilen kører højst med min. ladestrøm (starter kun, hvis solen alene dækker den); under "EV buffer" stopper bilen. EV buffer holdes altid under Prioriter indtil.
+- "Prioriter under (%)" er fjernet (altid 0), og "Prioriter over (%)" hedder nu "Prioriter indtil (%)".
+- Ny elbil-status "Lader fra sol – min. strøm".
+
 ## 0.24.0
 
 - Ny regel "Husbatteri må lade bilen over øvre grænse" (standard til, vises med husbatteri som nr. 1): er batteriet over "Prioriter over", må dets ledige afladeeffekt bruges til at lade bilen, når solen ikke rækker. Falder batteriet under grænsen, stopper bilen igen. Slået fra: bilen får kun solstrøm, og batteriets afladning trækkes fra som før.

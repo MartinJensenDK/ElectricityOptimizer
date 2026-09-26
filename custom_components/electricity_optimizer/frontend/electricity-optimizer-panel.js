@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.24.0";
+const PANEL_JS_VERSION = "0.25.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1390,11 +1390,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       rows = `<div class="status-row"><ha-icon icon="mdi:timer-sand"></ha-icon><div class="t"><div class="d">Henter regler…</div></div></div>`;
     } else if (rules.solar_priority === "battery") {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Mens batteriet er ${rules.solar_priority_under}–${rules.solar_priority_over} %, får det al solstrømmen, og elbilen venter.` : "Intet husbatteri sat op – bilen får solstrømmen."}</div></div></div>
-        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Uden for intervallet vinder bilen og får eksporten plus det, batteriet ellers ville lade med. ${esc(carText)}.</div></div></div>`;
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Op til ${rules.solar_priority_over} % har batteriet forrang: under ${rules.ev_buffer_soc || 0} % venter bilen, derover kører den højst med min. ladestrøm.` : "Intet husbatteri sat op – bilen får solstrømmen."}</div></div></div>
+        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Over ${rules.solar_priority_over} % vinder bilen og får eksporten plus det, batteriet ellers ville lade med. ${esc(carText)}.</div></div></div>`;
     } else {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Mens bilen er ${rules.solar_priority_under}–${rules.solar_priority_over} %, får den eksporten plus det, batteriet lader med; uden for intervallet vinder batteriet. ${esc(carText)}.</div></div></div>
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Op til ${rules.solar_priority_over} % får bilen eksporten plus det, batteriet lader med; derover vinder batteriet. ${esc(carText)}.</div></div></div>
         <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${battery ? "Får det overskud, bilen ikke bruger, og bruges i de dyre timer." : "Intet husbatteri sat op."}</div></div></div>`;
     }
     const ctx = this._context || {};
@@ -1513,6 +1513,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     no_power: ["Starter ikke – 0 W", "high"],
     cmd_failed: ["Start fejlede", "high"],
     battery_first: ["Venter – husbatteri har prioritet", "mid"],
+    solar_min: ["Lader fra sol – min. strøm", "low"],
     no_solar_sensor: ["Mangler solcelle-sensor", "neutral"],
     fuse_wait: ["Venter – hovedsikring", "mid"],
     no_grid_sensor: ["Mangler sensor til sol-overskud", "neutral"],
@@ -1557,12 +1558,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   /** One sentence describing what the current solar rules mean (shared by the rules card and the solar tab). */
   _solarPriorityText(rules) {
-    const band = `${rules.solar_priority_under}–${rules.solar_priority_over} %`;
+    const limit = rules.solar_priority_over;
+    const buffer = rules.ev_buffer_soc || 0;
     return rules.solar_priority === "battery"
-      ? `Nr. 1 er husbatteriet: mens dets ladestand er ${band}, lader elbilen ikke fra sol. Uden for intervallet vinder elbilen og får eksporten plus det, husbatteriet ellers ville lade med${
-          rules.battery_to_ev_above_limit !== false ? `, og over ${rules.solar_priority_over} % må husbatteriet aflade til bilen, indtil det igen er under grænsen` : ""
-        }.`
-      : `Nr. 1 er elbilen: mens bilens ladestand er ${band}, får den eksporten plus det, husbatteriet ellers ville lade med. Uden for intervallet vinder husbatteriet, og bilen lader ikke fra sol.`;
+      ? `Nr. 1 er husbatteriet. Over ${limit} % vinder bilen og får eksporten plus det, batteriet ellers ville lade med${
+          rules.battery_to_ev_above_limit !== false ? ", og batteriet må aflade til bilen" : ""
+        }. Mellem ${buffer} og ${limit} % har batteriet forrang: bilen kører højst med min. ladestrøm. Under ${buffer} % lader bilen ikke fra sol.`
+      : `Nr. 1 er elbilen: op til ${limit} % får den eksporten plus det, husbatteriet ellers ville lade med. Derover vinder husbatteriet, og bilen lader ikke fra sol.`;
   }
 
   _solarConditionsText(rules) {
@@ -1618,7 +1620,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="rules-section">Prioritering</div>
         <div class="rules-grid">
                       <div class="field prio-field"><span class="fl">Sol prioritet${I(
-              "Træk rækkerne: nr. 1 får solstrømmen først, så længe dens ladestand er i intervallet ved siden af; uden for intervallet vinder nr. 2. Den, der vinder, får det hele: er det elbilen, får den eksporten plus det, husbatteriet ellers ville lade med; er det husbatteriet, lader elbilen ikke fra sol. Flere biler får sol i den rækkefølge, de står i under Elbiler."
+              "Træk rækkerne: nr. 1 får solstrømmen først, indtil dens ladestand når 'Prioriter indtil'; derover vinder nr. 2. Vinder elbilen, får den eksporten plus det, husbatteriet ellers ville lade med. Med husbatteri som nr. 1 kører bilen med min. ladestrøm mellem EV buffer og Prioriter indtil og stopper under EV buffer. Flere biler får sol i den rækkefølge, de står i under Elbiler."
             )}</span>
               <ol class="prio-list" data-prio>
                 ${(r.solar_priority === "battery" ? ["battery", "ev"] : ["ev", "battery"])
@@ -1629,13 +1631,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
               </ol>
             </div>
           <label class="field">${head(
-              "Prioriter under (%)",
-              "Nedre grænse for nr. 1's ladestand. Når ladestanden er under denne procent, prioriteres nr. 1 ikke længere, og nr. 2 får solstrømmen først. Sæt 0 for ingen nedre grænse."
-            )}<input type="number" min="0" max="100" data-rfield="solar_priority_under" value="${r.solar_priority_under}"></label>
-          <label class="field">${head(
-              "Prioriter over (%)",
-              "Øvre grænse for nr. 1's ladestand. Når ladestanden er over denne procent, prioriteres nr. 1 ikke længere, og nr. 2 får solstrømmen først."
-            )}<input type="number" min="0" max="100" data-rfield="solar_priority_over" value="${r.solar_priority_over}"></label>
+              "Prioriter indtil (%)",
+              "Nr. 1 har solstrømmen først, indtil dens ladestand når denne procent. Derover vinder nr. 2: er det elbilen, får den eksporten plus det, husbatteriet ellers ville lade med."
+            )}<input type="number" min="1" max="100" data-rfield="solar_priority_over" value="${r.solar_priority_over}"></label>
+          ${
+            r.solar_priority === "battery"
+              ? `<label class="field">${head(
+                  "EV buffer (%)",
+                  "Kun med husbatteri som nr. 1. Under denne ladestand lader elbilen ikke fra sol. Mellem EV buffer og Prioriter indtil har husbatteriet forrang: bilen fortsætter kun med min. ladestrøm og starter kun, hvis solen alene dækker den. Skal være lavere end Prioriter indtil."
+                )}<input type="number" min="0" max="${Math.max(0, r.solar_priority_over - 1)}" data-rfield="ev_buffer_soc" value="${r.ev_buffer_soc}"></label>`
+              : ""
+          }
 
         </div>
         <div class="rules-section">Sol-ladning</div>
@@ -1737,7 +1743,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
       case "solar_wait":
         return rt.surplus_w !== undefined ? `Sol-overskud ${fmtNum(rt.surplus_w, 0)} W – kræver ${fmtNum(car.min_amps * 230 * car.phases, 0)} W` : "";
       case "battery_first":
-        return r ? `Husbatteriet har sol først, mens det er ${r.solar_priority_under}–${r.solar_priority_over} %` : "";
+        return r ? (r.solar_priority === "battery" ? `Husbatteriet har forrang op til ${r.solar_priority_over} %` : `Bilen er over ${r.solar_priority_over} % – husbatteriet har forrang`) : "";
+      case "solar_min":
+        return r ? `Husbatteriet har forrang op til ${r.solar_priority_over} % – bilen kører med min. ladestrøm${rt.amps ? ` (${rt.amps} A)` : ""}` : "";
       case "waiting":
         if (plan && plan.next_start) {
           const ns = new Date(plan.next_start);
@@ -1881,7 +1889,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (rt.charging && rt.battery_assist_w) meta.push(`Husbatteriet må hjælpe med op til ${fmtNum(rt.battery_assist_w, 0)} W, til det er under ${this._rules ? this._rules.solar_priority_over : "–"} %`);
     if (rt.status === "solar_wait" && rt.surplus_w !== undefined) meta.push(`Sol-overskud lige nu ${fmtNum(rt.surplus_w, 0)} W – kræver ${car.min_amps * 230 * car.phases} W${rt.battery_discharge_w ? ` (husbatteriet aflader ${fmtNum(rt.battery_discharge_w, 0)} W, som er trukket fra)` : ""}`);
     if (rt.status === "solar_low" && rt.solar_w !== undefined && this._rules) meta.push(`Solproduktion ${fmtNum(rt.solar_w, 0)} W – kræver ${fmtNum(this._rules.solar_min_w, 0)} W i ${this._rules.solar_min_minutes} min`);
-    if (rt.status === "battery_first" && this._rules) meta.push(`Husbatteriet har prioritet, mens det er ${this._rules.solar_priority_under}–${this._rules.solar_priority_over} %`);
+    if (rt.status === "battery_first" && this._rules) meta.push(this._rules.solar_priority === "battery" ? `Husbatteriet har forrang op til ${this._rules.solar_priority_over} %${this._rules.ev_buffer_soc ? ` (bilen venter under ${this._rules.ev_buffer_soc} %)` : ""}` : `Bilen er over ${this._rules.solar_priority_over} % – husbatteriet har forrang`);
+    if (rt.status === "solar_min" && this._rules) meta.push(`Husbatteriet har forrang op til ${this._rules.solar_priority_over} % – bilen kører med min. ladestrøm`);
     if (rt.last_action) {
       const la = rt.last_action;
       const actionText = { start: "start", stop: "stop", set_amps: "sæt ladestrøm" }[la.action] || la.action;

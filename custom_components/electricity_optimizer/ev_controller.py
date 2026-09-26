@@ -450,34 +450,31 @@ class EvController:
         return (now - datetime.fromisoformat(since)).total_seconds() < window_s
 
     @staticmethod
-    def _battery_may_feed_car(ctx: Context) -> bool:
-        rules = ctx.rules
-        return bool(
-            rules.get("battery_to_ev_above_limit", True)
-            and rules["solar_priority"] == "battery"
-            and ctx.battery_cfg is not None
-            and ctx.battery_soc is not None
-            and ctx.battery_soc > rules["solar_priority_over"]
-        )
+    def _solar_priority(ctx: Context, car_soc: float | None) -> tuple[str, str | None]:
+        """Who has solar priority right now, and (battery as no. 1) which zone the battery's SoC is in.
 
-    @staticmethod
-    def _solar_priority(ctx: Context, car_soc: float | None) -> str:
-        """Who has solar priority right now: "ev" or "battery".
-
-        No. 1 in the rules wins while its own SoC is inside [under, over]; outside the band no. 2 wins.
+        Battery as no. 1: above "indtil" the car wins ("above"); between the EV buffer and "indtil" the
+        battery comes first but the car may keep going at min amps ("middle"); below the buffer the car
+        stops ("below"). Car as no. 1: the car wins up to "indtil", above it the battery wins.
         Without a house battery the car always wins.
         """
         rules = ctx.rules
         first = rules["solar_priority"]
-        second = "ev" if first == "battery" else "battery"
         if ctx.battery_cfg is None:
-            return "ev"
-        soc = ctx.battery_soc if first == "battery" else car_soc
-        if soc is None:
-            return first
-        if rules["solar_priority_under"] <= soc <= rules["solar_priority_over"]:
-            return first
-        return second
+            return "ev", None
+        limit = rules["solar_priority_over"]
+        if first == "battery":
+            soc = ctx.battery_soc
+            if soc is None:
+                return "battery", "below"
+            if soc > limit:
+                return "ev", "above"
+            if soc >= rules.get("ev_buffer_soc", 0):
+                return "battery", "middle"
+            return "battery", "below"
+        if car_soc is None or car_soc <= limit:
+            return "ev", None
+        return "battery", None
 
     def _solar_decision(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], car_w: float | None) -> tuple[bool, int]:
         """Return (charge, amps) for solar surplus charging, with start/stop hysteresis."""
@@ -485,9 +482,10 @@ class EvController:
         if ctx.surplus_w is None:
             rt["status"] = "no_grid_sensor"
             return False, car["max_amps"]
-        priority = self._solar_priority(ctx, rt.get("soc"))
+        priority, zone = self._solar_priority(ctx, rt.get("soc"))
         rt["solar_priority"] = priority
-        if priority == "battery":
+        rt["battery_zone"] = zone
+        if priority == "battery" and zone != "middle":
             rt["status"] = "battery_first"
             self._reset_solar_timers(rt)
             return False, car["max_amps"]
@@ -519,19 +517,35 @@ class EvController:
         discharge = -ctx.battery_w if ctx.battery_cfg is not None and ctx.battery_w is not None and ctx.battery_w < 0 else 0.0
         rt["battery_discharge_w"] = round(discharge)
         rt["battery_assist_w"] = 0
-        if self._battery_may_feed_car(ctx):
-            # battery no. 1 above its upper limit: the car may run on the battery until it drops below the limit
+        if zone == "above" and rules.get("battery_to_ev_above_limit", True):
+            # battery no. 1 above "indtil": the car may run on the battery until it drops below the limit
             if not ctx.battery_assist_added:
                 ctx.battery_assist_added = True
                 headroom = max(0.0, ctx.battery_cfg["max_discharge_kw"] * 1000 - discharge)
                 available += headroom
                 rt["battery_assist_w"] = round(headroom)
-        elif discharge:
+        elif discharge and not (zone == "middle" and currently_solar):
             # the house battery is covering part of the load: that energy is not solar surplus
             available -= discharge
         modulating = bool(car.get("current_entity"))
         need_w = (car["min_amps"] if modulating else car["max_amps"]) * per_amp
         rt["surplus_w"] = round(available)
+
+        if zone == "middle":
+            # between the EV buffer and "indtil": the battery comes first - the car keeps going at min amps,
+            # and only starts when the solar surplus alone covers min amps
+            if currently_solar:
+                amps = car["min_amps"] if modulating else car["max_amps"]
+                ctx.surplus_w = available - amps * per_amp
+                rt["status"] = "solar_min"
+                return True, amps
+            if not self._debounced(rt, "solar", available >= need_w, False, window_s, now):
+                rt["status"] = "battery_first"
+                return False, car["max_amps"]
+            amps = car["min_amps"] if modulating else car["max_amps"]
+            ctx.surplus_w = available - amps * per_amp
+            rt["status"] = "solar_min"
+            return True, amps
 
         if not self._debounced(rt, "solar", available >= need_w, currently_solar, window_s, now):
             rt["status"] = "solar_wait"

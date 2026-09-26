@@ -240,23 +240,24 @@ async def test_battery_priority_band_blocks_ev_only_inside_band(hass: HomeAssist
     assert res["car"]["runtime"]["solar_priority"] == "ev"
     assert len(turn_on) == 1
 
-    hass.states.async_set("sensor.bat_soc", "25")  # inside the band -> battery wins
+    hass.states.async_set("sensor.bat_soc", "25")  # between the buffer (0) and "indtil": battery first, car at min amps
     res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
-    assert res["cars"][0]["runtime"]["status"] == "battery_first"
-    assert len(turn_off) == 1
+    assert res["cars"][0]["runtime"]["status"] == "solar_min" and res["cars"][0]["runtime"]["battery_zone"] == "middle"
+    assert len(turn_off) == 0
 
     # swapped order: EV no. 1, but the car's SoC (50 %) is above the band 0-30 -> the battery (no. 2) wins
     res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "ev"}})
     assert res["rules"]["solar_priority_over"] == 30  # band kept, now applies to the car's SoC
     res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["status"] == "battery_first" and res["cars"][0]["runtime"]["solar_priority"] == "battery"
+    assert len(turn_off) == 1
     res = await _ws(hass, client, 7, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority_over": 80}})
     res = await _ws(hass, client, 8, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["solar_priority"] == "ev" and res["cars"][0]["runtime"]["status"] == "solar"
 
-    # under > over is swapped, not rejected
-    res = await _ws(hass, client, 9, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority_under": 90, "solar_priority_over": 20}})
-    assert (res["rules"]["solar_priority_under"], res["rules"]["solar_priority_over"]) == (20, 90)
+    # the EV buffer is always kept below "indtil"; the old lower limit is fixed at 0
+    res = await _ws(hass, client, 9, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority_under": 90, "solar_priority_over": 20, "ev_buffer_soc": 50}})
+    assert (res["rules"]["solar_priority_under"], res["rules"]["solar_priority_over"], res["rules"]["ev_buffer_soc"]) == (0, 20, 19)
 
 
 async def test_ev_priority_claims_battery_charging_power_only_inside_band(hass: HomeAssistant, hass_ws_client, freezer) -> None:
@@ -614,8 +615,13 @@ async def test_battery_first_above_upper_limit_gives_the_car_the_battery_power(h
     assert rt["status"] == "solar" and rt["solar_priority"] == "ev" and rt["surplus_w"] == 5000
     assert len(turn_on) == 1
 
-    hass.states.async_set("sensor.bat_soc", "85")  # back inside the band -> the battery wins, the car stops
+    hass.states.async_set("sensor.bat_soc", "85")  # between the buffer and "indtil": the car drops to min amps
     res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar_min"
+
+    await _ws(hass, client, 5, {"type": f"{DOMAIN}/rules/save", "rules": {"ev_buffer_soc": 80}})
+    hass.states.async_set("sensor.bat_soc", "75")  # below the EV buffer -> the car stops
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["status"] == "battery_first"
 
 
@@ -638,14 +644,20 @@ async def test_battery_above_upper_limit_feeds_the_car_until_it_drops_below(hass
     assert rt["status"] == "solar" and rt["battery_assist_w"] == 6000 and rt["surplus_w"] == 6000
     assert len(turn_on) == 1
 
-    hass.states.async_set("sensor.bat_soc", "89")  # below the upper limit -> the battery wins again -> stop
+    hass.states.async_set("sensor.bat_soc", "89")  # below "indtil" but above the buffer -> min amps, no stop
     res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar_min" and res["cars"][0]["runtime"]["amps"] in (None, 6)
+    assert len(turn_off) == 0
+
+    await _ws(hass, client, 40, {"type": f"{DOMAIN}/rules/save", "rules": {"ev_buffer_soc": 85}})
+    hass.states.async_set("sensor.bat_soc", "84")  # below the EV buffer -> stop
+    res = await _ws(hass, client, 41, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["status"] == "battery_first"
     assert len(turn_off) == 1
 
     # switched off: above the limit the car only gets solar (nothing here) and the discharge counts against it
-    await _ws(hass, client, 5, {"type": f"{DOMAIN}/rules/save", "rules": {"battery_to_ev_above_limit": False}})
+    await _ws(hass, client, 42, {"type": f"{DOMAIN}/rules/save", "rules": {"battery_to_ev_above_limit": False}})
     hass.states.async_set("sensor.bat_soc", "95")
-    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
+    res = await _ws(hass, client, 43, {"type": f"{DOMAIN}/evaluate"})
     rt = res["cars"][0]["runtime"]
     assert rt["status"] == "solar_wait" and rt["battery_assist_w"] == 0 and rt["surplus_w"] == -2000
