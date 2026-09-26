@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.32.6";
+const PANEL_JS_VERSION = "0.33.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -295,6 +295,9 @@ const STYLE = `
   .picker-list div { padding: 8px 10px; cursor: pointer; font-size: 13px; color: var(--primary-text-color); }
   .picker-list div small { display: block; color: var(--secondary-text-color); font-size: 11px; }
   .picker-list div:hover { background: var(--secondary-background-color); }
+  .car-live { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 12px; align-items: start; margin: 4px 0 6px; }
+  .car-live .label { font-size: 13px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 6px; justify-content: center; }
+  .car-live .label ha-icon { --mdc-icon-size: 18px; }
   .soc-bar { position: relative; height: 10px; border-radius: 5px; background: var(--secondary-background-color); margin: 8px 0 4px; overflow: visible; }
   .soc-bar .fill { height: 100%; border-radius: 5px; background: var(--primary-color); }
   .soc-bar .target { position: absolute; top: -3px; width: 2px; height: 16px; background: var(--primary-text-color); }
@@ -1086,6 +1089,25 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const kwh = b && soc !== null ? (Number(b.capacity_kwh) * pct) / 100 : null;
     const sub = !b ? "Ikke sat op" : kwh === null ? `${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %` : `≈ ${fmtNum(kwh, 1)} af ${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %`;
     return this._renderBigBattery({ soc, color, marker: b && minSoc > 0 ? minSoc : null, sub, aria: "Hus batteri" });
+  }
+
+  /** Car charge power 0 → max (max amps × 230 V × phases), purple like the EV segment on the consumption gauge. */
+  _renderCarPowerGauge(car, liveW) {
+    const K = ElectricityOptimizerPanel;
+    const maxW = Math.max(1000, (Number(car.max_amps) || 16) * 230 * (Number(car.phases) || 3));
+    const sub = !car.power_entity ? "Ingen ladeeffekt-sensor" : liveW === null ? "Ingen værdi fra sensoren" : liveW > 50 ? "lader" : "lader ikke";
+    return this._renderGauge({
+      value: liveW,
+      min: 0,
+      max: maxW,
+      color: K.COLOR_EV,
+      valueText: liveW === null ? "–" : fmtNum(liveW, 0),
+      unit: "W",
+      sub,
+      leftLabel: "0",
+      rightLabel: K._kwLabel(maxW),
+      aria: `${car.name} ladeeffekt ${liveW === null ? "ukendt" : `${fmtNum(liveW, 0)} W`}`,
+    });
   }
 
   /** Car battery colour: red at/below 20 %, orange at/below 40 %, otherwise green. */
@@ -2123,14 +2145,23 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       <div class="card" data-car="${car.id}">
         <h2><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="hint" style="font-weight:400">#${index + 1}</span>${I("Nummeret er bilens prioritet: ved sol-overskud og ved hovedsikringen får bil #1 strøm først. Flyt rækkefølgen med pilene nederst på kortet. Mærkatet viser bilens status lige nu.")} <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span></h2>
-        ${this._renderBigBattery({
-          soc,
-          color: ElectricityOptimizerPanel._carSocColor(soc),
-          marker: targetSoc > 0 && targetSoc < 100 ? targetSoc : null,
-          sub: `mål ${targetSoc} %`,
-          aria: car.name,
-          charging: !!rt.charging,
-        })}
+        <div class="car-live">
+          <div>
+            <div class="label"><ha-icon icon="mdi:battery-medium"></ha-icon>Batteri${I("Bilens ladestand: rød under 20 %, orange under 40 %, ellers grøn. Den stiplede streg er dagens mål-SoC, og lynet viser, at bilen lader lige nu.")}</div>
+            ${this._renderBigBattery({
+              soc,
+              color: ElectricityOptimizerPanel._carSocColor(soc),
+              marker: targetSoc > 0 && targetSoc < 100 ? targetSoc : null,
+              sub: `mål ${targetSoc} %`,
+              aria: car.name,
+              charging: !!rt.charging,
+            })}
+          </div>
+          <div>
+            <div class="label"><ha-icon icon="mdi:ev-station"></ha-icon>Ladeeffekt${I("Bilens faktiske ladeeffekt lige nu fra ladeeffekt-sensoren (vælges under Rediger). Skalaen går til maks. ladestrøm × 230 V × antal faser.")}</div>
+            ${this._renderCarPowerGauge(car, liveW)}
+          </div>
+        </div>
         <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
         ${plan ? this._renderPlanStrip(plan) : ""}
         <label class="switch"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}><span class="slider"></span>Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen, bortset fra når du trykker Lad nu.")}</label>

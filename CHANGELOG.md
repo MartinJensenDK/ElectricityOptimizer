@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.33.0
+
+- Elbiler-fanen: hvert bilkort har nu en måler "Ladeeffekt" ved siden af batteriet. Den viser bilens faktiske ladeeffekt fra ladeeffekt-sensoren (W, valgfri, vælges under Rediger) på en skala op til maks. ladestrøm × 230 V × faser.
+
 ## 0.32.6
 
 - Hus batteri-fanen, Indstillinger: "Smart styring" er nu en skydeknap på sin egen linje øverst, med felterne nedenunder.
