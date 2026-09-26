@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.25.1
+
+- Forsiden: "Husforbrug" hedder nu "Forbrug". Gaugen viser husforbruget i blå og elbilernes ladning som et ekstra segment i lilla, og teksten under siger "heraf X W husforbrug · Y W elbil".
+
 ## 0.25.0
 
 - Sol prioritet i tre zoner for husbatteriet som nr. 1: over "Prioriter indtil (%)" vinder bilen (eksport + batteriets ladeeffekt, og batteriet må aflade til bilen); mellem det nye "EV buffer (%)" og "Prioriter indtil" har batteriet forrang, og bilen kører højst med min. ladestrøm (starter kun, hvis solen alene dækker den); under "EV buffer" stopper bilen. EV buffer holdes altid under Prioriter indtil.

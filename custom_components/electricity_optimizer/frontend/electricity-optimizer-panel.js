@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.25.0";
+const PANEL_JS_VERSION = "0.25.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -844,7 +844,23 @@ class ElectricityOptimizerPanel extends HTMLElement {
         endDeg = 180 - frac * 180;
         sweep = 1;
       }
-      if (Math.abs(endDeg - startDeg) > 0.3) {
+      if (!bipolar && Array.isArray(o.segments) && o.segments.length) {
+        // stacked segments from the left end, e.g. house load + EV charging
+        let from = 180;
+        let acc = 0;
+        const parts = [];
+        for (const seg of o.segments) {
+          acc += Math.max(0, seg.value || 0);
+          const to = 180 - Math.max(0, Math.min(1, (acc - o.min) / (o.max - o.min || 1))) * 180;
+          if (from - to > 0.3) parts.push(`<path class="arc" style="stroke:${seg.color}" d="M ${P(from)} A ${r} ${r} 0 0 1 ${P(to)}"/>`);
+          from = to;
+        }
+        if (parts.length) {
+          const [ex, ey] = pt(from);
+          const last = o.segments[o.segments.length - 1];
+          arc = `${parts.join("")}<circle class="dot" style="fill:${last.color}" cx="${ex.toFixed(2)}" cy="${ey.toFixed(2)}" r="${sw / 2 + 2}"/>`;
+        }
+      } else if (Math.abs(endDeg - startDeg) > 0.3) {
         const [ex, ey] = pt(endDeg);
         arc = `<path class="arc" style="stroke:${o.color}" d="M ${P(startDeg)} A ${r} ${r} 0 0 ${sweep} ${P(endDeg)}"/>
            <circle class="dot" style="fill:${o.color}" cx="${ex.toFixed(2)}" cy="${ey.toFixed(2)}" r="${sw / 2 + 2}"/>`;
@@ -929,21 +945,44 @@ class ElectricityOptimizerPanel extends HTMLElement {
     });
   }
 
-  /** House consumption 0 → 5 kW. */
-  _renderHouseGauge(houseW) {
+  static COLOR_EV = "#8e24aa";
+
+  /** What the cars are charging with right now (power sensor, else the commanded current). */
+  _evChargingW() {
+    let total = 0;
+    for (const car of this._cars || []) {
+      const rt = car.runtime || {};
+      if (car.power_entity) {
+        const p = this._numState(car.power_entity);
+        const kw = ElectricityOptimizerPanel._toKw(p.value, p.unit);
+        if (kw !== null && kw > 0.05) total += kw * 1000;
+        continue;
+      }
+      if (rt.charging) total += (rt.amps || car.max_amps || 0) * 230 * (car.phases || 3);
+    }
+    return Math.round(total);
+  }
+
+  /** Consumption 0 → 5 kW: house load in blue, EV charging stacked on top in purple. */
+  _renderHouseGauge(totalW) {
     const K = ElectricityOptimizerPanel;
     const limit = 5000;
+    const hasSensor = (this._battery && this._battery.house_power_entity) || (this._rules && this._rules.house_power_entity);
+    const total = totalW === null ? null : Math.abs(totalW);
+    const evW = total === null ? 0 : Math.min(total, this._evChargingW());
+    const houseW = total === null ? null : total - evW;
     return this._renderGauge({
-      value: houseW === null ? null : Math.abs(houseW),
+      value: total,
       min: 0,
       max: limit,
       color: "var(--primary-color, #03a9f4)",
-      valueText: houseW === null ? "–" : fmtNum(Math.abs(houseW), 0),
+      segments: total === null ? null : [{ value: houseW, color: "var(--primary-color, #03a9f4)" }, { value: evW, color: K.COLOR_EV }],
+      valueText: total === null ? "–" : fmtNum(total, 0),
       unit: "W",
-      sub: this._battery && this._battery.house_power_entity ? "lige nu" : "Ingen sensor – vælg under Hus batteri",
+      sub: total === null ? (hasSensor ? "Ingen værdi" : "Ingen sensor – vælg under Hus batteri") : `heraf ${fmtNum(houseW, 0)} W husforbrug${evW > 0 ? ` · ${fmtNum(evW, 0)} W elbil` : ""}`,
       leftLabel: "0",
       rightLabel: K._kwLabel(limit),
-      aria: `Husforbrug ${houseW === null ? "ukendt" : `${fmtNum(houseW, 0)} W`}`,
+      aria: `Forbrug ${total === null ? "ukendt" : `${fmtNum(total, 0)} W, heraf ${fmtNum(houseW, 0)} W husforbrug`}`,
     });
   }
 
@@ -992,7 +1031,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${this._renderSolarGauge(solar, solarW)}
         </div>
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Husforbrug${I("Husets samlede forbrug lige nu fra husforbrugs-sensoren under Hus batteri. Skala 0 til 5 kW.")}</div>
+          <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Forbrug${I("Det samlede forbrug lige nu fra husforbrugs-sensoren, inkl. elbil-ladning. Blå = husforbrug, lilla = elbilernes ladning (målt med ladeeffekt-sensor, ellers den satte ladestrøm). Skala 0 til 5 kW.")}</div>
           ${this._renderHouseGauge(bat.houseW)}
         </div>
         <div class="card kpi live">
