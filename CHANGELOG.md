@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.4
+
+- Solceller, Anlæg-kortet: rækkerne "Installeret effekt" og "Solens retning" er fjernet. Kortet viser nu produceret i dag og produceret denne måned.
+
 ## 0.30.3
 
 - Elbiler-fanen: "Regler for opladning" har nu samme afstand til bilkortene ovenfor som på Hus batteri-fanen.

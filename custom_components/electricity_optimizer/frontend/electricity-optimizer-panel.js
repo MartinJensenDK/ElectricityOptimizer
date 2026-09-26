@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.3";
+const PANEL_JS_VERSION = "0.30.4";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1501,13 +1501,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="grid">
         <div class="card">
-          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Nøgletal for anlægget: installeret effekt og produktion i dag og denne måned fra energi-sensorerne under Konfigurer, samt solens retning lige nu.")}</h2>
+          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Anlæggets produktion i dag og denne måned fra energi-sensorerne under Konfigurer.")}</h2>
           <table>
             <tbody>
-              <tr><td>Installeret effekt</td><td class="num">${s.peakKw ? `${fmtNum(s.peakKw, 1)} kWp` : "–"}</td></tr>
               <tr><td>Produceret i dag</td><td class="num">${s.todayKwh !== null ? `${fmtNum(s.todayKwh, 1)} kWh` : "–"}</td></tr>
               <tr><td>Produceret denne måned</td><td class="num">${s.monthKwh !== null ? `${fmtNum(s.monthKwh, 0)} kWh` : "–"}</td></tr>
-              <tr><td>Solens retning</td><td class="num">${s.azimuth !== null ? `${fmtNum(s.azimuth, 0)}°` : "–"}</td></tr>
             </tbody>
           </table>
         </div>
