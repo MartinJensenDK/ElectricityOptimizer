@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.31.2";
+const PANEL_JS_VERSION = "0.32.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -490,6 +490,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       r.grid_export_energy_entity,
       r.grid_import_energy_month_entity,
       r.grid_export_energy_month_entity,
+      r.grid_export_enabled_entity,
       c.solar_power_entity,
       c.solar_energy_today_entity,
       c.solar_energy_total_entity,
@@ -1543,13 +1544,24 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>`;
   }
 
+  /** true/false for an on/off entity (switch, binary_sensor, input_boolean or a sensor saying on/off), null if unset or unknown. */
+  _isOn(entityId) {
+    if (!entityId || !this._hass) return null;
+    const st = this._hass.states[entityId];
+    if (!st) return null;
+    const v = String(st.state).toLowerCase();
+    if (["on", "true", "1", "enabled", "yes", "aktiv", "aktiveret"].includes(v)) return true;
+    if (["off", "false", "0", "disabled", "no", "inaktiv", "deaktiveret"].includes(v)) return false;
+    return null;
+  }
+
   /** Import/export energy sensors: a "Vælg sensorer" button that opens two pickers, saved into the rules. */
   _renderGridEnergyForm() {
     const r = this._rules;
     if (!r) return "";
     if (!this._editingGridEnergy) {
       return `<div class="hint" style="margin-top:8px">${
-        r.grid_import_energy_entity || r.grid_export_energy_entity || r.grid_import_energy_month_entity || r.grid_export_energy_month_entity ? "Import/eksport fra de valgte energi-sensorer." : "Vælg energi-sensorer (kWh) for import og eksport for at vise dem her."
+        r.grid_import_energy_entity || r.grid_export_energy_entity || r.grid_import_energy_month_entity || r.grid_export_energy_month_entity || r.grid_export_enabled_entity ? "Import/eksport fra de valgte sensorer." : "Vælg energi-sensorer (kWh) for import og eksport samt en tænd/sluk-entitet for, om eksport er tilladt."
       } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-grid-energy">Vælg sensorer</button></div>`;
     }
     return `<form class="rules-form" style="margin-top:10px">
@@ -1558,6 +1570,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <label class="field"><span class="fl">Eksporteret i dag (kWh)${I("Energi-sensor med den strøm, der er solgt til nettet i dag (nulstilles dagligt). Vises kun her.")}</span><div class="picker"><input name="grid_export_energy_entity" data-domains="sensor" value="${esc(r.grid_export_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
         <label class="field"><span class="fl">Importeret denne måned (kWh)${I("Energi-sensor med den strøm, der er købt fra nettet denne måned (fx en månedlig utility meter). Vises kun her.")}</span><div class="picker"><input name="grid_import_energy_month_entity" data-domains="sensor" value="${esc(r.grid_import_energy_month_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
         <label class="field"><span class="fl">Eksporteret denne måned (kWh)${I("Energi-sensor med den strøm, der er solgt til nettet denne måned (fx en månedlig utility meter). Vises kun her.")}</span><div class="picker"><input name="grid_export_energy_month_entity" data-domains="sensor" value="${esc(r.grid_export_energy_month_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+        <label class="field"><span class="fl">Eksport tilladt (tænd/sluk)${I("Entitet, der er tændt, når strøm må sendes til elnettet, fx inverterens 'feed-in'-kontakt eller en input_boolean. Status-kortet på Forsiden viser så 'Eksport aktiveret' eller 'Eksport deaktiveret' ved Elnet.")}</span><div class="picker"><input name="grid_export_enabled_entity" data-domains="switch,binary_sensor,input_boolean,sensor" value="${esc(r.grid_export_enabled_entity || "")}" placeholder="switch.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
       </div>
       <div class="row" style="margin-top:10px"><button class="btn primary" type="submit" data-raction="save-grid-energy">Gem</button><button class="btn" type="button" data-raction="cancel-grid-energy">Annuller</button></div>
       ${this._rulesError ? `<div class="err">${esc(this._rulesError)}</div>` : ""}
@@ -2752,10 +2765,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (live.soc !== null) parts.push(`${fmtNum(live.soc, 0)} %`);
     if (live.batW !== null) parts.push(live.batW >= 0 ? `lader ${fmtNum(live.batW, 0)} W` : `aflader ${fmtNum(-live.batW, 0)} W`);
     let grid = "";
+    const exportOn = this._isOn((this._rules || {}).grid_export_enabled_entity);
+    const exportBadge =
+      exportOn === true
+        ? `<span class="badge low">Eksport aktiveret</span>`
+        : exportOn === false
+          ? `<span class="badge mid">Eksport deaktiveret</span>`
+          : `<span class="badge ${live.gridW > 0 ? "mid" : "low"}">${live.gridW > 0 ? "Import" : "Eksport"}</span>`;
     if (live.gridW !== null) {
       grid = `<div class="status-row"><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t"><div class="n">Elnet</div><div class="d">${
         live.gridW >= 0 ? `Køber ${fmtNum(live.gridW, 0)} W` : `Sælger ${fmtNum(-live.gridW, 0)} W`
-      }${live.houseW !== null ? `<br>huset bruger ${fmtNum(live.houseW, 0)} W` : ""}</div></div><span class="badge ${live.gridW > 0 ? "mid" : "low"}">${live.gridW > 0 ? "Import" : "Eksport"}</span></div>`;
+      }${live.houseW !== null ? `<br>huset bruger ${fmtNum(live.houseW, 0)} W` : ""}</div></div>${exportBadge}</div>`;
     }
     return `${grid}<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div><span class="badge ${modeCls}">${modeText}</span></div>`;
   }

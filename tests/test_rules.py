@@ -667,9 +667,10 @@ async def test_grid_energy_sensors_are_stored_in_rules(hass: HomeAssistant, hass
     _set_prices(hass)
     await _setup(hass)
     client = await hass_ws_client(hass)
-    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_import_energy_entity": " sensor.grid_import ", "grid_export_energy_entity": "sensor.grid_export", "grid_import_energy_month_entity": "sensor.imp_month", "grid_export_energy_month_entity": "sensor.exp_month"}})
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_import_energy_entity": " sensor.grid_import ", "grid_export_energy_entity": "sensor.grid_export", "grid_import_energy_month_entity": "sensor.imp_month", "grid_export_energy_month_entity": "sensor.exp_month", "grid_export_enabled_entity": "switch.feed_in"}})
     assert res["rules"]["grid_import_energy_entity"] == "sensor.grid_import"
     assert res["rules"]["grid_import_energy_month_entity"] == "sensor.imp_month" and res["rules"]["grid_export_energy_month_entity"] == "sensor.exp_month"
+    assert res["rules"]["grid_export_enabled_entity"] == "switch.feed_in"
     assert res["rules"]["grid_export_energy_entity"] == "sensor.grid_export"
     rules = (await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/get"}))["rules"]
     assert rules["grid_import_energy_entity"] == "sensor.grid_import" and rules["grid_export_energy_entity"] == "sensor.grid_export"

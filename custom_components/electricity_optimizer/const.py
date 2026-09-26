@@ -122,5 +122,6 @@ RULES_DEFAULTS = {
     "grid_export_energy_entity": "",  # kWh sold to the grid (shown on the solar tab)
     "grid_import_energy_month_entity": "",  # kWh bought this month
     "grid_export_energy_month_entity": "",  # kWh sold this month
+    "grid_export_enabled_entity": "",  # on/off entity: is export to the grid allowed right now
     "grid_sign": "import_positive",
 }

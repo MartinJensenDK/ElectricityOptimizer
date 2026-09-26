@@ -46,7 +46,7 @@ Sensorerne kan altid ændres under Indstillinger → Enheder og tjenester → El
 | Prognose i dag / i morgen | sensor i kWh | Solcast eller Forecast.Solar |
 | Installeret effekt | tal i kWp | 6,4 |
 
-Import og eksport af strøm (kWh) i dag og denne måned vælges direkte på Anlæg-kortet på Solceller-fanen med "Vælg sensorer" og vises der under "I dag" og "Denne måned".
+Import og eksport af strøm (kWh) i dag og denne måned vælges direkte på Anlæg-kortet på Solceller-fanen med "Vælg sensorer" og vises der under "I dag" og "Denne måned". Samme sted kan du vælge en tænd/sluk-entitet for "Eksport tilladt"; så viser Status-kortet på Forsiden "Eksport aktiveret" eller "Eksport deaktiveret" ved Elnet.
 
 ## Elbiler
 

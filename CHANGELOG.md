@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.32.0
+
+- Forsiden, Status-kortet: Elnet kan nu vise "Eksport aktiveret" eller "Eksport deaktiveret". Peg på en tænd/sluk-entitet (fx inverterens feed-in-kontakt eller en input_boolean) under "Vælg sensorer" på Anlæg-kortet på Solceller-fanen. Uden entitet vises Import/Eksport som før.
+
 ## 0.31.2
 
 - Forsiden, prisgrafen: timetallet står nu under hver søjle (på smalle skærme hver 2. eller 3. time, så tallene ikke overlapper).
