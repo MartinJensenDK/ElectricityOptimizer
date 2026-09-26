@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.23.0
+
+- Sol prioritet: uden for intervallet vinder nr. 2 i stedet for "normal" brug. Med husbatteri som nr. 1 og intervallet 80–90 % får elbilen nu eksporten plus det, batteriet ellers ville lade med, når batteriet er over 90 % (eller under 80 %). Med elbil som nr. 1 vinder husbatteriet uden for bilens interval.
+
 ## 0.22.3
 
 - Solopladning: det, husbatteriet aflader med, trækkes nu fra sol-overskuddet, uanset om overskuddet beregnes fra elnet-sensoren eller fra solproduktion − husforbrug. Før kunne bilen blive ved med at lade på husbatteriet, fordi batteriet dækkede underskuddet og nettet viste balance.

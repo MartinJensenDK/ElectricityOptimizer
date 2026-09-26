@@ -449,24 +449,23 @@ class EvController:
         return (now - datetime.fromisoformat(since)).total_seconds() < window_s
 
     @staticmethod
-    def _solar_priority(ctx: Context, car_soc: float | None) -> str | None:
-        """Who has solar priority right now: "ev", "battery" or None (used normally).
+    def _solar_priority(ctx: Context, car_soc: float | None) -> str:
+        """Who has solar priority right now: "ev" or "battery".
 
-        No. 1 in the rules only wins while its own SoC is inside [under, over].
+        No. 1 in the rules wins while its own SoC is inside [under, over]; outside the band no. 2 wins.
+        Without a house battery the car always wins.
         """
         rules = ctx.rules
         first = rules["solar_priority"]
-        if first == "battery":
-            if ctx.battery_cfg is None or ctx.battery_soc is None:
-                return None
-            soc = ctx.battery_soc
-        else:
-            if car_soc is None:
-                return None
-            soc = car_soc
+        second = "ev" if first == "battery" else "battery"
+        if ctx.battery_cfg is None:
+            return "ev"
+        soc = ctx.battery_soc if first == "battery" else car_soc
+        if soc is None:
+            return first
         if rules["solar_priority_under"] <= soc <= rules["solar_priority_over"]:
             return first
-        return None
+        return second
 
     def _solar_decision(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], car_w: float | None) -> tuple[bool, int]:
         """Return (charge, amps) for solar surplus charging, with start/stop hysteresis."""

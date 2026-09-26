@@ -88,7 +88,7 @@ Kortet **Regler for opladning** nederst på Forsiden styrer samspillet mellem el
 | Regel | Betydning |
 | --- | --- |
 | Sol prioritet | Sorterbar liste (træk eller tryk ⇅): nr. 1 får solstrømmen først. *Elbil* som nr. 1: bilen får eksport + batteriets ladeeffekt. *Husbatteri* som nr. 1: elbilen lader ikke fra sol |
-| Prioriter over / under (%) | Interval for nr. 1's ladestand. Er ladestanden over den øvre eller under den nedre grænse, prioriteres der ikke længere, og solstrømmen bruges normalt (bilen får kun den rene eksport) |
+| Prioriter over / under (%) | Interval for nr. 1's ladestand. Inden for intervallet vinder nr. 1, uden for vinder nr. 2. Den, der vinder, får det hele: elbilen får eksport + batteriets ladeeffekt; husbatteriet får al solstrømmen, og bilen venter |
 | Elbil-sol: sol ≥ (W) | Elbilen lader kun fra sol, når solcellerne (effekt-sensoren fra opsætningen) har produceret mindst så meget i det valgte antal minutter; falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det |
 | Ladestrøm hvert (sek) | Ved solopladning sendes ladestrømmen første gang så mange sekunder efter start og justeres derefter højst så ofte |
 | … i mindst (min) | Hvor længe produktion og overskud skal være over grænsen, før der startes, og under, før der stoppes |

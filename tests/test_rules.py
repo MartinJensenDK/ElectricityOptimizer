@@ -122,17 +122,16 @@ async def test_battery_first_blocks_ev_solar_until_soc(hass: HomeAssistant, hass
     res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": CAR})
     assert res["car"]["runtime"]["status"] == "battery_first"
 
-    hass.states.async_set("sensor.bat_soc", "95")
+    hass.states.async_set("sensor.bat_soc", "95")  # above 90 % -> the car (no. 2) wins: export + battery charging = 5000 W
     res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
     rt = res["cars"][0]["runtime"]
-    # battery first: only the export counts -> 3000 W / 690 = 4 A < min 6 A -> wait
-    assert rt["status"] == "solar_wait"
+    assert rt["status"] == "solar" and rt["solar_priority"] == "ev" and rt["surplus_w"] == 5000 and rt["amps"] is None
 
-    # EV first: export + battery charging power = 5000 W -> start now, 7 A after the interval
-    await _ws(hass, client, 5, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "ev"}})
+    # EV first with the car inside the default band: the same
+    await _ws(hass, client, 5, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "ev", "solar_priority_over": 100}})
     res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
     rt = res["cars"][0]["runtime"]
-    assert rt["status"] == "solar" and rt["amps"] is None
+    assert rt["status"] == "solar" and rt["solar_priority"] == "ev"
     hass.states.async_set("sensor.grid", "1140", {"unit_of_measurement": "W"})  # the car draws 4140 W of the 3000 W export
     freezer.tick(timedelta(seconds=31))
     res = await _ws(hass, client, 7, {"type": f"{DOMAIN}/evaluate"})
@@ -237,8 +236,8 @@ async def test_battery_priority_band_blocks_ev_only_inside_band(hass: HomeAssist
     rules = await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "battery", "solar_priority_under": 0, "solar_priority_over": 30, "solar_min_minutes": 0}})
     assert rules["rules"]["solar_priority_over"] == 30
     res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": CAR})
-    assert res["car"]["runtime"]["status"] == "solar"  # 40 % is above the band -> normal use, EV gets the export
-    assert res["car"]["runtime"]["solar_priority"] is None
+    assert res["car"]["runtime"]["status"] == "solar"  # 40 % is above the band -> no. 2 (the car) wins
+    assert res["car"]["runtime"]["solar_priority"] == "ev"
     assert len(turn_on) == 1
 
     hass.states.async_set("sensor.bat_soc", "25")  # inside the band -> battery wins
@@ -246,14 +245,14 @@ async def test_battery_priority_band_blocks_ev_only_inside_band(hass: HomeAssist
     assert res["cars"][0]["runtime"]["status"] == "battery_first"
     assert len(turn_off) == 1
 
-    # swapped order: EV no. 1 with the car's own SoC (50 %) inside the default band -> EV wins again
+    # swapped order: EV no. 1, but the car's SoC (50 %) is above the band 0-30 -> the battery (no. 2) wins
     res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "ev"}})
     assert res["rules"]["solar_priority_over"] == 30  # band kept, now applies to the car's SoC
     res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
-    assert res["cars"][0]["runtime"]["status"] == "solar" and res["cars"][0]["runtime"]["solar_priority"] is None
+    assert res["cars"][0]["runtime"]["status"] == "battery_first" and res["cars"][0]["runtime"]["solar_priority"] == "battery"
     res = await _ws(hass, client, 7, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority_over": 80}})
     res = await _ws(hass, client, 8, {"type": f"{DOMAIN}/evaluate"})
-    assert res["cars"][0]["runtime"]["solar_priority"] == "ev"
+    assert res["cars"][0]["runtime"]["solar_priority"] == "ev" and res["cars"][0]["runtime"]["status"] == "solar"
 
     # under > over is swapped, not rejected
     res = await _ws(hass, client, 9, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority_under": 90, "solar_priority_over": 20}})
@@ -287,9 +286,9 @@ async def test_ev_priority_claims_battery_charging_power_only_inside_band(hass: 
     res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["status"] == "solar"  # inside the band the battery's 3 kW is claimed too -> 4830 W
 
-    hass.states.async_set("sensor.car_soc", "85")  # above the band -> normal: battery power no longer claimable
+    hass.states.async_set("sensor.car_soc", "85")  # above the band -> the battery (no. 2) wins: the car stops
     res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
-    assert res["cars"][0]["runtime"]["status"] == "solar_wait"
+    assert res["cars"][0]["runtime"]["status"] == "battery_first"
 
 
 async def test_ev_solar_requires_minimum_production(hass: HomeAssistant, hass_ws_client, freezer) -> None:
@@ -593,3 +592,28 @@ async def test_battery_discharge_is_not_solar_surplus(hass: HomeAssistant, hass_
     # 0 + 4830 (own at 7 A) - 3000 = 1830 W < 4140 W -> stop instead of draining the battery
     assert rt["status"] == "solar_wait" and rt["battery_discharge_w"] == 3000
     assert len(turn_off) >= 1
+
+
+async def test_battery_first_above_upper_limit_gives_the_car_the_battery_power(hass: HomeAssistant, hass_ws_client) -> None:
+    """Battery no. 1 with band 80-90: at 95 % the car gets export + what the battery is charging with."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.bat_soc", "95")
+    hass.states.async_set("sensor.bat_power", "4000", {"unit_of_measurement": "W"})  # battery still charging 4 kW
+    hass.states.async_set("sensor.grid", "-1000", {"unit_of_measurement": "W"})  # only 1 kW exported
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc", "power_entity": "sensor.bat_power", "grid_power_entity": "sensor.grid"}})
+    await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "battery", "solar_priority_under": 80, "solar_priority_over": 90, "solar_min_minutes": 0}})
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": CAR})
+    rt = res["car"]["runtime"]
+    # 1000 export + 4000 battery charging = 5000 W >= 4140 -> the car starts
+    assert rt["status"] == "solar" and rt["solar_priority"] == "ev" and rt["surplus_w"] == 5000
+    assert len(turn_on) == 1
+
+    hass.states.async_set("sensor.bat_soc", "85")  # back inside the band -> the battery wins, the car stops
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "battery_first"

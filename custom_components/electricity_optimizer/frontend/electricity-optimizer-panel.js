@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.22.3";
+const PANEL_JS_VERSION = "0.23.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1390,11 +1390,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       rows = `<div class="status-row"><ha-icon icon="mdi:timer-sand"></ha-icon><div class="t"><div class="d">Henter regler…</div></div></div>`;
     } else if (rules.solar_priority === "battery") {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Mens batteriet er ${rules.solar_priority_under}–${rules.solar_priority_over} %, får det al solstrømmen, og elbilen venter.` : "Intet husbatteri sat op – reglen har ingen effekt."}</div></div></div>
-        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Uden for intervallet får bilen den rene eksport. ${esc(carText)}.</div></div></div>`;
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri først</div><div class="d">${battery ? `Mens batteriet er ${rules.solar_priority_under}–${rules.solar_priority_over} %, får det al solstrømmen, og elbilen venter.` : "Intet husbatteri sat op – bilen får solstrømmen."}</div></div></div>
+        <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil</div><div class="d">Uden for intervallet vinder bilen og får eksporten plus det, batteriet ellers ville lade med. ${esc(carText)}.</div></div></div>`;
     } else {
       rows = `
-        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Mens bilen er ${rules.solar_priority_under}–${rules.solar_priority_over} %, får den eksporten plus det, batteriet lader med; ellers kun eksporten. ${esc(carText)}.</div></div></div>
+        <div class="status-row"><span class="badge info">1</span><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbil først</div><div class="d">Mens bilen er ${rules.solar_priority_under}–${rules.solar_priority_over} %, får den eksporten plus det, batteriet lader med; uden for intervallet vinder batteriet. ${esc(carText)}.</div></div></div>
         <div class="status-row"><span class="badge info">2</span><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${battery ? "Får det overskud, bilen ikke bruger, og bruges i de dyre timer." : "Intet husbatteri sat op."}</div></div></div>`;
     }
     const ctx = this._context || {};
@@ -1559,8 +1559,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _solarPriorityText(rules) {
     const band = `${rules.solar_priority_under}–${rules.solar_priority_over} %`;
     return rules.solar_priority === "battery"
-      ? `Nr. 1 er husbatteriet: mens dets ladestand er ${band}, lader elbilen ikke fra sol. Uden for intervallet bruges solstrømmen normalt (bilen får den rene eksport).`
-      : `Nr. 1 er elbilen: mens bilens ladestand er ${band}, får den eksporten plus det, husbatteriet ellers ville lade med. Uden for intervallet bruges solstrømmen normalt (bilen får kun den rene eksport).`;
+      ? `Nr. 1 er husbatteriet: mens dets ladestand er ${band}, lader elbilen ikke fra sol. Uden for intervallet vinder elbilen og får eksporten plus det, husbatteriet ellers ville lade med.`
+      : `Nr. 1 er elbilen: mens bilens ladestand er ${band}, får den eksporten plus det, husbatteriet ellers ville lade med. Uden for intervallet vinder husbatteriet, og bilen lader ikke fra sol.`;
   }
 
   _solarConditionsText(rules) {
@@ -1616,7 +1616,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="rules-section">Prioritering</div>
         <div class="rules-grid">
                       <div class="field prio-field"><span class="fl">Sol prioritet${I(
-              "Træk rækkerne op og ned: nr. 1 får solstrømmen først, så længe dens ladestand er i intervallet ved siden af. Elbil som nr. 1: bilen får eksporten plus det, husbatteriet ellers ville lade med. Husbatteri som nr. 1: elbilen lader ikke fra sol. Flere biler får sol i den rækkefølge, de står i under Elbiler."
+              "Træk rækkerne: nr. 1 får solstrømmen først, så længe dens ladestand er i intervallet ved siden af; uden for intervallet vinder nr. 2. Den, der vinder, får det hele: er det elbilen, får den eksporten plus det, husbatteriet ellers ville lade med; er det husbatteriet, lader elbilen ikke fra sol. Flere biler får sol i den rækkefølge, de står i under Elbiler."
             )}</span>
               <ol class="prio-list" data-prio>
                 ${(r.solar_priority === "battery" ? ["battery", "ev"] : ["ev", "battery"])
@@ -1628,11 +1628,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
             </div>
           <label class="field">${head(
               "Prioriter under (%)",
-              "Nedre grænse for nr. 1's ladestand. Når ladestanden er under denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
+              "Nedre grænse for nr. 1's ladestand. Når ladestanden er under denne procent, prioriteres nr. 1 ikke længere, og nr. 2 får solstrømmen først. Sæt 0 for ingen nedre grænse."
             )}<input type="number" min="0" max="100" data-rfield="solar_priority_under" value="${r.solar_priority_under}"></label>
           <label class="field">${head(
               "Prioriter over (%)",
-              "Øvre grænse for nr. 1's ladestand. Når ladestanden er over denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
+              "Øvre grænse for nr. 1's ladestand. Når ladestanden er over denne procent, prioriteres nr. 1 ikke længere, og nr. 2 får solstrømmen først."
             )}<input type="number" min="0" max="100" data-rfield="solar_priority_over" value="${r.solar_priority_over}"></label>
 
         </div>
