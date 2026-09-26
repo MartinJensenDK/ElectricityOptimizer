@@ -35,6 +35,7 @@ class Context:
     surplus_from: str = "grid"  # grid | solar_house - how surplus_w was derived
     surplus_w: float | None = None  # solar export available for EVs (decremented as cars take it)
     battery_charge_w: float = 0.0  # what the house battery is charging with; a prioritised EV may claim it
+    battery_assist_added: bool = False  # the battery's discharge headroom has been added to surplus_w once
     solar_forecast_kwh: dict[Any, float] = field(default_factory=dict)  # date -> forecast kWh (today/tomorrow)
     ev_grid_charging: bool = False
     ev_amps_total: float = 0.0
@@ -449,6 +450,17 @@ class EvController:
         return (now - datetime.fromisoformat(since)).total_seconds() < window_s
 
     @staticmethod
+    def _battery_may_feed_car(ctx: Context) -> bool:
+        rules = ctx.rules
+        return bool(
+            rules.get("battery_to_ev_above_limit", True)
+            and rules["solar_priority"] == "battery"
+            and ctx.battery_cfg is not None
+            and ctx.battery_soc is not None
+            and ctx.battery_soc > rules["solar_priority_over"]
+        )
+
+    @staticmethod
     def _solar_priority(ctx: Context, car_soc: float | None) -> str:
         """Who has solar priority right now: "ev" or "battery".
 
@@ -504,12 +516,19 @@ class EvController:
             # the car's own draw is already inside the export / house load; give it back
             own = car_w if car_w is not None else (self._last_amps.get(car["id"]) or car["min_amps"]) * per_amp
             available += own
-        if ctx.battery_cfg is not None and ctx.battery_w is not None and ctx.battery_w < 0:
+        discharge = -ctx.battery_w if ctx.battery_cfg is not None and ctx.battery_w is not None and ctx.battery_w < 0 else 0.0
+        rt["battery_discharge_w"] = round(discharge)
+        rt["battery_assist_w"] = 0
+        if self._battery_may_feed_car(ctx):
+            # battery no. 1 above its upper limit: the car may run on the battery until it drops below the limit
+            if not ctx.battery_assist_added:
+                ctx.battery_assist_added = True
+                headroom = max(0.0, ctx.battery_cfg["max_discharge_kw"] * 1000 - discharge)
+                available += headroom
+                rt["battery_assist_w"] = round(headroom)
+        elif discharge:
             # the house battery is covering part of the load: that energy is not solar surplus
-            available += ctx.battery_w
-            rt["battery_discharge_w"] = round(-ctx.battery_w)
-        else:
-            rt["battery_discharge_w"] = 0
+            available -= discharge
         modulating = bool(car.get("current_entity"))
         need_w = (car["min_amps"] if modulating else car["max_amps"]) * per_amp
         rt["surplus_w"] = round(available)

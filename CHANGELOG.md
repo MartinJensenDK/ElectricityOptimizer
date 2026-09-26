@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.24.0
+
+- Ny regel "Husbatteri må lade bilen over øvre grænse" (standard til, vises med husbatteri som nr. 1): er batteriet over "Prioriter over", må dets ledige afladeeffekt bruges til at lade bilen, når solen ikke rækker. Falder batteriet under grænsen, stopper bilen igen. Slået fra: bilen får kun solstrøm, og batteriets afladning trækkes fra som før.
+
 ## 0.23.0
 
 - Sol prioritet: uden for intervallet vinder nr. 2 i stedet for "normal" brug. Med husbatteri som nr. 1 og intervallet 80–90 % får elbilen nu eksporten plus det, batteriet ellers ville lade med, når batteriet er over 90 % (eller under 80 %). Med elbil som nr. 1 vinder husbatteriet uden for bilens interval.

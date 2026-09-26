@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.23.0";
+const PANEL_JS_VERSION = "0.24.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1559,7 +1559,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _solarPriorityText(rules) {
     const band = `${rules.solar_priority_under}–${rules.solar_priority_over} %`;
     return rules.solar_priority === "battery"
-      ? `Nr. 1 er husbatteriet: mens dets ladestand er ${band}, lader elbilen ikke fra sol. Uden for intervallet vinder elbilen og får eksporten plus det, husbatteriet ellers ville lade med.`
+      ? `Nr. 1 er husbatteriet: mens dets ladestand er ${band}, lader elbilen ikke fra sol. Uden for intervallet vinder elbilen og får eksporten plus det, husbatteriet ellers ville lade med${
+          rules.battery_to_ev_above_limit !== false ? `, og over ${rules.solar_priority_over} % må husbatteriet aflade til bilen, indtil det igen er under grænsen` : ""
+        }.`
       : `Nr. 1 er elbilen: mens bilens ladestand er ${band}, får den eksporten plus det, husbatteriet ellers ville lade med. Uden for intervallet vinder husbatteriet, og bilen lader ikke fra sol.`;
   }
 
@@ -1668,6 +1670,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
           hasFuse ? ` Ved fuld hovedsikring (${fmtNum(r.max_total_amps, 0)} A) får ${r.grid_priority === "battery" ? "husbatteriet" : "elbilen"} strømmen først.` : ""
         }</div>
         <div class="rules-toggles">
+          ${
+            r.solar_priority === "battery"
+              ? `<label class="toggle"><input type="checkbox" data-rfield="battery_to_ev_above_limit" ${r.battery_to_ev_above_limit === false ? "" : "checked"}> Husbatteri må lade bilen over øvre grænse${info(
+                  "Når husbatteriet er nr. 1 og over 'Prioriter over', må dets afladning bruges til at lade bilen, hvis solen ikke rækker. Bilen får eksporten plus batteriets ledige afladeeffekt (maks. afladeeffekt minus det, batteriet allerede leverer til huset). Når batteriet igen er under grænsen, stopper bilen."
+                )}</label>`
+              : ""
+          }
         ${
           r.surplus_source === "solar_house"
             ? `<label class="toggle"><input type="checkbox" data-rfield="house_includes_ev" ${r.house_includes_ev === false ? "" : "checked"}> Husforbruget inkluderer elbilens ladning${info(
@@ -1869,6 +1878,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     } else if (liveW !== null && liveW > 50) {
       meta.push(`Bilen trækker ${fmtNum(liveW, 0)} W`);
     }
+    if (rt.charging && rt.battery_assist_w) meta.push(`Husbatteriet må hjælpe med op til ${fmtNum(rt.battery_assist_w, 0)} W, til det er under ${this._rules ? this._rules.solar_priority_over : "–"} %`);
     if (rt.status === "solar_wait" && rt.surplus_w !== undefined) meta.push(`Sol-overskud lige nu ${fmtNum(rt.surplus_w, 0)} W – kræver ${car.min_amps * 230 * car.phases} W${rt.battery_discharge_w ? ` (husbatteriet aflader ${fmtNum(rt.battery_discharge_w, 0)} W, som er trukket fra)` : ""}`);
     if (rt.status === "solar_low" && rt.solar_w !== undefined && this._rules) meta.push(`Solproduktion ${fmtNum(rt.solar_w, 0)} W – kræver ${fmtNum(this._rules.solar_min_w, 0)} W i ${this._rules.solar_min_minutes} min`);
     if (rt.status === "battery_first" && this._rules) meta.push(`Husbatteriet har prioritet, mens det er ${this._rules.solar_priority_under}–${this._rules.solar_priority_over} %`);

@@ -102,7 +102,8 @@ AMPS_CHANGE_MIN_SECONDS = 30
 RULES_DEFAULTS = {
     "solar_priority": "ev",  # ev | battery: who gets solar first (no. 1 in the panel's list)
     "solar_priority_under": 0,  # no. 1 is only prioritised while its SoC is >= this ...
-    "solar_priority_over": 100,  # ... and <= this; outside the band solar is used normally
+    "solar_priority_over": 100,  # ... and <= this; outside the band no. 2 wins
+    "battery_to_ev_above_limit": True,  # battery as no. 1 above the upper limit: its discharge may charge the car
     "grid_priority": "ev",  # ev | battery
     "max_total_amps": None,  # main fuse, per phase
     "hold_battery_while_ev_grid_charging": True,
