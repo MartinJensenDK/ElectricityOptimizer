@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.22.1";
+const PANEL_JS_VERSION = "0.22.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -189,10 +189,17 @@ const STYLE = `
   .session-edge.est { stroke-dasharray: 4 3; }
   .session-label { font-size: 10px; font-weight: 500; fill: #1565c0; }
   .legend .l-session::before { background: #64b5f6; border: 1px solid #1e88e5; box-sizing: border-box; }
-  .prio-field { min-width: 190px; }
-  .prio-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .rules-section { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); margin: 14px 0 6px; }
+  .rules-section:first-of-type { margin-top: 4px; }
+  .rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 16px; align-items: end; }
+  .rules-grid .field { height: auto; }
+  .rules-grid .fl { white-space: normal; line-height: 1.25; min-height: 2.5em; align-items: flex-end; display: flex; }
+  .rules-grid input, .rules-grid select { height: 38px; box-sizing: border-box; }
+  .prio-field { grid-column: span 2; }
+  .prio-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: row; gap: 8px; }
   .prio-list li {
-    display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: grab;
+    flex: 1; height: 38px; box-sizing: border-box;
+    display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 8px; cursor: grab;
     border: 1px solid var(--divider-color); background: var(--card-background-color, #fff); font-size: 14px; color: var(--primary-text-color);
   }
   .prio-list li:first-child { border-color: var(--primary-color); }
@@ -323,7 +330,8 @@ const STYLE = `
   table.history tr.running td { background: var(--secondary-background-color); }
   table.cmdlog tr.failed td { background: rgba(219, 68, 55, 0.08); }
   table.cmdlog code { font-size: 12px; }
-  .rules-now { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--secondary-background-color); font-size: 13px; line-height: 1.4; }
+  .rules-toggles { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: 12px; }
+  .rules-now { margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: var(--secondary-background-color); font-size: 13px; line-height: 1.4; }
   .rules-now strong { color: var(--primary-text-color); font-weight: 500; }
   .fl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   th .info, h2 .info, h3 .info, .label .info, .toggle .info { text-transform: none; letter-spacing: 0; font-size: 10px; margin-left: 6px; vertical-align: middle; }
@@ -1605,71 +1613,75 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       <div class="card" data-rules>
         <h2><ha-icon icon="mdi:scale-balance"></ha-icon>Regler for opladning${I("Fælles regler for samspillet mellem elbiler og husbatteri. Hvert felt gemmes med det samme, og linjen under felterne viser, hvad de aktuelle valg betyder.")}</h2>
-        <div class="controls">
-          <div class="field prio-field"><span class="fl">Sol prioritet${I(
-            "Træk rækkerne op og ned: nr. 1 får solstrømmen først, så længe dens ladestand er i intervallet ved siden af. Elbil som nr. 1: bilen får eksporten plus det, husbatteriet ellers ville lade med. Husbatteri som nr. 1: elbilen lader ikke fra sol. Flere biler får sol i den rækkefølge, de står i under Elbiler."
-          )}</span>
-            <ol class="prio-list" data-prio>
-              ${(r.solar_priority === "battery" ? ["battery", "ev"] : ["ev", "battery"])
-                .map(
-                  (k, i) => `<li draggable="true" data-prio-item="${k}" title="Træk for at ændre rækkefølgen"><span class="grip">⋮⋮</span><span class="num">${i + 1}.</span>${k === "ev" ? "Elbil" : "Husbatteri"}<button type="button" class="swap" data-raction="prio-swap" title="Byt rækkefølge">⇅</button></li>`
-                )
-                .join("")}
-            </ol>
-          </div>
+        <div class="rules-section">Prioritering</div>
+        <div class="rules-grid">
+                      <div class="field prio-field"><span class="fl">Sol prioritet${I(
+              "Træk rækkerne op og ned: nr. 1 får solstrømmen først, så længe dens ladestand er i intervallet ved siden af. Elbil som nr. 1: bilen får eksporten plus det, husbatteriet ellers ville lade med. Husbatteri som nr. 1: elbilen lader ikke fra sol. Flere biler får sol i den rækkefølge, de står i under Elbiler."
+            )}</span>
+              <ol class="prio-list" data-prio>
+                ${(r.solar_priority === "battery" ? ["battery", "ev"] : ["ev", "battery"])
+                  .map(
+                    (k, i) => `<li draggable="true" data-prio-item="${k}" title="Træk for at ændre rækkefølgen"><span class="grip">⋮⋮</span><span class="num">${i + 1}.</span>${k === "ev" ? "Elbil" : "Husbatteri"}<button type="button" class="swap" data-raction="prio-swap" title="Byt rækkefølge">⇅</button></li>`
+                  )
+                  .join("")}
+              </ol>
+            </div>
           <label class="field">${head(
-            "Prioriter over (%)",
-            "Øvre grænse for nr. 1's ladestand. Når ladestanden er over denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
-          )}<input type="number" min="0" max="100" data-rfield="solar_priority_over" value="${r.solar_priority_over}"></label>
+              "Prioriter under (%)",
+              "Nedre grænse for nr. 1's ladestand. Når ladestanden er under denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
+            )}<input type="number" min="0" max="100" data-rfield="solar_priority_under" value="${r.solar_priority_under}"></label>
           <label class="field">${head(
-            "Prioriter under (%)",
-            "Nedre grænse for nr. 1's ladestand. Når ladestanden er under denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
-          )}<input type="number" min="0" max="100" data-rfield="solar_priority_under" value="${r.solar_priority_under}"></label>
-          <label class="field">${head(
-            "Sol-overskud beregnes fra",
-            "Elnet-sensor: overskuddet er det, der sælges til nettet lige nu. Solproduktion − husforbrug: overskuddet er solcellernes produktion minus husets forbrug (minus det, husbatteriet lader med), så ladehastigheden følger produktionen direkte. Kræver solcelle-effekt under Konfigurer og en husforbrugs-sensor."
-          )}${sel("surplus_source", [["grid", "Elnet-sensor (eksport)"], ["solar_house", "Solproduktion − husforbrug"]])}</label>
-          <label class="field">${head(
-            "Elbil-sol: sol ≥ (W)",
-            "Elbilen lader kun fra sol, når solcellerne producerer mindst dette i mindst det antal minutter, der står ved siden af. Falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det."
-          )}<input type="number" min="0" step="100" data-rfield="solar_min_w" value="${r.solar_min_w === null ? "" : r.solar_min_w}" placeholder="fra"></label>
-          <label class="field">${head(
-            "… i mindst (min)",
-            "Hvor længe produktionen og sol-overskuddet skal være over grænsen, før bilen starter, og under grænsen, før den stopper. Forhindrer tænd/sluk, når skyer passerer."
-          )}<input type="number" min="0" step="0.5" data-rfield="solar_min_minutes" value="${r.solar_min_minutes}"></label>
-          <label class="field">${head(
-            "Ladestrøm hvert (sek)",
-            "Ved solopladning sendes kun start-kommandoen, når bilen starter. Ladestrømmen (A) sendes første gang efter dette antal sekunder og justeres derefter højst så ofte, så laderen ikke bombarderes, når skyer passerer. Gælder kun biler med en strøm-entitet."
-          )}<input type="number" min="5" step="5" data-rfield="amps_interval_seconds" value="${r.amps_interval_seconds}"></label>
-          <label class="field">${head(
-            "Hovedsikring (A)",
-            "Maks. strøm pr. fase, som elbiler og husbatteri må trække fra nettet tilsammen. Tom = ingen grænse. Kun med en grænse har rækkefølgen ved sikringen betydning."
-          )}<input type="number" min="0" step="1" data-rfield="max_total_amps" value="${r.max_total_amps === null ? "" : r.max_total_amps}" placeholder="ingen grænse"></label>
-          ${
-            hasFuse
-              ? `<label class="field">${head(
-                  "Ved sikring først til",
-                  "Hvem der får strøm fra nettet, når hovedsikringen ellers ville blive overbelastet. Den anden skrues ned eller venter, til der er plads."
-                )}${sel("grid_priority", [["ev", "Elbil"], ["battery", "Husbatteri"]])}</label>`
-              : ""
-          }
+              "Prioriter over (%)",
+              "Øvre grænse for nr. 1's ladestand. Når ladestanden er over denne procent, prioriteres der ikke længere, og solstrømmen bruges normalt."
+            )}<input type="number" min="0" max="100" data-rfield="solar_priority_over" value="${r.solar_priority_over}"></label>
+
         </div>
-        <div class="hint rules-now"><strong>${esc(this._solarPriorityText(r))}</strong> ${esc(this._solarConditionsText(r))}${
+        <div class="rules-section">Sol-ladning</div>
+        <div class="rules-grid">
+                      <label class="field">${head(
+              "Sol-overskud beregnes fra",
+              "Elnet-sensor: overskuddet er det, der sælges til nettet lige nu. Solproduktion − husforbrug: overskuddet er solcellernes produktion minus husets forbrug (minus det, husbatteriet lader med), så ladehastigheden følger produktionen direkte. Kræver solcelle-effekt under Konfigurer og en husforbrugs-sensor."
+            )}${sel("surplus_source", [["grid", "Elnet-sensor (eksport)"], ["solar_house", "Solproduktion − husforbrug"]])}</label>
+          <label class="field">${head(
+              "Elbil-sol: sol ≥ (W)",
+              "Elbilen lader kun fra sol, når solcellerne producerer mindst dette i mindst det antal minutter, der står ved siden af. Falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det."
+            )}<input type="number" min="0" step="100" data-rfield="solar_min_w" value="${r.solar_min_w === null ? "" : r.solar_min_w}" placeholder="fra"></label>
+          <label class="field">${head(
+              "… i mindst (min)",
+              "Hvor længe produktionen og sol-overskuddet skal være over grænsen, før bilen starter, og under grænsen, før den stopper. Forhindrer tænd/sluk, når skyer passerer."
+            )}<input type="number" min="0" step="0.5" data-rfield="solar_min_minutes" value="${r.solar_min_minutes}"></label>
+          <label class="field">${head(
+              "Ladestrøm hvert (sek)",
+              "Ved solopladning sendes kun start-kommandoen, når bilen starter. Ladestrømmen (A) sendes første gang efter dette antal sekunder og justeres derefter højst så ofte, så laderen ikke bombarderes, når skyer passerer. Gælder kun biler med en strøm-entitet."
+            )}<input type="number" min="5" step="5" data-rfield="amps_interval_seconds" value="${r.amps_interval_seconds}"></label>
+
+        </div>
+        <div class="rules-section">Elnet</div>
+        <div class="rules-grid">
+                      <label class="field">${head(
+              "Hovedsikring (A)",
+              "Maks. strøm pr. fase, som elbiler og husbatteri må trække fra nettet tilsammen. Tom = ingen grænse. Kun med en grænse har rækkefølgen ved sikringen betydning."
+            )}<input type="number" min="0" step="1" data-rfield="max_total_amps" value="${r.max_total_amps === null ? "" : r.max_total_amps}" placeholder="ingen grænse"></label>
+
+        </div>
+        <div class="rules-now hint"><strong>${esc(this._solarPriorityText(r))}</strong> ${esc(this._solarConditionsText(r))}${
           hasFuse ? ` Ved fuld hovedsikring (${fmtNum(r.max_total_amps, 0)} A) får ${r.grid_priority === "battery" ? "husbatteriet" : "elbilen"} strømmen først.` : ""
         }</div>
+        <div class="rules-toggles">
         ${
           r.surplus_source === "solar_house"
-            ? `<label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="house_includes_ev" ${r.house_includes_ev === false ? "" : "checked"}> Husforbruget inkluderer elbilens ladning${info(
+            ? `<label class="toggle"><input type="checkbox" data-rfield="house_includes_ev" ${r.house_includes_ev === false ? "" : "checked"}> Husforbruget inkluderer elbilens ladning${info(
                 "Slå til, hvis husforbrugs-sensoren også tæller det, elbilen trækker (typisk for inverterens load-sensor). Så lægges bilens eget træk til overskuddet, mens den lader, så den ikke skruer sig selv ned."
               )}</label>`
             : ""
         }
-        <label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="notify_enabled" ${r.notify_enabled === false ? "" : "checked"}> Notifikationer${info(
+        <label class="toggle"><input type="checkbox" data-rfield="notify_enabled" ${r.notify_enabled === false ? "" : "checked"}> Notifikationer${info(
           "Vis en notifikation i Home Assistant, når en elbil ikke kan nå sit mål-SoC inden deadline, når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil eller husbatteri fejler. Hændelsen electricity_optimizer_notification sendes altid, så du kan lave automationer."
         )}</label>
-        <label class="toggle" style="margin-top:6px"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri ved net-ladning${info(
+        <label class="toggle"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri ved net-ladning${info(
           "Når en elbil lader fra nettet, sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer."
         )}</label>
+        </div>
         ${sensorForm}
         ${
           ctx.surplus_w !== undefined && ctx.surplus_w !== null
