@@ -10,7 +10,10 @@ DEFAULT_PRICE_ENTITY = "sensor.energi_data_service"
 # Solar (all optional)
 CONF_SOLAR_POWER_ENTITY = "solar_power_entity"  # W or kW, current production
 CONF_SOLAR_ENERGY_TODAY_ENTITY = "solar_energy_today_entity"  # kWh produced today
-CONF_SOLAR_ENERGY_TOTAL_ENTITY = "solar_energy_total_entity"  # kWh lifetime
+CONF_SOLAR_ENERGY_TOTAL_ENTITY = "solar_energy_total_entity"  # kWh lifetime (no longer in the flow, kept for old configs)
+CONF_SOLAR_ENERGY_WEEK_ENTITY = "solar_energy_week_entity"  # kWh produced this week
+CONF_SOLAR_ENERGY_MONTH_ENTITY = "solar_energy_month_entity"  # kWh produced this month
+CONF_SOLAR_ENERGY_YEAR_ENTITY = "solar_energy_year_entity"  # kWh produced this year
 CONF_SOLAR_FORECAST_TODAY_ENTITY = "solar_forecast_today_entity"  # kWh forecast today
 CONF_SOLAR_FORECAST_TOMORROW_ENTITY = "solar_forecast_tomorrow_entity"  # kWh forecast tomorrow
 CONF_SOLAR_PEAK_KW = "solar_peak_kw"  # installed peak power, kWp
@@ -19,6 +22,9 @@ SOLAR_ENTITY_KEYS = (
     CONF_SOLAR_POWER_ENTITY,
     CONF_SOLAR_ENERGY_TODAY_ENTITY,
     CONF_SOLAR_ENERGY_TOTAL_ENTITY,
+    CONF_SOLAR_ENERGY_WEEK_ENTITY,
+    CONF_SOLAR_ENERGY_MONTH_ENTITY,
+    CONF_SOLAR_ENERGY_YEAR_ENTITY,
     CONF_SOLAR_FORECAST_TODAY_ENTITY,
     CONF_SOLAR_FORECAST_TOMORROW_ENTITY,
 )

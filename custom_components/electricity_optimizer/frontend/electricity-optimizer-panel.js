@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.25.2";
+const PANEL_JS_VERSION = "0.26.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -460,6 +460,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
       c.solar_power_entity,
       c.solar_energy_today_entity,
       c.solar_energy_total_entity,
+      c.solar_energy_week_entity,
+      c.solar_energy_month_entity,
+      c.solar_energy_year_entity,
       c.solar_forecast_today_entity,
       c.solar_forecast_tomorrow_entity,
     ].filter(Boolean);
@@ -1271,6 +1274,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const power = this._numState(c.solar_power_entity);
     const today = this._numState(c.solar_energy_today_entity);
     const total = this._numState(c.solar_energy_total_entity);
+    const week = this._numState(c.solar_energy_week_entity);
+    const month = this._numState(c.solar_energy_month_entity);
+    const year = this._numState(c.solar_energy_year_entity);
     const fcToday = this._numState(c.solar_forecast_today_entity);
     const fcTomorrow = this._numState(c.solar_forecast_tomorrow_entity);
     const sun = this._hass.states["sun.sun"];
@@ -1281,6 +1287,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
       powerEntity: c.solar_power_entity,
       todayKwh: ElectricityOptimizerPanel._toKwh(today.value, today.unit),
       totalKwh: ElectricityOptimizerPanel._toKwh(total.value, total.unit),
+      weekKwh: ElectricityOptimizerPanel._toKwh(week.value, week.unit),
+      monthKwh: ElectricityOptimizerPanel._toKwh(month.value, month.unit),
+      yearKwh: ElectricityOptimizerPanel._toKwh(year.value, year.unit),
+      periodsConfigured: !!(c.solar_energy_week_entity || c.solar_energy_month_entity || c.solar_energy_year_entity),
       fcTodayKwh: ElectricityOptimizerPanel._toKwh(fcToday.value, fcToday.unit),
       fcTomorrowKwh: ElectricityOptimizerPanel._toKwh(fcTomorrow.value, fcTomorrow.unit),
       peakKw: typeof c.solar_peak_kw === "number" ? c.solar_peak_kw : null,
@@ -1407,11 +1417,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="grid">
         <div class="card">
-          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Nøgletal for anlægget: installeret effekt fra Konfigurer, samlet produktion fra total-sensoren og solens retning lige nu.")}</h2>
+          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Nøgletal for anlægget: installeret effekt og produktion i dag, denne uge, denne måned og i år fra de valgfrie energi-sensorer under Konfigurer, samt solens retning lige nu.")}</h2>
           <table>
             <tbody>
               <tr><td>Installeret effekt</td><td class="num">${s.peakKw ? `${fmtNum(s.peakKw, 1)} kWp` : "–"}</td></tr>
-              <tr><td>Produceret i alt</td><td class="num">${s.totalKwh !== null ? `${fmtNum(s.totalKwh, 0)} kWh` : "–"}</td></tr>
+              <tr><td>Produceret i dag</td><td class="num">${s.todayKwh !== null ? `${fmtNum(s.todayKwh, 1)} kWh` : "–"}</td></tr>
+              <tr><td>Produceret denne uge</td><td class="num">${s.weekKwh !== null ? `${fmtNum(s.weekKwh, 0)} kWh` : "–"}</td></tr>
+              <tr><td>Produceret denne måned</td><td class="num">${s.monthKwh !== null ? `${fmtNum(s.monthKwh, 0)} kWh` : "–"}</td></tr>
+              <tr><td>Produceret i år</td><td class="num">${s.yearKwh !== null ? `${fmtNum(s.yearKwh, 0)} kWh` : "–"}</td></tr>
               <tr><td>Solens retning</td><td class="num">${s.azimuth !== null ? `${fmtNum(s.azimuth, 0)}°` : "–"}</td></tr>
               <tr><td>Effekt-sensor</td><td class="num" style="font-size:12px;color:var(--secondary-text-color)">${esc(s.powerEntity || "–")}</td></tr>
             </tbody>

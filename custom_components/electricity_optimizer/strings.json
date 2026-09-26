@@ -14,7 +14,9 @@
         "data": {
           "solar_power_entity": "Solar production now (W or kW)",
           "solar_energy_today_entity": "Solar energy produced today (kWh)",
-          "solar_energy_total_entity": "Solar energy total (kWh)",
+          "solar_energy_week_entity": "Solar energy this week (kWh)",
+          "solar_energy_month_entity": "Solar energy this month (kWh)",
+          "solar_energy_year_entity": "Solar energy this year (kWh)",
           "solar_forecast_today_entity": "Solar forecast today (kWh)",
           "solar_forecast_tomorrow_entity": "Solar forecast tomorrow (kWh)",
           "solar_peak_kw": "Installed peak power (kWp)"
@@ -38,7 +40,9 @@
           "price_entity": "Electricity price sensor",
           "solar_power_entity": "Solar production now (W or kW)",
           "solar_energy_today_entity": "Solar energy produced today (kWh)",
-          "solar_energy_total_entity": "Solar energy total (kWh)",
+          "solar_energy_week_entity": "Solar energy this week (kWh)",
+          "solar_energy_month_entity": "Solar energy this month (kWh)",
+          "solar_energy_year_entity": "Solar energy this year (kWh)",
           "solar_forecast_today_entity": "Solar forecast today (kWh)",
           "solar_forecast_tomorrow_entity": "Solar forecast tomorrow (kWh)",
           "solar_peak_kw": "Installed peak power (kWp)"
