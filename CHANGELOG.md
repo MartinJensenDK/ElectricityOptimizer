@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.33.1
+
+- Forsiden, prisgrafen: når musen holdes over en søjle, vises prisen på første linje og tidsrummet (fx "I dag 14:00 – 15:00") på næste linje i en boks ved musen, i stedet for browserens langsomme standard-tooltip.
+
 ## 0.33.0
 
 - Elbiler-fanen: hvert bilkort har nu en måler "Ladeeffekt" ved siden af batteriet. Den viser bilens faktiske ladeeffekt fra ladeeffekt-sensoren (W, valgfri, vælges under Rediger) på en skala op til maks. ladestrøm × 230 V × faser.

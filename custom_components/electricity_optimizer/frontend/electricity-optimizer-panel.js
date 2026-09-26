@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.33.0";
+const PANEL_JS_VERSION = "0.33.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -577,23 +577,38 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="tip" hidden></div>
     `;
     this._tipEl = root.querySelector(".tip");
+    const placeTip = (tip, left, top) => {
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      left = Math.max(8, Math.min(window.innerWidth - tw - 8, left));
+      if (top < 8) top = Math.min(window.innerHeight - th - 8, top + th + 24);
+      tip.style.left = `${left}px`;
+      tip.style.top = `${top}px`;
+    };
     const showTip = (ev) => {
       const el = ev.target.closest && ev.target.closest("[data-tip]");
       if (!el || !el.dataset.tip) return;
       const tip = this._tipEl;
       tip.textContent = ElectricityOptimizerPanel._sentences(el.dataset.tip).join("\n");
       tip.hidden = false;
+      if ("tipFollow" in el.dataset && typeof ev.clientX === "number") {
+        this._tipFollow = el;
+        placeTip(tip, ev.clientX - tip.offsetWidth / 2, ev.clientY - tip.offsetHeight - 14);
+        return;
+      }
+      this._tipFollow = null;
       const r = el.getBoundingClientRect();
-      const tw = tip.offsetWidth, th = tip.offsetHeight;
-      let left = r.left + r.width / 2 - tw / 2;
-      left = Math.max(8, Math.min(window.innerWidth - tw - 8, left));
-      let top = r.top - th - 8;
-      if (top < 8) top = r.bottom + 8;
-      tip.style.left = `${left}px`;
-      tip.style.top = `${top}px`;
+      placeTip(tip, r.left + r.width / 2 - tip.offsetWidth / 2, r.top - tip.offsetHeight - 8);
+    };
+    const moveTip = (ev) => {
+      if (!this._tipFollow || this._tipEl.hidden) return;
+      const tip = this._tipEl;
+      placeTip(tip, ev.clientX - tip.offsetWidth / 2, ev.clientY - tip.offsetHeight - 14);
     };
     const hideTip = (ev) => {
-      if (ev.target.closest && ev.target.closest("[data-tip]")) this._tipEl.hidden = true;
+      if (ev.target.closest && ev.target.closest("[data-tip]")) {
+        this._tipEl.hidden = true;
+        this._tipFollow = null;
+      }
     };
     this._menuButton = root.querySelector("ha-menu-button");
     this._menuButton.hass = this._hass;
@@ -605,6 +620,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._contentEl.addEventListener("input", (ev) => this._onContentInput(ev));
     this._contentEl.addEventListener("focusin", (ev) => this._onContentInput(ev));
     this._contentEl.addEventListener("mouseover", showTip);
+    this._contentEl.addEventListener("mousemove", moveTip);
     this._contentEl.addEventListener("mouseout", hideTip);
     this._contentEl.addEventListener("focusin", showTip);
     this._contentEl.addEventListener("focusout", hideTip);
@@ -1213,6 +1229,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const y = (v) => padT + innerH - ((v - minP) / range) * innerH;
     const zeroY = y(0);
     const bw = innerW / points.length;
+    const stepMs = points.length > 1 ? Math.max(60000, points[1].time.getTime() - points[0].time.getTime()) : 3600000;
     const sortedToday = d.today.map((p) => p.price).sort((a, b) => a - b);
     const mean = typeof d.todayMean === "number" ? d.todayMean : null;
 
@@ -1224,8 +1241,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
         const top = Math.min(y(p.price), zeroY);
         const h = Math.max(1, Math.abs(y(p.price) - zeroY));
         const cls = `bar ${lvl}${p.day === "tomorrow" ? " tomorrow" : ""}${isNow ? " now" : ""}`;
-        const label = `${p.day === "today" ? "I dag" : "I morgen"} ${fmtTime(p.time)}: ${fmtNum(p.price)} ${d.unit}`;
-        return `<rect class="${cls}" x="${(x + 1).toFixed(1)}" y="${top.toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"><title>${esc(label)}</title></rect>`;
+        const end = new Date(p.time.getTime() + stepMs);
+        const label = `${fmtNum(p.price)} ${d.unit}\n${p.day === "today" ? "I dag" : "I morgen"} ${fmtTime(p.time)} – ${fmtTime(end)}`;
+        return `<rect class="${cls}" x="${(x + 1).toFixed(1)}" y="${top.toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" data-tip="${esc(label)}" data-tip-follow></rect>`;
       })
       .join("");
 
