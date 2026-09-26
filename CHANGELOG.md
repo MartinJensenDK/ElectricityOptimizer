@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.1
+
+- Forsiden, Elbiler-kortet: med én bil vises batteriet i samme størrelse som Hus batteri, med bilens navn, mål og status under. Med flere biler vises den kompakte liste som før.
+
 ## 0.30.0
 
 - Forsiden: nyt kort "Elbiler" ved siden af Hus batteri med et batteri-ikon pr. bil. Fyldes efter bilens ladestand (rød under 20 %, orange under 40 %, ellers grøn), dagens mål-SoC vises som stiplet streg, og et lyn viser, at bilen lader lige nu.

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.0";
+const PANEL_JS_VERSION = "0.30.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -171,7 +171,7 @@ const STYLE = `
   .cb-row .batt { width: 100%; max-width: none; margin: 0; }
   .cb-row .batt .bv { font-size: 14px; stroke-width: 3px; }
   .cb-row .batt .bu { font-size: 9px; }
-  .cb-row .batt .bolt { fill: var(--primary-text-color); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 2px; }
+  .batt .bolt { fill: var(--primary-text-color); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 2px; }
   .badge {
     display: inline-block;
     padding: 2px 10px;
@@ -1026,12 +1026,29 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const cars = this._cars;
     if (cars === null) return `<div class="sub" style="color:var(--secondary-text-color)">Henter biler…</div>`;
     if (!cars.length) return `<div class="sub" style="color:var(--secondary-text-color)">Ingen biler tilføjet – se fanen Elbiler</div>`;
+    const carColor = (soc) => (soc === null ? "var(--secondary-text-color)" : soc <= 20 ? K.COLOR_IN : soc <= 40 ? K.COLOR_SUN : K.COLOR_OUT);
+    if (cars.length === 1) {
+      const car = cars[0];
+      const rt = car.runtime || {};
+      const soc = this._numState(car.soc_entity).value;
+      const target = Number(rt.plan && rt.plan.target_soc ? rt.plan.target_soc : car.target_soc) || 0;
+      const [statusText] = K.STATUS_TEXT[rt.status] || [""];
+      return this._renderBigBattery({
+        soc,
+        color: carColor(soc),
+        marker: target > 0 && target < 100 ? target : null,
+        sub: car.name,
+        sub2: `mål ${target} %${statusText ? ` · ${statusText}` : ""}`,
+        aria: car.name,
+        charging: !!rt.charging,
+      });
+    }
     const rows = cars.map((car) => {
       const rt = car.runtime || {};
       const soc = this._numState(car.soc_entity).value;
       const target = Number(rt.plan && rt.plan.target_soc ? rt.plan.target_soc : car.target_soc) || 0;
       const pct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
-      const color = soc === null ? "var(--secondary-text-color)" : soc <= 20 ? K.COLOR_IN : soc <= 40 ? K.COLOR_SUN : K.COLOR_OUT;
+      const color = carColor(soc);
       const x = 2, y = 3, w = 186, h = 24, pad = 3;
       const inner = w - 2 * pad;
       const fillW = (inner * pct) / 100;
@@ -1059,19 +1076,27 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const minSoc = b ? Number(b.min_soc) || 0 : 0;
     const pct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
     const color = soc === null ? "var(--secondary-text-color)" : soc <= minSoc ? K.COLOR_IN : soc <= minSoc + 10 ? K.COLOR_SUN : K.COLOR_OUT;
+    const kwh = b && soc !== null ? (Number(b.capacity_kwh) * pct) / 100 : null;
+    const sub = !b ? "Ikke sat op" : kwh === null ? `${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %` : `≈ ${fmtNum(kwh, 1)} af ${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %`;
+    return this._renderBigBattery({ soc, color, marker: b && minSoc > 0 ? minSoc : null, sub, aria: "Hus batteri" });
+  }
+
+  /** Large battery illustration (same size as a gauge): fill = SoC, optional dashed marker, optional charging bolt. */
+  _renderBigBattery(o) {
+    const soc = o.soc;
+    const pct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
     const x = 22, y = 30, w = 150, h = 64, pad = 5;
     const inner = w - 2 * pad;
     const fillW = (inner * pct) / 100;
-    const resX = x + pad + (inner * Math.max(0, Math.min(100, minSoc))) / 100;
-    const kwh = b && soc !== null ? (Number(b.capacity_kwh) * pct) / 100 : null;
-    const sub = !b ? "Ikke sat op" : kwh === null ? `${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %` : `≈ ${fmtNum(kwh, 1)} af ${fmtNum(b.capacity_kwh, 1)} kWh · reserve ${b.min_soc} %`;
-    return `<svg class="gauge batt" viewBox="0 0 200 128" role="img" aria-label="Hus batteri ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}">
+    const mX = o.marker !== null && o.marker !== undefined ? x + pad + (inner * Math.max(0, Math.min(100, o.marker))) / 100 : null;
+    return `<svg class="gauge batt" viewBox="0 0 200 128" role="img" aria-label="${esc(o.aria)} ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}">
       <rect class="body" x="${x}" y="${y}" width="${w}" height="${h}" rx="9"/>
       <rect class="nub" x="${x + w + 2}" y="${y + h / 2 - 11}" width="7" height="22" rx="2.5"/>
-      ${fillW > 0 ? `<rect class="fill" style="fill:${color}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="5"/>` : ""}
-      ${b && minSoc > 0 ? `<line class="reserve" x1="${resX.toFixed(1)}" x2="${resX.toFixed(1)}" y1="${y + 2}" y2="${y + h - 2}"/>` : ""}
+      ${fillW > 0 ? `<rect class="fill" style="fill:${o.color}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="5"/>` : ""}
+      ${mX !== null ? `<line class="reserve" x1="${mX.toFixed(1)}" x2="${mX.toFixed(1)}" y1="${y + 2}" y2="${y + h - 2}"/>` : ""}
       <text class="bv" x="${x + w / 2}" y="${y + h / 2 + 9}" text-anchor="middle">${soc === null ? "–" : fmtNum(soc, 0)}<tspan class="bu"> %</tspan></text>
-      <text class="gs" x="100" y="120" text-anchor="middle">${esc(sub)}</text>
+      ${o.charging ? `<path class="bolt" transform="translate(${x + 12} ${y + 14}) scale(1.6)" d="M7 0 L0 11 h5 l-1 8 7-11 h-5 z"/>` : ""}
+      ${o.sub2 ? `<text class="gs" x="100" y="113" text-anchor="middle">${esc(o.sub || "")}</text><text class="gs" x="100" y="125" text-anchor="middle" style="font-size:11px">${esc(o.sub2)}</text>` : `<text class="gs" x="100" y="120" text-anchor="middle">${esc(o.sub || "")}</text>`}
     </svg>`;
   }
 
