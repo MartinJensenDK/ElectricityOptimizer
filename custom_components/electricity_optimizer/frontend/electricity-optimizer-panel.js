@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.32.5";
+const PANEL_JS_VERSION = "0.32.6";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -305,6 +305,14 @@ const STYLE = `
   .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; align-items: end; }
   .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; min-height: 36px; }
   .toggle input { width: auto; }
+  .switch { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--primary-text-color); cursor: pointer; margin: 4px 0 6px; user-select: none; }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: relative; width: 40px; height: 22px; border-radius: 11px; background: var(--secondary-background-color, #ccc); border: 1px solid var(--divider-color, #bbb); transition: background 150ms; flex: none; box-sizing: border-box; }
+  .switch .slider::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--card-background-color, #fff); box-shadow: 0 1px 3px rgba(0,0,0,0.35); transition: transform 150ms; }
+  .switch input:checked + .slider { background: var(--primary-color, #03a9f4); border-color: var(--primary-color, #03a9f4); }
+  .switch input:checked + .slider::after { transform: translateX(18px); }
+  .switch input:focus-visible + .slider { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .switch .info { font-weight: 400; }
   .plan-strip { width: 100%; height: 44px; display: block; margin-top: 8px; }
   .strip-day { stroke: var(--primary-text-color); stroke-width: 1; stroke-dasharray: 2 2; opacity: 0.6; }
   .slot { fill: var(--secondary-background-color); }
@@ -1845,7 +1853,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             r.solar_priority === "battery"
               ? `<label class="field">${head(
                   "EV buffer (%)",
-                  "Kun med husbatteri som nr. 1. Under denne ladestand lader elbilen ikke fra sol. Mellem EV buffer og Prioriter 1. indtil har husbatteriet forrang: bilen fortsætter kun med min. ladestrøm og starter kun, hvis solen alene dækker den. Skal være lavere end Prioriter 1. indtil."
+                  "Kun med husbatteri som nr. 1. Under denne ladestand lader elbilen ikke fra sol. Mellem EV buffer og Prioriter 1. indtil har husbatteriet forrang: bilen fortsætter kun med min. ladestrøm og starter kun, hvis solen alene dækker den. Skal være lavere end Prioriter 1. indtil. Skriv 0 for at slå EV buffer fra: så stopper bilen aldrig på grund af bufferen, men kører med min. ladestrøm helt op til Prioriter 1. indtil."
                 )}<input type="number" min="0" max="${Math.max(0, r.solar_priority_over - 1)}" data-rfield="ev_buffer_soc" value="${r.ev_buffer_soc}"></label>`
               : ""
           }
@@ -2125,8 +2133,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
         })}
         <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
         ${plan ? this._renderPlanStrip(plan) : ""}
-        <div class="controls">
-          <label class="toggle"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}> Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen, bortset fra når du trykker Lad nu.")}</label>
+        <label class="switch"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}><span class="slider"></span>Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen, bortset fra når du trykker Lad nu.")}</label>
+        <div class="controls" style="margin-top:0">
           <label class="field"><span class="fl">Prisgrænse (kr/kWh)${I("Bilen lader altid, når prisen lige nu er under denne grænse, uanset planen. Tom = ingen prisgrænse.")}</span><input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
           <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til (må ikke være højere end maks.). Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
           <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
@@ -2831,8 +2839,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="card" data-battery>
         <h2><ha-icon icon="mdi:tune"></ha-icon>Indstillinger${I("Regler for hvornår batteriet holdes tilbage eller lades fra nettet. Hvert felt gemmes med det samme.")}</h2>
-        <div class="controls">
-          <label class="toggle"><input type="checkbox" data-bfield="enabled" ${b.enabled ? "checked" : ""}> Smart styring${I("Til: Electricity Optimizer sender hold- og lad-kommandoer efter planen. Fra: planen vises, men der sendes ingen kommandoer.")}</label>
+        <label class="switch"><input type="checkbox" data-bfield="enabled" ${b.enabled ? "checked" : ""}><span class="slider"></span>Smart styring${I("Til: Electricity Optimizer sender hold- og lad-kommandoer efter planen. Fra: planen vises, men der sendes ingen kommandoer.")}</label>
+        <div class="controls" style="margin-top:0">
           <label class="field"><span class="fl">Prisforskel (kr/kWh)${I("Hold: prisen nu skal være under dagens gennemsnit, og en senere time mindst så meget dyrere. Lad fra nettet: en senere time skal være mindst så meget dyrere end nu, efter der er regnet med virkningsgraden.")}</span><input type="number" step="0.05" min="0" data-bfield="spread_threshold" value="${b.spread_threshold}"></label>
           <label class="field"><span class="fl">Reserve-SoC (%)${I("Batteriet aflades ikke under denne ladestand. Vises som streg på ladestands-bjælken.")}</span><input type="number" min="0" max="100" data-bfield="min_soc" value="${b.min_soc}"></label>
           <label class="field"><span class="fl">Maks-SoC ved netopladning (%)${I("Netopladning stopper, når batteriet når denne ladestand.")}</span><input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>

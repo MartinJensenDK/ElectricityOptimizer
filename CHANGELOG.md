@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.32.6
+
+- Hus batteri-fanen, Indstillinger: "Smart styring" er nu en skydeknap på sin egen linje øverst, med felterne nedenunder.
+- Elbiler-fanen: "Smart opladning" på hvert bilkort er ligeledes en skydeknap på sin egen linje.
+- Regler for opladning: infoboksen for "EV buffer (%)" fortæller nu, at 0 slår bufferen fra.
+
 ## 0.32.5
 
 - Elbiler-fanen: hvert bilkort viser nu bilens batteri som det samme batteri-ikon som på forsiden (fyldt efter ladestand, mål som stiplet streg, lyn ved opladning) i stedet for tal og bjælke.
