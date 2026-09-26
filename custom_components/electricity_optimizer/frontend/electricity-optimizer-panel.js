@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.27.1";
+const PANEL_JS_VERSION = "0.28.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -515,7 +515,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const liveKey = this._liveEntityIds
       .map((id) => (this._hass.states[id] ? this._hass.states[id].last_updated : "x"))
       .join(",");
-    if (this._editingRulesSensor && this._tab === "home" && !force) return;
+    if (this._editingRulesSensor && (this._tab === "ev" || this._tab === "battery") && !force) return;
     const key = [
       liveKey,
       this._batteryStamp,
@@ -819,8 +819,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </table>
           <div class="sub" style="font-size:13px;color:var(--secondary-text-color);margin-top:10px">Her bør husbatteriet levere strøm i stedet for nettet.</div>
         </div>
-      </div>
-      ${this._renderRulesCard()}`;
+      </div>`;
   }
 
   _renderStatusCard(d) {
@@ -1465,7 +1464,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const ctx = this._context || {};
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen${I("Hvordan solstrømmen fordeles mellem elbiler og husbatteri i dag ud fra reglerne på Forsiden og bilernes kilde i ugeplanen.")} <a class="setup-link hint" href="#" data-goto="home" style="margin-left:auto">Regler</a></h2>
+        <h2><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Sådan bruges solstrømmen${I("Hvordan solstrømmen fordeles mellem elbiler og husbatteri i dag ud fra Regler for opladning (nederst på Elbiler og Hus batteri) og bilernes kilde i ugeplanen.")} <a class="setup-link hint" href="#" data-goto="ev" style="margin-left:auto">Regler</a></h2>
         <div class="status-list">${rows}</div>
         ${rules ? `<div class="hint" style="margin-top:8px">${this._solarConditionsText(rules)}${ctx.surplus_w !== undefined && ctx.surplus_w !== null ? ` Overskud ved sidste beregning: ${fmtNum(ctx.surplus_w, 0)} W.` : ""}</div>` : ""}
       </div>`;
@@ -1921,7 +1920,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
         ${cars && cars.length ? '<button class="btn primary" data-action="add-car"><ha-icon icon="mdi:plus" style="--mdc-icon-size:18px"></ha-icon> Tilføj bil</button>' : ""}
       </div>
       ${this._carsError ? `<div class="err">${esc(this._carsError)}</div>` : ""}
-      ${body}`;
+      ${body}
+      ${this._renderRulesCard()}`;
   }
 
   _renderCarCard(car, index = 0, total = 1) {
@@ -2692,7 +2692,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <button class="btn danger" data-baction="delete">Slet</button>
         </div>
         ${this._batteryError ? `<div class="err">${esc(this._batteryError)}</div>` : ""}
-      </div>`;
+      </div>
+      ${this._renderRulesCard()}`;
   }
 
   _renderForecastRuleHint(plan) {
