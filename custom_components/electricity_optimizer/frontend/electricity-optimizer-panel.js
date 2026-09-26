@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.33.2";
+const PANEL_JS_VERSION = "0.33.3";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -305,7 +305,9 @@ const STYLE = `
   .car-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; margin-bottom: 12px; }
   .car-grid .card { margin-bottom: 0; }
   .car-meta { font-size: 13px; color: var(--secondary-text-color); display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
-  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; align-items: end; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 10px; align-items: flex-end; }
+  .controls .field { flex: 0 1 auto; min-width: 90px; height: auto; }
+  .controls .field input, .controls .field select { width: 0; min-width: 100%; }
   .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; min-height: 36px; }
   .toggle input { width: auto; }
   .switch { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--primary-text-color); cursor: pointer; margin: 16px 0 18px; user-select: none; }

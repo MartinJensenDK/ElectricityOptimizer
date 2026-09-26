@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.33.3
+
+- Hus batteri-fanen (Indstillinger) og bilkortene: inputfelterne er nu lige så brede som deres overskrift, så overskrifterne ikke længere overlapper hinanden.
+
 ## 0.33.2
 
 - Mere luft før og efter skydeknapperne "Smart styring" (Hus batteri) og "Smart opladning" (Elbiler).
