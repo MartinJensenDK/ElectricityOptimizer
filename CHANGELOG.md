@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.3
+
+- Elbiler-fanen: "Regler for opladning" har nu samme afstand til bilkortene ovenfor som på Hus batteri-fanen.
+
 ## 0.30.2
 
 - Forsiden, Status-kortet: mærkatet "Venter – husbatteri har prioritet" hedder nu blot "Venter". Den fulde forklaring står stadig i teksten ved bilen.
