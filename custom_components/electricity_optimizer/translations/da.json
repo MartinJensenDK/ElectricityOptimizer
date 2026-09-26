@@ -14,9 +14,7 @@
         "data": {
           "solar_power_entity": "Solcelleproduktion lige nu (W eller kW)",
           "solar_energy_today_entity": "Solcelleproduktion i dag (kWh)",
-          "solar_energy_week_entity": "Solcelleproduktion denne uge (kWh)",
           "solar_energy_month_entity": "Solcelleproduktion denne måned (kWh)",
-          "solar_energy_year_entity": "Solcelleproduktion i år (kWh)",
           "solar_forecast_today_entity": "Solprognose i dag (kWh)",
           "solar_forecast_tomorrow_entity": "Solprognose i morgen (kWh)",
           "solar_peak_kw": "Installeret effekt (kWp)"
@@ -40,9 +38,7 @@
           "price_entity": "Elpris-sensor",
           "solar_power_entity": "Solcelleproduktion lige nu (W eller kW)",
           "solar_energy_today_entity": "Solcelleproduktion i dag (kWh)",
-          "solar_energy_week_entity": "Solcelleproduktion denne uge (kWh)",
           "solar_energy_month_entity": "Solcelleproduktion denne måned (kWh)",
-          "solar_energy_year_entity": "Solcelleproduktion i år (kWh)",
           "solar_forecast_today_entity": "Solprognose i dag (kWh)",
           "solar_forecast_tomorrow_entity": "Solprognose i morgen (kWh)",
           "solar_peak_kw": "Installeret effekt (kWp)"

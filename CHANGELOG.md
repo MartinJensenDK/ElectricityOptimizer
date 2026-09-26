@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.27.1
+
+- Solceller, Anlæg-kortet: rækkerne "Produceret denne uge", "Produceret i år" og "Effekt-sensor" er fjernet. Kortet viser nu installeret effekt, produceret i dag, produceret denne måned og solens retning.
+- De valgfrie sensorer for uge og år er fjernet fra Konfigurer.
+
 ## 0.27.0
 
 - Forsiden: Status-kortet er flyttet op ved siden af målerne. Målerne fylder nu 2 rækker til venstre, og Status-kortet står i fuld højde til højre.

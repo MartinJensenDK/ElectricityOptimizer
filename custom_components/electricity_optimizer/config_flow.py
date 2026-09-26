@@ -19,8 +19,6 @@ from .const import (
     CONF_PRICE_ENTITY,
     CONF_SOLAR_ENERGY_TODAY_ENTITY,
     CONF_SOLAR_ENERGY_MONTH_ENTITY,
-    CONF_SOLAR_ENERGY_WEEK_ENTITY,
-    CONF_SOLAR_ENERGY_YEAR_ENTITY,
     CONF_SOLAR_FORECAST_TODAY_ENTITY,
     CONF_SOLAR_FORECAST_TOMORROW_ENTITY,
     CONF_SOLAR_PEAK_KW,
@@ -57,9 +55,7 @@ def _solar_schema(current: dict[str, Any]) -> vol.Schema:
         {
             vol.Optional(CONF_SOLAR_POWER_ENTITY, description=_suggest(current, CONF_SOLAR_POWER_ENTITY)): _sensor("power"),
             vol.Optional(CONF_SOLAR_ENERGY_TODAY_ENTITY, description=_suggest(current, CONF_SOLAR_ENERGY_TODAY_ENTITY)): _sensor("energy"),
-            vol.Optional(CONF_SOLAR_ENERGY_WEEK_ENTITY, description=_suggest(current, CONF_SOLAR_ENERGY_WEEK_ENTITY)): _sensor("energy"),
             vol.Optional(CONF_SOLAR_ENERGY_MONTH_ENTITY, description=_suggest(current, CONF_SOLAR_ENERGY_MONTH_ENTITY)): _sensor("energy"),
-            vol.Optional(CONF_SOLAR_ENERGY_YEAR_ENTITY, description=_suggest(current, CONF_SOLAR_ENERGY_YEAR_ENTITY)): _sensor("energy"),
             vol.Optional(CONF_SOLAR_FORECAST_TODAY_ENTITY, description=_suggest(current, CONF_SOLAR_FORECAST_TODAY_ENTITY)): _sensor(),
             vol.Optional(CONF_SOLAR_FORECAST_TOMORROW_ENTITY, description=_suggest(current, CONF_SOLAR_FORECAST_TOMORROW_ENTITY)): _sensor(),
             vol.Optional(CONF_SOLAR_PEAK_KW, description=_suggest(current, CONF_SOLAR_PEAK_KW)): selector.NumberSelector(
