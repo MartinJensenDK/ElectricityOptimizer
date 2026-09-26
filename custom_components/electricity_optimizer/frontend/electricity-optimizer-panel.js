@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.20.0";
+const PANEL_JS_VERSION = "0.20.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -2455,7 +2455,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>
 
       <div class="card" data-battery>
-        <h2><ha-icon icon="mdi:tune"></ha-icon>Indstillinger${I("Regler for hvornår batteriet holdes tilbage eller lades fra nettet. Hvert felt gemmes med det samme.")} <button class="btn" style="margin-left:auto" data-baction="edit">Rediger sensorer og kommandoer</button></h2>
+        <h2><ha-icon icon="mdi:tune"></ha-icon>Indstillinger${I("Regler for hvornår batteriet holdes tilbage eller lades fra nettet. Hvert felt gemmes med det samme.")}</h2>
         <div class="controls">
           <label class="toggle"><input type="checkbox" data-bfield="enabled" ${b.enabled ? "checked" : ""}> Smart styring${I("Til: Electricity Optimizer sender hold- og lad-kommandoer efter planen. Fra: planen vises, men der sendes ingen kommandoer.")}</label>
           <label class="field"><span class="fl">Prisforskel (kr/kWh)${I("Hold: prisen nu skal være under dagens gennemsnit, og en senere time mindst så meget dyrere. Lad fra nettet: en senere time skal være mindst så meget dyrere end nu, efter der er regnet med virkningsgraden.")}</span><input type="number" step="0.05" min="0" data-bfield="spread_threshold" value="${b.spread_threshold}"></label>
@@ -2467,6 +2467,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         ${this._renderForecastRuleHint(plan)}
         <div class="hint" style="margin-top:8px">Hold: prisen er under dagens gennemsnit, og en senere time er mindst prisforskellen dyrere. Lad fra nettet: kun på dage hvor det er tilladt, og kun når de dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu – eller når ugeplanens mål-SoC skal nås inden klokkeslættet.</div>
         ${this._renderBatterySchedule(b, plan)}
+        <div class="row" style="margin-top:12px">
+          <button class="btn" data-baction="edit">Rediger</button>
+          <button class="btn danger" data-baction="delete">Slet</button>
+        </div>
         ${this._batteryError ? `<div class="err">${esc(this._batteryError)}</div>` : ""}
       </div>`;
   }

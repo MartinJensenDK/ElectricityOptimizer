@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.20.1
+
+- Hus batteri: knappen "Rediger sensorer og kommandoer" i overskriften er erstattet af en knaprække nederst på Indstillinger-kortet med "Rediger" og "Slet", magen til bilkortene under Elbiler.
+
 ## 0.20.0
 
 - Historik: nyt kort "Sendte kommandoer" med alle kommandoer, integrationen har sendt til ladere og husbatteri (tid, hvem, handling, entitet, service, OK/fejl). De seneste 300 gemmes og er også med i diagnostik.
