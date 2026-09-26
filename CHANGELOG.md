@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.32.1
+
+- Forsiden, Status-kortet: Solceller, Elbiler og Hus batteri viser nu det blå mærkat "Afventer…", når de venter. Hold musen over mærkatet for at se den fulde besked om, hvad der ventes på.
+- Baren med beskeder under fanerne er fjernet, da det samme nu ses i Status-kortet.
+
 ## 0.32.0
 
 - Forsiden, Status-kortet: Elnet kan nu vise "Eksport aktiveret" eller "Eksport deaktiveret". Peg på en tænd/sluk-entitet (fx inverterens feed-in-kontakt eller en input_boolean) under "Vælg sensorer" på Anlæg-kortet på Solceller-fanen. Uden entitet vises Import/Eksport som før.

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.32.0";
+const PANEL_JS_VERSION = "0.32.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -94,19 +94,6 @@ const STYLE = `
   .tab[aria-selected="true"] { opacity: 1; border-bottom-color: currentColor; }
   .tab ha-icon { --mdc-icon-size: 20px; }
   .content { padding: 16px; max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
-  .statusbar {
-    display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 12px;
-  }
-  .sb-item {
-    display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    padding: 6px 12px 6px 10px; border-radius: 999px; cursor: pointer;
-    background: var(--card-background-color, #fff);
-    border: 1px solid var(--ha-card-border-color, var(--divider-color, #e0e0e0));
-    font-size: 13px; color: var(--primary-text-color);
-  }
-  .sb-item ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
-  .sb-item .sb-name { font-weight: 500; }
-  .sb-item .sb-detail { color: var(--secondary-text-color); }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -332,6 +319,7 @@ const STYLE = `
   .legend .l-normal::before { background: var(--secondary-background-color); border: 1px solid var(--divider-color); }
   .legend .l-est::before { background: var(--success-color, #43a047); opacity: 0.45; }
   .badge.info { background: var(--info-color, #039be5); }
+  .badge[data-tip] { cursor: help; }
   .seg { display: inline-flex; border: 1px solid var(--divider-color); border-radius: 8px; overflow: hidden; }
   .seg button { border: 0; border-right: 1px solid var(--divider-color); border-radius: 0; }
   .seg button:last-child { border-right: 0; }
@@ -381,7 +369,7 @@ const STYLE = `
   }
   .info:hover, .info:focus { color: var(--primary-color); border-color: var(--primary-color); outline: none; }
   .tip {
-    position: fixed; z-index: 50; max-width: min(300px, 80vw);
+    position: fixed; z-index: 50; max-width: min(300px, 80vw); white-space: pre-line;
     background: var(--primary-text-color); color: var(--card-background-color, #fff);
     padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.4;
     box-shadow: 0 2px 8px rgba(0,0,0,0.25); pointer-events: none;
@@ -578,7 +566,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     `;
     this._tipEl = root.querySelector(".tip");
     const showTip = (ev) => {
-      const el = ev.target.closest && ev.target.closest(".info");
+      const el = ev.target.closest && ev.target.closest("[data-tip]");
       if (!el || !el.dataset.tip) return;
       const tip = this._tipEl;
       tip.textContent = el.dataset.tip;
@@ -593,7 +581,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       tip.style.top = `${top}px`;
     };
     const hideTip = (ev) => {
-      if (ev.target.closest && ev.target.closest(".info")) this._tipEl.hidden = true;
+      if (ev.target.closest && ev.target.closest("[data-tip]")) this._tipEl.hidden = true;
     };
     this._menuButton = root.querySelector("ha-menu-button");
     this._menuButton.hass = this._hass;
@@ -801,7 +789,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
     return `
-      ${this._renderStatusBar()}
       ${this._renderLiveRow(this._renderStatusCard(d))}
       <div class="card">
         <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, lyseblå felt med lodrette kanter = ladeperiode for en bil eller husbatteriet fra start til forventet slut (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
@@ -1170,7 +1157,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (s.powerKw !== null) parts.push(`${fmtNum(Math.round(s.powerKw * 1000), 0)} W lige nu`);
     if (s.todayKwh !== null) parts.push(`${fmtNum(s.todayKwh, 1)} kWh i dag`);
     const producing = s.powerKw !== null && s.powerKw > 0.05;
-    return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div><span class="badge ${producing ? "low" : "mid"}">${producing ? "Producerer" : "Venter på sol"}</span></div>`;
+    const waiting = this._carWaitLines();
+    const tip = waiting.length ? waiting.join("\n") : `Solcellerne producerer ikke lige nu${s.powerKw !== null ? ` (${fmtNum(Math.round(s.powerKw * 1000), 0)} W)` : ""}.`;
+    const badge = producing ? `<span class="badge low">Producerer</span>` : `<span class="badge info" data-tip="${esc(tip)}">Afventer…</span>`;
+    return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div>${badge}</div>`;
   }
 
   _renderChart(d) {
@@ -2016,32 +2006,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
     fuse_wait: "Venter – hovedsikringen er optaget af elbil (regel)",
   };
 
-  /** Status bar under the tabs: what every car and the house battery is doing right now, and why. */
-  _renderStatusBar() {
+  /** "Name: status – reason" for every car that is waiting (not charging, not done/disabled), same wording as the bar at the top. */
+  _carWaitLines() {
     const K = ElectricityOptimizerPanel;
-    const chips = [];
-    for (const car of this._cars || []) {
-      const rt = car.runtime || {};
-      const [text, cls] = K.STATUS_TEXT[rt.status] || ["–", "neutral"];
-      const detail = this._carStatusDetail(car, rt);
-      chips.push(`<div class="sb-item" data-goto="ev"><ha-icon icon="mdi:car-electric"></ha-icon><span class="sb-name">${esc(car.name)}</span><span class="badge ${cls}">${text}</span>${
-        detail ? `<span class="sb-detail">${esc(detail)}</span>` : ""
-      }</div>`);
-    }
-    if (this._battery) {
-      const rt = this._batteryRuntime || {};
-      const [modeText, modeCls, modeWhy] = K.MODE_TEXT[rt.mode] || ["–", "neutral", ""];
-      const detail = K.BATTERY_NOTE[rt.status] || modeWhy || "";
-      chips.push(`<div class="sb-item" data-goto="battery"><ha-icon icon="mdi:home-battery"></ha-icon><span class="sb-name">Husbatteri</span><span class="badge ${modeCls}">${modeText}</span>${
-        detail ? `<span class="sb-detail">${esc(detail)}</span>` : ""
-      }</div>`);
-    }
-    if (!chips.length) return "";
-    return `<div class="statusbar">${chips.join("")}</div>`;
+    return (this._cars || [])
+      .filter((c) => c.runtime && c.runtime.status && !c.runtime.charging && !["done", "disabled"].includes(c.runtime.status))
+      .map((c) => {
+        const [text] = K.STATUS_TEXT[c.runtime.status] || ["–"];
+        const detail = this._carStatusDetail(c, c.runtime);
+        return `${c.name}: ${text}${detail ? ` – ${detail}` : ""}`;
+      });
   }
-
-  /** Shorter wording for the badge in the Status card; the full text stays in the description. */
-  static STATUS_BADGE_SHORT = { battery_first: "Venter" };
 
   _renderEvStatusRow() {
     const cars = this._cars;
@@ -2058,16 +2033,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
       })
       .join("<br>");
     // badge: how many charge, else the most relevant waiting/blocking status, else done
-    let badge = ["Klar", "low"];
-    if (charging) badge = [`${charging} lader`, "low"];
+    let badge = `<span class="badge low">Klar</span>`;
+    if (charging) badge = `<span class="badge low">${charging} lader</span>`;
     else {
-      const active = cars.find((c) => c.runtime && c.runtime.status && !["done", "disabled"].includes(c.runtime.status)) || cars.find((c) => c.runtime && c.runtime.status);
-      if (active) {
-        const [text, cls] = K.STATUS_TEXT[active.runtime.status] || ["–", "neutral"];
-        badge = [K.STATUS_BADGE_SHORT[active.runtime.status] || text, cls];
-      }
+      const waiting = this._carWaitLines();
+      if (waiting.length) badge = `<span class="badge info" data-tip="${esc(waiting.join("\n"))}">Afventer…</span>`;
     }
-    return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${desc}</div></div><span class="badge ${badge[1]}">${esc(badge[0])}</span></div>`;
+    return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${desc}</div></div>${badge}</div>`;
   }
 
   _renderEv() {
@@ -2760,7 +2732,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
     const live = this._readBatteryLive();
     const rt = this._batteryRuntime || {};
-    const [modeText, modeCls] = ElectricityOptimizerPanel.MODE_TEXT[rt.mode] || ["–", "neutral"];
+    const [modeText, modeCls, modeWhy] = ElectricityOptimizerPanel.MODE_TEXT[rt.mode] || ["–", "neutral", ""];
+    const note = ElectricityOptimizerPanel.BATTERY_NOTE[rt.status] || modeWhy || "";
+    const waiting = rt.mode === "hold" || ["ev_hold", "fuse_wait"].includes(rt.status);
+    const modeBadge = waiting
+      ? `<span class="badge info" data-tip="${esc(`${modeText}${note ? ` – ${note}` : ""}`)}">Afventer…</span>`
+      : `<span class="badge ${modeCls}"${note ? ` data-tip="${esc(note)}"` : ""}>${modeText}</span>`;
     const parts = [];
     if (live.soc !== null) parts.push(`${fmtNum(live.soc, 0)} %`);
     if (live.batW !== null) parts.push(live.batW >= 0 ? `lader ${fmtNum(live.batW, 0)} W` : `aflader ${fmtNum(-live.batW, 0)} W`);
@@ -2777,7 +2754,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         live.gridW >= 0 ? `Køber ${fmtNum(live.gridW, 0)} W` : `Sælger ${fmtNum(-live.gridW, 0)} W`
       }${live.houseW !== null ? `<br>huset bruger ${fmtNum(live.houseW, 0)} W` : ""}</div></div>${exportBadge}</div>`;
     }
-    return `${grid}<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div><span class="badge ${modeCls}">${modeText}</span></div>`;
+    return `${grid}<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div>${modeBadge}</div>`;
   }
 
   _renderBattery() {
