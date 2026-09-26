@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.26.1";
+const PANEL_JS_VERSION = "0.27.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -123,6 +123,13 @@ const STYLE = `
     margin-bottom: 12px;
   }
   .grid .card { margin-bottom: 0; }
+  .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 12px; margin-bottom: 12px; align-items: stretch; }
+  .top .card { margin-bottom: 0; }
+  .gauges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr 1fr; gap: 12px; }
+  @media (max-width: 900px) {
+    .top { grid-template-columns: 1fr; }
+    .gauges { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); grid-template-rows: auto; }
+  }
   .card h2 {
     margin: 0 0 12px;
     font-size: 16px;
@@ -769,7 +776,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
     return `
       ${this._renderStatusBar()}
-      ${this._renderLiveRow()}
+      ${this._renderLiveRow(this._renderStatusCard(d))}
       <div class="card">
         <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, lyseblå felt med lodrette kanter = ladeperiode for en bil eller husbatteriet fra start til forventet slut (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d)}</div>
@@ -814,19 +821,23 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </table>
           <div class="sub" style="font-size:13px;color:var(--secondary-text-color);margin-top:10px">Her bør husbatteriet levere strøm i stedet for nettet.</div>
         </div>
-        <div class="card">
-          <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, husbatteri, elnet, elbiler og prisdata lige nu. Detaljer findes på de enkelte faner.")}</h2>
-          <div class="status-list">
-            ${this._renderSolarStatusRow()}
-            ${this._renderBatteryStatusRow()}
-            ${this._renderEvStatusRow()}
-            <div class="status-row"><ha-icon icon="mdi:database-clock-outline"></ha-icon><div class="t"><div class="n">Prisdata</div><div class="d">${esc(d.attribution || "EnergiDataService")}${
-              d.nextUpdate ? ` · næste opdatering ${fmtTime(new Date(d.nextUpdate))}` : ""
-            }</div></div><span class="badge low">OK</span></div>
-          </div>
-        </div>
       </div>
       ${this._renderRulesCard()}`;
+  }
+
+  _renderStatusCard(d) {
+    return `
+      <div class="card">
+        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, husbatteri, elnet, elbiler og prisdata lige nu. Detaljer findes på de enkelte faner.")}</h2>
+        <div class="status-list">
+          ${this._renderSolarStatusRow()}
+          ${this._renderBatteryStatusRow()}
+          ${this._renderEvStatusRow()}
+          <div class="status-row"><ha-icon icon="mdi:database-clock-outline"></ha-icon><div class="t"><div class="n">Prisdata</div><div class="d">${esc(d.attribution || "EnergiDataService")}${
+            d.nextUpdate ? ` · næste opdatering ${fmtTime(new Date(d.nextUpdate))}` : ""
+          }</div></div><span class="badge low">OK</span></div>
+        </div>
+      </div>`;
   }
 
   /**
@@ -1031,13 +1042,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return null;
   }
 
-  _renderLiveRow() {
+  _renderLiveRow(sideCard = "") {
     const solar = this._readSolar();
     const bat = this._battery ? this._readBatteryLive() : { soc: null, batW: null, gridW: null, houseW: null };
     const gridW = this._gridLiveW();
     const solarW = solar.powerKw === null ? null : Math.round(solar.powerKw * 1000);
     return `
-      <div class="grid">
+      <div class="top">
+      <div class="gauges">
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu${I("Solcellernes produktion lige nu fra effekt-sensoren under Konfigurer. Skalaen går til anlæggets installerede effekt, eller 10 kW hvis den ikke er angivet.")}</div>
           ${this._renderSolarGauge(solar, solarW)}
@@ -1058,6 +1070,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand. Rød ved eller under reserven, orange tæt på reserven, ellers grøn.")}</div>
           ${this._renderSocGauge(bat.soc)}
         </div>
+      </div>
+      ${sideCard}
       </div>`;
   }
 

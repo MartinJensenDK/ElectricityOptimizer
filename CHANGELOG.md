@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.27.0
+
+- Forsiden: Status-kortet er flyttet op ved siden af målerne. Målerne fylder nu 2 rækker til venstre, og Status-kortet står i fuld højde til højre.
+- På smalle skærme (mobil) stables blokken igen under hinanden.
+
 ## 0.26.1
 
 - Forsiden, Status-kortet: rækken Elbiler viser nu hver bils ladestatus (fx "Venter på solproduktion") i stedet for "Ingen lader", og mærkatet viser antal biler, der lader, eller den mest relevante status.
