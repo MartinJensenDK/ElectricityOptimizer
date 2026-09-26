@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.10
+
+- Forsiden, Status-kortet: rækkefølgen er nu Solceller, Elnet, Hus batteri, Elbiler.
+
 ## 0.30.9
 
 - Forsiden, Status-kortet: rækken "Prisdata" er fjernet. Manglende priser ses alligevel i prisgrafen.

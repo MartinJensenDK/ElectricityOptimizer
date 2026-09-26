@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.9";
+const PANEL_JS_VERSION = "0.30.10";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -842,7 +842,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderStatusCard(d) {
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, husbatteri, elnet og elbiler lige nu. Detaljer findes på de enkelte faner.")}</h2>
+        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, elnet, husbatteri og elbiler lige nu. Detaljer findes på de enkelte faner.")}</h2>
         <div class="status-list">
           ${this._renderSolarStatusRow()}
           ${this._renderBatteryStatusRow()}
@@ -2695,7 +2695,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         live.gridW >= 0 ? `Køber ${fmtNum(live.gridW, 0)} W` : `Sælger ${fmtNum(-live.gridW, 0)} W`
       }${live.houseW !== null ? ` · huset bruger ${fmtNum(live.houseW, 0)} W` : ""}</div></div><span class="badge ${live.gridW > 0 ? "mid" : "low"}">${live.gridW > 0 ? "Import" : "Eksport"}</span></div>`;
     }
-    return `<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${esc(parts.join(" · ") || "Ingen data")}</div></div><span class="badge ${modeCls}">${modeText}</span></div>${grid}`;
+    return `${grid}<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${esc(parts.join(" · ") || "Ingen data")}</div></div><span class="badge ${modeCls}">${modeText}</span></div>`;
   }
 
   _renderBattery() {
