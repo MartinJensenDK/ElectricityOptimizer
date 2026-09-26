@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.30.11
+
+- Forsiden, Status-kortet: de to oplysninger under hver status står nu på hver sin linje i stedet for adskilt af en prik. Under Elbiler står hver bil på sin egen linje.
+
 ## 0.30.10
 
 - Forsiden, Status-kortet: rækkefølgen er nu Solceller, Elnet, Hus batteri, Elbiler.

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.30.10";
+const PANEL_JS_VERSION = "0.30.11";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1159,7 +1159,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (s.powerKw !== null) parts.push(`${fmtNum(Math.round(s.powerKw * 1000), 0)} W lige nu`);
     if (s.todayKwh !== null) parts.push(`${fmtNum(s.todayKwh, 1)} kWh i dag`);
     const producing = s.powerKw !== null && s.powerKw > 0.05;
-    return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${esc(parts.join(" · ") || "Ingen data")}</div></div><span class="badge ${producing ? "low" : "mid"}">${producing ? "Producerer" : "Venter"}</span></div>`;
+    return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div><span class="badge ${producing ? "low" : "mid"}">${producing ? "Producerer" : "Venter"}</span></div>`;
   }
 
   _renderChart(d) {
@@ -1979,9 +1979,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
       .map((c) => {
         const v = this._numState(c.soc_entity).value;
         const [text] = K.STATUS_TEXT[(c.runtime || {}).status] || ["–"];
-        return `${c.name}: ${v !== null ? fmtNum(v, 0) + " %" : "–"} – ${text}`;
+        return esc(`${c.name}: ${v !== null ? fmtNum(v, 0) + " %" : "–"} – ${text}`);
       })
-      .join(" · ");
+      .join("<br>");
     // badge: how many charge, else the most relevant waiting/blocking status, else done
     let badge = ["Klar", "low"];
     if (charging) badge = [`${charging} lader`, "low"];
@@ -1992,7 +1992,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         badge = [K.STATUS_BADGE_SHORT[active.runtime.status] || text, cls];
       }
     }
-    return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${esc(desc)}</div></div><span class="badge ${badge[1]}">${esc(badge[0])}</span></div>`;
+    return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${desc}</div></div><span class="badge ${badge[1]}">${esc(badge[0])}</span></div>`;
   }
 
   _renderEv() {
@@ -2693,9 +2693,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (live.gridW !== null) {
       grid = `<div class="status-row"><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t"><div class="n">Elnet</div><div class="d">${
         live.gridW >= 0 ? `Køber ${fmtNum(live.gridW, 0)} W` : `Sælger ${fmtNum(-live.gridW, 0)} W`
-      }${live.houseW !== null ? ` · huset bruger ${fmtNum(live.houseW, 0)} W` : ""}</div></div><span class="badge ${live.gridW > 0 ? "mid" : "low"}">${live.gridW > 0 ? "Import" : "Eksport"}</span></div>`;
+      }${live.houseW !== null ? `<br>huset bruger ${fmtNum(live.houseW, 0)} W` : ""}</div></div><span class="badge ${live.gridW > 0 ? "mid" : "low"}">${live.gridW > 0 ? "Import" : "Eksport"}</span></div>`;
     }
-    return `${grid}<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${esc(parts.join(" · ") || "Ingen data")}</div></div><span class="badge ${modeCls}">${modeText}</span></div>`;
+    return `${grid}<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div><span class="badge ${modeCls}">${modeText}</span></div>`;
   }
 
   _renderBattery() {
