@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.37.2
+
+- Genstart under "Lad nu": hvis laderens "tilsluttet"-sensor er `unavailable` lige efter genstarten (integrationen er ikke indlæst endnu), blev bilen tolket som frakoblet, Lad nu blev nulstillet, og der blev sendt stop og derefter nye start-kommandoer. Nu betyder en utilgængelig sensor "ukendt", og Lad nu fortsætter uændret.
+- Start sendes aldrig, når ladeeffekt-sensoren viser, at bilen allerede lader (uanset om det er efter en genstart, en manuel start på laderen eller Lad nu). Opladningen overtages i stedet, og kun ladestrømmen styres. Det fjerner gentagne "authorize_charge failed"-fejl fra Zaptec.
+
 ## 0.37.1
 
 - "Lad nu", mens bilen allerede lader (fx fra sol): start-kommandoen sendes ikke igen, når ladeeffekt-sensoren viser, at bilen faktisk lader. Det fjerner fejlen "Running command 'authorize_charge' failed" fra Zaptec, som afviser en ny authorize under opladning. Ladestrømmen sættes stadig op til maks.

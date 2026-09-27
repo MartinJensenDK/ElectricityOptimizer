@@ -761,7 +761,7 @@ async def test_charge_now_while_already_charging_does_not_resend_start(hass: Hom
     _set_prices(hass)
     hass.states.async_set("sensor.car_soc", "50")
     hass.states.async_set("sensor.grid", "-6000", {"unit_of_measurement": "W"})
-    hass.states.async_set("sensor.car_power", "5500", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.car_power", "0", {"unit_of_measurement": "W"})
     turn_on = async_mock_service(hass, "switch", "turn_on")
     set_value = async_mock_service(hass, "number", "set_value")
     async_mock_service(hass, "switch", "turn_off")
@@ -771,8 +771,75 @@ async def test_charge_now_while_already_charging_does_not_resend_start(hass: Hom
     res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "power_entity": "sensor.car_power"}})
     car = res["car"]
     assert car["runtime"]["status"] == "solar" and len(turn_on) == 1
+    hass.states.async_set("sensor.car_power", "5500", {"unit_of_measurement": "W"})  # the car is now really charging
     res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": car["id"], "charge_now": True}})
     rt = res["car"]["runtime"]
     assert rt["status"] == "charge_now" and rt["charging"]
     assert len(turn_on) == 1  # start was NOT sent again
     assert set_value and set_value[-1].data["value"] == 16.0  # but the limit went to max amps
+
+
+async def test_unavailable_plug_sensor_at_startup_keeps_charge_now(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """After a restart the charger's entities may be unavailable for a while: that is not "unplugged"."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.grid", "500", {"unit_of_measurement": "W"})
+    hass.states.async_set("binary_sensor.plugged", "on")
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    entry = await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid"}})
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "source": "solar_plan", "plugged_entity": "binary_sensor.plugged"}})
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": res["car"]["id"], "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "charge_now"
+    starts = len(turn_on)
+
+    hass.states.async_set("binary_sensor.plugged", "unavailable")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+    for i in range(3):
+        freezer.tick(timedelta(seconds=60))
+        res = await _ws(hass, client, 10 + i, {"type": f"{DOMAIN}/evaluate"})
+        car = res["cars"][0]
+        assert car["charge_now"] and car["runtime"]["status"] == "charge_now" and car["runtime"]["charging"]
+    assert len(turn_on) == starts and turn_off == []  # nothing sent: the manual charge simply continues
+
+    hass.states.async_set("binary_sensor.plugged", "off")  # really unplugged -> the manual charge is over
+    res = await _ws(hass, client, 20, {"type": f"{DOMAIN}/evaluate"})
+    assert not res["cars"][0]["charge_now"] and res["cars"][0]["runtime"]["status"] == "not_plugged" and len(turn_off) == 1
+
+
+async def test_start_is_not_sent_when_the_car_already_draws_power(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """With a power sensor: a car that is already charging (e.g. after a restart without remembered state, or a
+    charger someone started by hand) is adopted - no start command (Zaptec rejects a second authorize)."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.grid", "-6000", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.car_power", "5500", {"unit_of_measurement": "W"})
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    set_value = async_mock_service(hass, "number", "set_value")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0, "solar_stop_minutes": 0}})
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "power_entity": "sensor.car_power"}})
+    rt = res["car"]["runtime"]
+    assert rt["status"] == "solar" and rt["charging"] and rt["mode"] == "solar"
+    assert turn_on == []  # already charging: adopted, not started again
+    for i in range(3):
+        freezer.tick(timedelta(seconds=60))
+        res = await _ws(hass, client, 10 + i, {"type": f"{DOMAIN}/evaluate"})
+        assert res["cars"][0]["runtime"]["charging"] and turn_on == []
+    assert set_value  # the current limit is still ours to set
+
+    # the rules still end the session: heavy import -> stop
+    hass.states.async_set("sensor.grid", "9000", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.car_power", "0", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=60))
+    res = await _ws(hass, client, 20, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar_wait" and len(turn_off) == 1

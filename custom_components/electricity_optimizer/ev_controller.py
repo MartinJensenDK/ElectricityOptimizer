@@ -300,7 +300,9 @@ class EvController:
         if not car.get("plugged_entity"):
             return None
         st = self.hass.states.get(car["plugged_entity"])
-        return None if st is None else st.state == "on"
+        if st is None or st.state in ("unknown", "unavailable"):
+            return None  # e.g. the charger integration has not loaded yet after a restart: not "unplugged"
+        return st.state == "on"
 
     # ---- evaluation
 
@@ -407,7 +409,7 @@ class EvController:
         if desired and not (mode == "solar" and starting):
             # solar: the start command goes alone; the current limit follows after the chosen interval
             await self._apply_amps(ctx, car, amps, rate_limited=(mode == "solar"), reason=reason)
-        await self._apply(car, desired, reason)
+        await self._apply(car, desired, reason, car_w=car_w)
         rt["charging"] = self._last_cmd.get(car["id"], False)
         rt["amps"] = self._last_amps.get(car["id"]) if desired else None
         if desired and not rt["charging"]:
@@ -702,11 +704,19 @@ class EvController:
                 return {"start": start.isoformat(), "end": end.isoformat(), "source": "grid", "estimated": any(sl.get("estimated") for sl in chosen)}
         return None
 
-    async def _apply(self, car: dict[str, Any], desired: bool, reason: str = "") -> None:
+    async def _apply(self, car: dict[str, Any], desired: bool, reason: str = "", *, car_w: float | None = None) -> None:
         cid = car["id"]
         if cid not in self._force_send and self._last_cmd.get(cid) is desired:
             return
         self._force_send.discard(cid)
+        if desired and not self._last_cmd.get(cid) and car_w is not None and car_w >= self.NO_POWER_W:
+            # the car is already charging (started by hand, or before a restart we have no memory of):
+            # adopt the session instead of sending start again - Zaptec rejects a second authorize
+            self._last_cmd[cid] = True
+            self._charging_since.setdefault(cid, dt_util.now())
+            self._persist(cid)
+            _LOGGER.info("%s: already charging (%s W) - start not sent", car["name"], round(car_w))
+            return
         if desired:
             self._charging_since[cid] = dt_util.now()
         else:
