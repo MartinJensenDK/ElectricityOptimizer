@@ -354,7 +354,7 @@ class BatteryController:
             if self.notifier is not None:
                 self.notifier.notify("cmd:battery", "Husbatteri-kommando fejlede", f"Kunne ikke skifte husbatteriet til {mode}: {err}")
 
-    HOLD_DISCHARGE_W = 100  # discharging more than this while on hold = the inverter is not holding
+    HOLD_DISCHARGE_W = 250  # discharging more than this while on hold = the inverter is not holding
     HOLD_GRACE_S = 120  # give the inverter this long to obey a hold command
     HOLD_RETRY_S = 300  # re-send hold this often while the battery keeps discharging
 

@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.38.2
+
+- Hold gensendes først, når husbatteriet aflader mere end 250 W (før 100 W). Aflader batteriet mindre end det, sendes der ikke noget.
+
 ## 0.38.1
 
 - Husbatteriet: er tilstanden "hold", men batteriet aflader alligevel (fx fordi afladning er slået til igen manuelt på inverteren), gensendes hold-kommandoen efter 2 minutter og derefter hvert 5. minut, så længe batteriet aflader mere end 100 W. Kræver batteriets effekt-sensor. Sendte kommandoer viser årsagen "Hold gensendes – batteriet aflader stadig … W".

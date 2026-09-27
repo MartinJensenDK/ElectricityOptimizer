@@ -920,7 +920,11 @@ async def test_hold_is_resent_when_the_battery_still_discharges(hass: HomeAssist
     await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
     assert holds() == 3  # still discharging: sent again
 
-    hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})  # the inverter obeys
+    hass.states.async_set("sensor.bat_power", "-200", {"unit_of_measurement": "W"})  # below 250 W: not "discharging"
     freezer.tick(timedelta(seconds=600))
     await _ws(hass, client, 7, {"type": f"{DOMAIN}/evaluate"})
+    assert holds() == 3
+    hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})  # the inverter obeys
+    freezer.tick(timedelta(seconds=600))
+    await _ws(hass, client, 8, {"type": f"{DOMAIN}/evaluate"})
     assert holds() == 3
