@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.38.3";
+const PANEL_JS_VERSION = "0.39.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -197,11 +197,11 @@ const STYLE = `
   .legend .l-high::before { background: var(--error-color, #db4437); }
   .legend .l-tmr::before { background: var(--secondary-text-color); opacity: 0.55; }
   .legend .l-car::before { background: var(--c); }
-  .session { fill: #64b5f6; opacity: 0.28; }
-  .session-edge { stroke: #1e88e5; stroke-width: 1.5; }
+  .session { opacity: 0.22; }
+  .session-edge { stroke-width: 1.5; }
   .session-edge.est { stroke-dasharray: 4 3; }
-  .session-label { font-size: 10px; font-weight: 500; fill: #1565c0; }
-  .legend .l-session::before { background: #64b5f6; border: 1px solid #1e88e5; box-sizing: border-box; }
+  .session-label { font-size: 10px; font-weight: 600; }
+  .legend .l-session::before { background: var(--c); opacity: 0.45; }
   .form-section { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); margin: 16px 0 6px; display: flex; align-items: center; }
   .form-section:first-of-type { margin-top: 4px; }
   .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px 16px; align-items: end; }
@@ -826,7 +826,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       ${this._renderLiveRow(this._renderStatusCard(d))}
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, lyseblå felt med lodrette kanter = ladeperiode for en bil eller husbatteriet fra start til forventet slut (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
+        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller orange for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d)}</div>
         <div class="legend">
           <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
@@ -834,7 +834,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${this._evPlanSeries()
             .map((c) => `<span class="l-car" style="--c:${c.color}">Ladeplan: ${esc(c.name)}</span>`)
             .join("")}
-          <span class="l-session">Ladeperiode: start → forventet slut</span>
+          ${this._chargingSessions()
+            .map((se) => `<span class="l-session" style="--c:${se.color}">Ladeperiode: ${esc(se.name)}</span>`)
+            .join("")}
           <span style="margin-left:auto">Lodret streg = nu · stiplet linje = dagens gennemsnit</span>
         </div>
       </div>
@@ -1171,24 +1173,27 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return null;
   }
 
-  /** Self-sufficiency: share of the house's consumption right now that is NOT bought from the grid (solar + battery). */
+  /** Self-sufficiency today: share of the house's consumption so far today that was NOT bought from the grid
+   *  (solar + battery), from the energy sensors: consumption = solar + import − export. The live share is the subtext. */
   _selfSufficiency(solar) {
-    const houseW = this._houseLiveW();
-    const gridW = this._gridLiveW();
-    let pct = null;
-    let sub = "";
-    if (houseW === null) sub = "Kræver husforbrugs-sensor";
-    else if (gridW === null) sub = "Kræver net-sensor";
-    else if (houseW <= 0) sub = "Intet forbrug lige nu";
-    else pct = Math.max(0, Math.min(100, ((houseW - Math.max(0, gridW)) / houseW) * 100));
-    // today's share from the energy sensors: consumption = solar + import − export
     const r = this._rules || {};
     const imp = solar.importKwh, exp = solar.exportKwh, prod = solar.todayKwh;
-    if (pct !== null && prod !== null && imp !== null && r.grid_import_energy_entity) {
+    let pct = null;
+    let sub = "";
+    if (!r.grid_import_energy_entity) sub = "Vælg import-sensor på Solceller-fanen";
+    else if (prod === null || prod === undefined) sub = "Kræver solcelle-energi i dag";
+    else if (imp === null || imp === undefined) sub = "Import-sensoren har ingen værdi";
+    else {
       const consumption = prod + imp - (exp || 0);
-      if (consumption > 0) sub = `i dag ≈ ${fmtNum(Math.max(0, Math.min(100, (1 - imp / consumption) * 100)), 0)} %`;
+      if (consumption <= 0) sub = "Intet forbrug i dag endnu";
+      else pct = Math.max(0, Math.min(100, (1 - imp / consumption) * 100));
     }
-    if (pct !== null && !sub) sub = "lige nu";
+    const houseW = this._houseLiveW();
+    const gridW = this._gridLiveW();
+    if (pct !== null && houseW !== null && gridW !== null && houseW > 0) {
+      const live = Math.max(0, Math.min(100, ((houseW - Math.max(0, gridW)) / houseW) * 100));
+      sub = `i dag · lige nu ${fmtNum(live, 0)} %`;
+    } else if (pct !== null) sub = "i dag";
     return { pct, sub };
   }
 
@@ -1213,7 +1218,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
   /** The self-sufficiency card, identical on the home tab and the solar tab. */
   _renderSelfSufficiencyCard(solar) {
     return `<div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:leaf"></ha-icon>Selvforsyning${I("Hvor stor en del af husets forbrug lige nu, der dækkes af egen strøm (solceller og husbatteri) i stedet for køb fra nettet: (forbrug − import) / forbrug. Kræver husforbrugs- og net-sensor. Teksten under viser dagens andel fra energi-sensorerne, hvis import og eksport i dag er valgt på Solceller-fanen.")}</div>
+          <div class="label"><ha-icon icon="mdi:leaf"></ha-icon>Selvforsyning${I("Hvor stor en del af husets forbrug i dag, der er dækket af egen strøm (solceller og husbatteri) i stedet for køb fra nettet: (forbrug − import) / forbrug, hvor forbrug = solproduktion + import − eksport. Kræver solcelle-energi i dag (Konfigurer) og import-sensoren i dag fra Solceller-fanen; eksport-sensoren gør tallet præcist. Teksten under viser andelen lige nu, hvis der er husforbrugs- og net-sensor.")}</div>
           ${this._renderSelfSufficiencyPie(solar)}
         </div>`;
   }
@@ -1383,10 +1388,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
           se.estimated ? " (forventet slut, ændrer sig med solproduktion og forbrug)" : ""
         }`;
         const ly = padT + 12 + i * 12;
-        return `<rect class="session" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}"><title>${esc(title)}</title></rect>
-          <line class="session-edge" x1="${x1.toFixed(1)}" x2="${x1.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
-          <line class="session-edge ${se.estimated ? "est" : ""}" x1="${x2.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
-          <text class="session-label" x="${(Math.min(x1, W - padR - 90) + 3).toFixed(1)}" y="${ly}">${esc(label)}</text>`;
+        const c = se.color;
+        return `<rect class="session" fill="${c}" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}"><title>${esc(title)}</title></rect>
+          <line class="session-edge" stroke="${c}" x1="${x1.toFixed(1)}" x2="${x1.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
+          <line class="session-edge ${se.estimated ? "est" : ""}" stroke="${c}" x1="${x2.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
+          <text class="session-label" fill="${c}" x="${(Math.min(x1, W - padR - 90) + 3).toFixed(1)}" y="${ly}">${esc(label)}</text>`;
       })
       .join("");
 
@@ -1416,27 +1422,40 @@ class ElectricityOptimizerPanel extends HTMLElement {
   }
 
   static EV_COLORS = ["#1e88e5", "#8e24aa", "#00acc1", "#f4511e", "#3949ab"];
+  static BATTERY_COLOR = "#fb8c00";
 
-  /** Current/next charging periods for cars and the house battery (start → expected end). */
+  /** Each enabled car's colour in the chart (plan bars, charging period and legend share it). */
+  _carColors() {
+    const map = new Map();
+    for (const car of this._cars || []) {
+      if (car.enabled === false) continue;
+      map.set(car.id, ElectricityOptimizerPanel.EV_COLORS[map.size % ElectricityOptimizerPanel.EV_COLORS.length]);
+    }
+    return map;
+  }
+
+  /** Current/next charging periods for cars and the house battery (start → expected end), each in its own colour. */
   _chargingSessions() {
     const out = [];
-    const push = (name, se) => {
+    const push = (name, se, color) => {
       if (!se || !se.start || !se.end) return;
       const start = new Date(se.start).getTime(), end = new Date(se.end).getTime();
       if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return;
-      out.push({ name, start, end, estimated: !!se.estimated, source: se.source || "grid" });
+      out.push({ name, start, end, estimated: !!se.estimated, source: se.source || "grid", color });
     };
+    const colors = this._carColors();
     for (const car of this._cars || []) {
       if (car.enabled === false) continue;
-      push(car.name || "Elbil", car.runtime && car.runtime.session);
+      push(car.name || "Elbil", car.runtime && car.runtime.session, colors.get(car.id));
     }
-    if (this._battery && this._batteryRuntime) push("Husbatteri", this._batteryRuntime.session);
+    if (this._battery && this._batteryRuntime) push("Husbatteri", this._batteryRuntime.session, ElectricityOptimizerPanel.BATTERY_COLOR);
     return out;
   }
 
   /** Planned (chosen) charging slots per enabled car, for the price chart. */
   _evPlanSeries() {
     const out = [];
+    const colors = this._carColors();
     for (const car of this._cars || []) {
       const rt = car.runtime || {};
       const plan = rt.plan && Array.isArray(rt.plan.plan) ? rt.plan.plan : null;
@@ -1452,7 +1471,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         else slots.push({ start, end });
       }
       if (!slots.length) continue;
-      out.push({ name: car.name || "Elbil", color: ElectricityOptimizerPanel.EV_COLORS[out.length % ElectricityOptimizerPanel.EV_COLORS.length], slots });
+      out.push({ name: car.name || "Elbil", color: colors.get(car.id), slots });
     }
     return out;
   }

@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.39.0
+
+- Prisgrafen på forsiden: ladeperioderne har nu hver deres farve. Hver bil tegnes i samme farve som sine planlagte ladetimer (blå, lilla, turkis …), og husbatteriet er orange. Feltet, kantstregerne, teksten og forklaringen under grafen bruger farven, så man kan se, hvornår bil og husbatteri lader.
+- Selvforsyning (forsiden og Solceller-fanen) viser nu dagens resultat i stedet for øjebliksværdien: andelen af dagens forbrug, der er dækket af egen strøm, beregnet fra solcelle-energi i dag samt import og eksport i dag. Andelen lige nu står som tekst under diagrammet.
+
 ## 0.38.3
 
 - Husbatteriets status (Status-cardet på forsiden og Hus batteri-fanen) forklarer nu, hvorfor batteriet ikke holdes, når en elbil lader fra nettet og reglen "Hold husbatteri ved net-ladning" er slået til: Smart styring er slået fra, Manuel står ikke på Auto, SoC eller priser mangler, eller der er ingen hold-kommando.
