@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.34.0
+
+- Forsiden: nyt kort "Selvforsyning" efter batteri-kortene. Måleren viser, hvor stor en del af husets forbrug lige nu, der dækkes af egen strøm (solceller og husbatteri) frem for køb fra nettet. Under står dagens andel, når import og eksport i dag er valgt på Solceller-fanen.
+- Forbrug-måleren bruger nu også husforbrugs-sensoren fra Regler for opladning, hvis husbatteriet ikke har sin egen.
+
 ## 0.33.4
 
 - Regler for opladning: felterne er nu lige så brede som deres overskrift. Er indholdet i en dropdown bredere end overskriften, er det indholdet, der bestemmer bredden.

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.33.4";
+const PANEL_JS_VERSION = "0.34.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1155,6 +1155,53 @@ class ElectricityOptimizerPanel extends HTMLElement {
     </svg>`;
   }
 
+  _houseLiveW() {
+    // battery's house sensor first, then the rules' house-level sensor
+    const live = this._battery ? this._readBatteryLive() : { gridW: null, houseW: null };
+    if (live.houseW !== null) return live.houseW;
+    const r = this._rules;
+    if (r && r.house_power_entity) {
+      const h = this._numState(r.house_power_entity);
+      const kw = ElectricityOptimizerPanel._toKw(h.value, h.unit);
+      if (kw !== null) return kw * 1000;
+    }
+    return null;
+  }
+
+  /** Self-sufficiency: share of the house's consumption right now that is NOT bought from the grid (solar + battery). */
+  _renderSelfSufficiencyGauge(solar) {
+    const K = ElectricityOptimizerPanel;
+    const houseW = this._houseLiveW();
+    const gridW = this._gridLiveW();
+    let pct = null;
+    let sub = "";
+    if (houseW === null) sub = "Kræver husforbrugs-sensor";
+    else if (gridW === null) sub = "Kræver net-sensor";
+    else if (houseW <= 0) sub = "Intet forbrug lige nu";
+    else pct = Math.max(0, Math.min(100, ((houseW - Math.max(0, gridW)) / houseW) * 100));
+    // today's share from the energy sensors: consumption = solar + import − export
+    const r = this._rules || {};
+    const imp = solar.importKwh, exp = solar.exportKwh, prod = solar.todayKwh;
+    if (pct !== null && prod !== null && imp !== null && r.grid_import_energy_entity) {
+      const consumption = prod + imp - (exp || 0);
+      if (consumption > 0) sub = `i dag ≈ ${fmtNum(Math.max(0, Math.min(100, (1 - imp / consumption) * 100)), 0)} %`;
+    }
+    if (pct !== null && !sub) sub = "lige nu";
+    const color = pct === null ? "var(--primary-text-color)" : pct >= 50 ? K.COLOR_OUT : pct >= 25 ? K.COLOR_SUN : K.COLOR_IN;
+    return this._renderGauge({
+      value: pct,
+      min: 0,
+      max: 100,
+      color,
+      valueText: pct === null ? "–" : fmtNum(pct, 0),
+      unit: "%",
+      sub,
+      leftLabel: "0 %",
+      rightLabel: "100 %",
+      aria: `Selvforsyning ${pct === null ? "ukendt" : `${fmtNum(pct, 0)} %`}`,
+    });
+  }
+
   _gridLiveW() {
     // battery's grid sensor first, then the rules' house-level sensor
     const live = this._battery ? this._readBatteryLive() : { gridW: null, houseW: null };
@@ -1182,7 +1229,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Forbrug${I("Det samlede forbrug lige nu fra husforbrugs-sensoren, inkl. elbil-ladning. Blå = husforbrug, lilla = elbilernes ladning (målt med ladeeffekt-sensor, ellers den satte ladestrøm). Skala 0 til 5 kW.")}</div>
-          ${this._renderHouseGauge(bat.houseW)}
+          ${this._renderHouseGauge(this._houseLiveW())}
         </div>
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet${I("Effekt til og fra elnettet lige nu. Rød mod venstre = køber, grøn mod højre = sælger (minus foran tallet). Skala ±10 kW.")}</div>
@@ -1199,6 +1246,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:car-electric"></ha-icon>Elbiler${I("Hver bils ladestand vist som et batteri: rød under 20 %, orange under 40 %, ellers grøn. Den stiplede streg er dagens mål-SoC, og lynet viser, at bilen lader lige nu.")}</div>
           ${this._renderCarBatteries()}
+        </div>
+        <div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:leaf"></ha-icon>Selvforsyning${I("Hvor stor en del af husets forbrug lige nu, der dækkes af egen strøm (solceller og husbatteri) i stedet for køb fra nettet: (forbrug − import) / forbrug. Kræver husforbrugs- og net-sensor. Teksten under viser dagens andel fra energi-sensorerne, hvis import og eksport i dag er valgt på Solceller-fanen.")}</div>
+          ${this._renderSelfSufficiencyGauge(solar)}
         </div>
       </div>
       ${sideCard}
