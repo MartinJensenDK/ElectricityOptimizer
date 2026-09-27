@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.34.0";
+const PANEL_JS_VERSION = "0.34.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -145,6 +145,9 @@ const STYLE = `
   .gauge .gu { font-size: 12px; font-weight: 400; fill: var(--secondary-text-color); }
   .gauge .gs { font-size: 12px; fill: var(--secondary-text-color); }
   .gauge .gt { font-size: 9px; fill: var(--secondary-text-color); }
+  .pie .track { fill: none; stroke: var(--secondary-background-color, #eee); }
+  .pie .seg { fill: none; stroke-linecap: butt; transition: stroke-dasharray 400ms; }
+  .pie .gt text { font-size: 9px; fill: var(--secondary-text-color); }
   .batt .body { fill: var(--secondary-background-color, #eee); stroke: var(--secondary-text-color); stroke-width: 2; }
   .batt .nub { fill: var(--secondary-text-color); }
   .batt .fill { transition: width 400ms; }
@@ -1169,8 +1172,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
   }
 
   /** Self-sufficiency: share of the house's consumption right now that is NOT bought from the grid (solar + battery). */
-  _renderSelfSufficiencyGauge(solar) {
-    const K = ElectricityOptimizerPanel;
+  _selfSufficiency(solar) {
     const houseW = this._houseLiveW();
     const gridW = this._gridLiveW();
     let pct = null;
@@ -1187,19 +1189,33 @@ class ElectricityOptimizerPanel extends HTMLElement {
       if (consumption > 0) sub = `i dag ≈ ${fmtNum(Math.max(0, Math.min(100, (1 - imp / consumption) * 100)), 0)} %`;
     }
     if (pct !== null && !sub) sub = "lige nu";
-    const color = pct === null ? "var(--primary-text-color)" : pct >= 50 ? K.COLOR_OUT : pct >= 25 ? K.COLOR_SUN : K.COLOR_IN;
-    return this._renderGauge({
-      value: pct,
-      min: 0,
-      max: 100,
-      color,
-      valueText: pct === null ? "–" : fmtNum(pct, 0),
-      unit: "%",
-      sub,
-      leftLabel: "0 %",
-      rightLabel: "100 %",
-      aria: `Selvforsyning ${pct === null ? "ukendt" : `${fmtNum(pct, 0)} %`}`,
-    });
+    return { pct, sub };
+  }
+
+  /** Donut: own power (green) vs bought from the grid (red), percentage in the middle. Same size as the gauges. */
+  _renderSelfSufficiencyPie(solar) {
+    const K = ElectricityOptimizerPanel;
+    const { pct, sub } = this._selfSufficiency(solar);
+    const cx = 100, cy = 58, r = 44, sw = 16;
+    const circ = 2 * Math.PI * r;
+    const own = pct === null ? 0 : (circ * pct) / 100;
+    return `<svg class="gauge pie" viewBox="0 0 200 128" role="img" aria-label="Selvforsyning ${pct === null ? "ukendt" : `${fmtNum(pct, 0)} %`}">
+      <circle class="track" cx="${cx}" cy="${cy}" r="${r}" style="stroke-width:${sw}"/>
+      ${pct !== null ? `<circle class="seg" cx="${cx}" cy="${cy}" r="${r}" style="stroke:${K.COLOR_IN};stroke-width:${sw}" stroke-dasharray="${circ.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>` : ""}
+      ${own > 0.5 ? `<circle class="seg" cx="${cx}" cy="${cy}" r="${r}" style="stroke:${K.COLOR_OUT};stroke-width:${sw}" stroke-dasharray="${own.toFixed(2)} ${circ.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>` : ""}
+      <text class="gv" x="${cx}" y="${cy + 8}" text-anchor="middle" style="font-size:22px">${pct === null ? "–" : fmtNum(pct, 0)}<tspan class="gu"> %</tspan></text>
+      <text class="gs" x="${cx}" y="${cy + r + sw / 2 + 14}" text-anchor="middle">${esc(sub)}</text>
+      <g class="gt"><rect x="14" y="${cy + r + sw / 2 + 5}" width="8" height="8" rx="2" style="fill:${K.COLOR_OUT}"/><text x="26" y="${cy + r + sw / 2 + 12}">Egen strøm</text></g>
+      <g class="gt"><rect x="${200 - 14 - 60}" y="${cy + r + sw / 2 + 5}" width="8" height="8" rx="2" style="fill:${K.COLOR_IN}"/><text x="${200 - 14 - 48}" y="${cy + r + sw / 2 + 12}">Fra nettet</text></g>
+    </svg>`;
+  }
+
+  /** The self-sufficiency card, identical on the home tab and the solar tab. */
+  _renderSelfSufficiencyCard(solar) {
+    return `<div class="card kpi live">
+          <div class="label"><ha-icon icon="mdi:leaf"></ha-icon>Selvforsyning${I("Hvor stor en del af husets forbrug lige nu, der dækkes af egen strøm (solceller og husbatteri) i stedet for køb fra nettet: (forbrug − import) / forbrug. Kræver husforbrugs- og net-sensor. Teksten under viser dagens andel fra energi-sensorerne, hvis import og eksport i dag er valgt på Solceller-fanen.")}</div>
+          ${this._renderSelfSufficiencyPie(solar)}
+        </div>`;
   }
 
   _gridLiveW() {
@@ -1247,10 +1263,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="label"><ha-icon icon="mdi:car-electric"></ha-icon>Elbiler${I("Hver bils ladestand vist som et batteri: rød under 20 %, orange under 40 %, ellers grøn. Den stiplede streg er dagens mål-SoC, og lynet viser, at bilen lader lige nu.")}</div>
           ${this._renderCarBatteries()}
         </div>
-        <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:leaf"></ha-icon>Selvforsyning${I("Hvor stor en del af husets forbrug lige nu, der dækkes af egen strøm (solceller og husbatteri) i stedet for køb fra nettet: (forbrug − import) / forbrug. Kræver husforbrugs- og net-sensor. Teksten under viser dagens andel fra energi-sensorerne, hvis import og eksport i dag er valgt på Solceller-fanen.")}</div>
-          ${this._renderSelfSufficiencyGauge(solar)}
-        </div>
+        ${this._renderSelfSufficiencyCard(solar)}
       </div>
       ${sideCard}
       </div>`;
@@ -1610,6 +1623,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="value">${s.elevation !== null ? `${fmtNum(s.elevation, 0)}°` : "–"}<small>over horisonten</small></div>
           <div class="sub">${sunBadge} ${esc(sunTimes)}</div>
         </div>
+        ${this._renderSelfSufficiencyCard(s)}
       </div>
 
       <div class="card">

@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.34.1
+
+- Selvforsyning vises nu som et lagkagediagram (grøn = egen strøm, rød = fra nettet) med procenten i midten, i stedet for en måler.
+- Samme kort vises nu også øverst på Solceller-fanen.
+
 ## 0.34.0
 
 - Forsiden: nyt kort "Selvforsyning" efter batteri-kortene. Måleren viser, hvor stor en del af husets forbrug lige nu, der dækkes af egen strøm (solceller og husbatteri) frem for køb fra nettet. Under står dagens andel, når import og eksport i dag er valgt på Solceller-fanen.
