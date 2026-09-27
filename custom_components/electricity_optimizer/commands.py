@@ -11,6 +11,9 @@ from .const import COMMAND_DOMAINS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+SWITCH_ON_VALUES = ("on", "tænd", "true", "1")
+SWITCH_OFF_VALUES = ("off", "sluk", "false", "0")
+
 
 async def async_run_command(
     hass: HomeAssistant,
@@ -26,6 +29,8 @@ async def async_run_command(
     """Run one command.
 
     switch/input_boolean: turn_on - except a stop command on the same entity as start, which turns off.
+    A value of "on"/"off" (also "tænd"/"sluk") overrides that, e.g. for a switch that *allows* discharge:
+    hold start = switch / "off", hold stop = switch / "on".
     button: press. script: turn_on. automation: trigger.
     select/input_select: select_option(value). number/input_number: set_value(value).
     """
@@ -57,7 +62,13 @@ def _resolve(entity_id: str, value: str | None, is_stop: bool, start_entity: str
         raise HomeAssistantError(f"Unsupported domain for {entity_id}")
     data: dict = {"entity_id": entity_id}
     if domain in ("switch", "input_boolean"):
-        service = "turn_off" if is_stop and entity_id == start_entity else "turn_on"
+        wanted = (value or "").strip().lower()
+        if wanted in SWITCH_OFF_VALUES:
+            service = "turn_off"
+        elif wanted in SWITCH_ON_VALUES:
+            service = "turn_on"
+        else:
+            service = "turn_off" if is_stop and entity_id == start_entity else "turn_on"
     elif domain == "button":
         service = "press"
     elif domain == "script":

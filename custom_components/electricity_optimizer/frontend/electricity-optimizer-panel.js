@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.39.4";
+const PANEL_JS_VERSION = "0.40.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -2707,7 +2707,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   static CMD_HINT =
     "Start: switch/input_boolean tændes, button trykkes, script/automation køres, select får valgt værdien, number sættes til værdien. " +
-    "Stop: er det samme switch som start, slukkes den – ellers udføres stop-kommandoen på samme måde. Brug samme entitet begge steder, hvis der kun er én switch.";
+    "Stop: er det samme switch som start, slukkes den – ellers udføres stop-kommandoen på samme måde. Brug samme entitet begge steder, hvis der kun er én switch. " +
+    "Skal en switch slukkes ved start og tændes ved stop (fx en switch der tillader afladning, brugt som hold-kommando), så skriv 'off' i værdifeltet ved start og 'on' ved stop.";
 
   static CMD_DOMAINS = "switch,button,script,input_boolean,automation,select,input_select,number,input_number";
 
@@ -2716,7 +2717,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="field cmd-field"><span class="fl">${label}${I(tip)}</span>
         <div class="cmd">
           <div class="picker"><input name="${entityKey}" data-domains="${ElectricityOptimizerPanel.CMD_DOMAINS}" value="${v(entityKey)}" placeholder="entitet" autocomplete="off"><div class="picker-list" hidden></div></div>
-          <input name="${valueKey}" value="${v(valueKey)}" placeholder="værdi (select/number)">
+          <input name="${valueKey}" value="${v(valueKey)}" placeholder="værdi (select/number, on/off)">
           <button type="button" class="btn" data-testcmd="${entityKey}" data-valuekey="${valueKey}" title="Send kommandoen nu og se, om den virker">Test</button>
         </div>
         <div class="cmd-result hint" data-testresult="${entityKey}"></div>
@@ -3144,12 +3145,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${this._cmdFields("Start", "charge_start_entity", "charge_start_value", v)}
             ${this._cmdFields("Stop", "charge_stop_entity", "charge_stop_value", v)}
           </div>
-          <div class="form-section">Kommandoer: hold batteriet – ingen afladning (valgfri)${I("Kommandoer der stopper afladning, fx en switch som stop discharge eller en select med værdien Hold. Uden dem vises planen kun.")}</div>
+          <div class="form-section">Kommandoer: hold batteriet – ingen afladning (valgfri)${I("Kommandoer der stopper afladning, fx en switch som stop discharge eller en select med værdien Hold. Start skal SLÅ AFLADNINGEN FRA, stop skal slå den til igen. Er din switch en 'afladning tilladt'-switch, så vælg den begge steder og skriv 'off' i værdifeltet ved start og 'on' ved stop. Uden dem vises planen kun.")}</div>
           <div class="form-grid">
             ${this._cmdFields("Start", "hold_start_entity", "hold_start_value", v)}
             ${this._cmdFields("Stop", "hold_stop_entity", "hold_stop_value", v)}
           </div>
-          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Eksempel med select: start = select.inverter_mode / "Charge", stop = select.inverter_mode / "Self-use".</div>
+          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Eksempel med select: start = select.inverter_mode / "Charge", stop = select.inverter_mode / "Self-use". Eksempel med en switch, der tillader afladning, som hold-kommando: start = switch.discharge_enabled / "off", stop = switch.discharge_enabled / "on".</div>
           ${this._batteryFormError ? `<div class="err">${esc(errText[this._batteryFormError] || this._batteryFormError)}</div>` : ""}
           <div class="row" style="margin-top:14px">
             <button class="btn primary" type="submit" data-baction="save">Gem</button>

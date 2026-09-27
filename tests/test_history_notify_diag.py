@@ -204,3 +204,27 @@ async def test_commands_are_logged(hass: HomeAssistant, hass_ws_client) -> None:
     await client.receive_json()
     hist = await _ws(hass, client, 6, {"type": f"{DOMAIN}/history/list"})
     assert hist["commands"][0]["ok"] is False and "value" in hist["commands"][0]["error"]
+
+
+async def test_switch_value_on_off_overrides_the_default_service(hass: HomeAssistant, hass_ws_client) -> None:
+    """A "discharge allowed" switch as the hold command: start = switch / "off" turns it OFF, stop = switch / "on" turns it ON."""
+    from tests.test_rules import CAR, _set_prices, _setup, _ws
+
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.bat_soc", "60")
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {
+        "soc_entity": "sensor.bat_soc",
+        "hold_start_entity": "switch.discharge_allowed", "hold_start_value": "off",
+        "hold_stop_entity": "switch.discharge_allowed", "hold_stop_value": "on",
+    }})
+    # first run: normal -> "hold: stop" -> the switch is turned ON (discharge allowed)
+    assert [c.data["entity_id"] for c in turn_on if c.data["entity_id"] == "switch.discharge_allowed"] == ["switch.discharge_allowed"]
+    assert [c for c in turn_off if c.data["entity_id"] == "switch.discharge_allowed"] == []
+    # "Lad nu" -> hold -> "hold: start" -> the switch is turned OFF
+    await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "source": "plan", "charge_now": True}})
+    assert [c.data["entity_id"] for c in turn_off] == ["switch.discharge_allowed"]

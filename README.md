@@ -119,6 +119,10 @@ En kommando er en entitet plus evt. en værdi: `switch`/`input_boolean` tændes 
 entitet bruges til stop), `button` trykkes, `script`/`automation` køres, `select` får valgt værdien,
 `number` sættes til værdien. Uden kommandoer vises planen kun.
 
+Værdien `on`/`off` styrer en switch direkte. Hold-kommandoens *start* skal slå afladningen fra og *stop*
+slå den til igen, så en switch, der *tillader* afladning, sættes op som start = switch / `off`,
+stop = switch / `on`.
+
 Modus pr. tidsrum:
 
 - **Hold**: prisen er under dagens gennemsnit, og en senere time er mindst *prisforskellen* dyrere.

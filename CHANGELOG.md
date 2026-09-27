@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.40.0
+
+- Kommandoer: for en switch/input_boolean kan værdifeltet nu være "on" eller "off" (også "tænd"/"sluk"), som bestemmer, om den tændes eller slukkes. Det er nødvendigt, når hold-kommandoen er en switch, der *tillader* afladning: start = switch / "off" (afladning fra), stop = switch / "on" (afladning til). Uden værdi virker det som før: tændes ved start, slukkes ved stop på samme switch.
+- Infoboksen for "Kommandoer: hold batteriet" forklarer nu, at start skal slå afladningen fra og stop slå den til igen, med et eksempel.
+
 ## 0.39.4
 
 - Husbatteriet: står tilstanden på "Normal", men batteriet aflader ikke, selvom huset køber mere end 250 W fra nettet og batteriet er mere end 5 % over reserven (afladning slået fra på inverteren), gensendes "hold: stop" efter 2 minutter og derefter hvert 5. minut, så afladningen genaktiveres. Samme princip som gensendelsen af hold i 0.38.1. Kræver batteriets effekt-sensor og en net-sensor.
