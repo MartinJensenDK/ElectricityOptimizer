@@ -843,3 +843,42 @@ async def test_start_is_not_sent_when_the_car_already_draws_power(hass: HomeAssi
     freezer.tick(timedelta(seconds=60))
     res = await _ws(hass, client, 20, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["status"] == "solar_wait" and len(turn_off) == 1
+
+
+async def test_charge_now_battery_above_limit_may_feed_the_car(hass: HomeAssistant, hass_ws_client) -> None:
+    """"Lad nu" with the battery as no. 1: above "Prioriter 1. indtil" the battery may discharge into the car
+    (no hold) when "Husbatteri må lade bilen over øvre grænse" is on; at or below the limit it is held."""
+    _set_prices(hass)  # flat prices -> battery auto mode is normal
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.bat_soc", "90")
+    async_mock_service(hass, "switch", "turn_on")
+    select = async_mock_service(hass, "select", "select_option")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {
+        "soc_entity": "sensor.bat_soc",
+        "hold_start_entity": "select.mode", "hold_start_value": "Hold",
+        "hold_stop_entity": "select.mode", "hold_stop_value": "Self-use",
+    }})
+    await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/save", "rules": {"solar_priority": "battery", "solar_priority_over": 80, "battery_to_ev_above_limit": True}})
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "source": "plan", "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "charge_now"
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/battery/get"})
+    assert res["runtime"]["mode"] == "normal" and res["runtime"]["status"] == "ev_feed"
+    assert "Hold" not in [c.data["option"] for c in select]
+
+    hass.states.async_set("sensor.bat_soc", "80")  # at the limit -> hold
+    res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/evaluate"})
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/battery/get"})
+    assert res["runtime"]["mode"] == "hold" and res["runtime"]["status"] == "ev_hold"
+    assert [c.data["option"] for c in select][-1] == "Hold"
+
+    hass.states.async_set("sensor.bat_soc", "90")  # back above -> the battery may feed the car again
+    await _ws(hass, client, 7, {"type": f"{DOMAIN}/evaluate"})
+    res = await _ws(hass, client, 8, {"type": f"{DOMAIN}/battery/get"})
+    assert res["runtime"]["mode"] == "normal" and res["runtime"]["status"] == "ev_feed"
+    assert [c.data["option"] for c in select][-1] == "Self-use"
+
+    await _ws(hass, client, 9, {"type": f"{DOMAIN}/rules/save", "rules": {"battery_to_ev_above_limit": False}})
+    res = await _ws(hass, client, 10, {"type": f"{DOMAIN}/battery/get"})
+    assert res["runtime"]["mode"] == "hold" and res["runtime"]["status"] == "ev_hold"

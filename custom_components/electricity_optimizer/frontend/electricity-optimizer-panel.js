@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.37.2";
+const PANEL_JS_VERSION = "0.38.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1886,7 +1886,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const buffer = rules.ev_buffer_soc || 0;
     return rules.solar_priority === "battery"
       ? `Nr. 1 er husbatteriet. Over ${limit} % vinder bilen og får eksporten plus det, batteriet ellers ville lade med${
-          rules.battery_to_ev_above_limit !== false ? ", og batteriet må aflade til bilen" : ""
+          rules.battery_to_ev_above_limit !== false ? ", og batteriet må aflade til bilen (også ved Lad nu)" : ""
         }. Mellem ${buffer} og ${limit} % har batteriet forrang: bilen kører højst med min. ladestrøm. Under ${buffer} % lader bilen ikke fra sol.`
       : `Nr. 1 er elbilen: op til ${limit} % får den eksporten plus det, husbatteriet ellers ville lade med. Derover vinder husbatteriet, og bilen lader ikke fra sol.`;
   }
@@ -2025,7 +2025,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${
             r.solar_priority === "battery"
               ? `<label class="toggle"><input type="checkbox" data-rfield="battery_to_ev_above_limit" ${r.battery_to_ev_above_limit === false ? "" : "checked"}> Husbatteri må lade bilen over øvre grænse${info(
-                  "Når husbatteriet er nr. 1 og over 'Prioriter over', må dets afladning bruges til at lade bilen, hvis solen ikke rækker. Bilen får eksporten plus batteriets ledige afladeeffekt (maks. afladeeffekt minus det, batteriet allerede leverer til huset). Når batteriet igen er under grænsen, stopper bilen."
+                  "Når husbatteriet er nr. 1 og over 'Prioriter 1. indtil', må dets afladning bruges til at lade bilen, hvis solen ikke rækker. Bilen får eksporten plus batteriets ledige afladeeffekt (maks. afladeeffekt minus det, batteriet allerede leverer til huset). Når batteriet igen er under grænsen, stopper bilen. Gælder også Lad nu: over grænsen holdes batteriet ikke, så det må lade bilen. Ved eller under grænsen sættes batteriet på hold med hold-kommandoen."
                 )}</label>`
               : ""
           }
@@ -2040,7 +2040,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           "Vis en notifikation i Home Assistant, når en elbil ikke kan nå sit mål-SoC inden deadline, når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil eller husbatteri fejler. Hændelsen electricity_optimizer_notification sendes altid, så du kan lave automationer."
         )}</label>
         <label class="toggle"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri ved net-ladning${info(
-          "Når en elbil lader fra nettet (planlagt, under prisgrænsen eller med Lad nu), sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer. Kræver, at husbatteriet har en hold-kommando og Smart styring slået til. 'Husbatteri må lade bilen over øvre grænse' gælder kun solopladning."
+          "Når en elbil lader fra nettet (planlagt, under prisgrænsen eller med Lad nu), sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer. Kræver, at husbatteriet har en hold-kommando og Smart styring slået til. Undtagelse: med Lad nu, husbatteriet som nr. 1 og 'Husbatteri må lade bilen over øvre grænse' slået til holdes batteriet ikke, så længe det er over 'Prioriter 1. indtil'."
         )}</label>
         </div>
         ${sensorForm}
@@ -2142,6 +2142,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     override: "Manuel styring – tryk Auto for at følge planen",
     full: "Batteriet er fyldt til maks-SoC",
     ev_hold: "Holdes, fordi en elbil lader fra nettet (regel)",
+    ev_feed: "Lad nu: batteriet er over øvre grænse og må lade bilen (regel)",
     day_off: "Slået fra i ugeplanen i dag – batteriet kører selv",
     fuse_wait: "Venter – hovedsikringen er optaget af elbil (regel)",
   };

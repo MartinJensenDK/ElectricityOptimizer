@@ -179,6 +179,7 @@ class Optimizer:
             "house_w": ctx.house_w,
             "solar_w": ctx.solar_w,
             "ev_grid_charging": ctx.ev_grid_charging,
+            "ev_grid_hold": ctx.ev_grid_hold,
             "ev_amps_total": ctx.ev_amps_total,
             "evaluated_at": ctx.now.isoformat(),
         }

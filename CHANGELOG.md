@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.38.0
+
+- "Lad nu" respekterer nu "Husbatteri må lade bilen over øvre grænse". Er den slået til, og husbatteriet (som nr. 1) er over "Prioriter 1. indtil", holdes batteriet ikke under Lad nu, så det må lade bilen. Er batteriet lig med eller under grænsen, sendes hold-kommandoen ("Kommandoer: hold batteriet"), så det ikke aflader. Husbatteriets status viser "Lad nu: batteriet er over øvre grænse og må lade bilen (regel)", og Sendte kommandoer viser samme årsag.
+
 ## 0.37.2
 
 - Genstart under "Lad nu": hvis laderens "tilsluttet"-sensor er `unavailable` lige efter genstarten (integrationen er ikke indlæst endnu), blev bilen tolket som frakoblet, Lad nu blev nulstillet, og der blev sendt stop og derefter nye start-kommandoer. Nu betyder en utilgængelig sensor "ukendt", og Lad nu fortsætter uændret.

@@ -39,6 +39,7 @@ class Context:
     battery_assist_added: bool = False  # the battery's discharge headroom has been added to surplus_w once
     solar_forecast_kwh: dict[Any, float] = field(default_factory=dict)  # date -> forecast kWh (today/tomorrow)
     ev_grid_charging: bool = False
+    ev_grid_hold: bool = False  # a grid-charging car wants the house battery held (not: "Lad nu" fed by the battery above its limit)
     ev_amps_total: float = 0.0
 
 
@@ -309,6 +310,7 @@ class EvController:
     async def async_evaluate(self, ctx: Context) -> None:
         """Compute desired state for every car (in priority order) and apply it."""
         ctx.ev_grid_charging = False
+        ctx.ev_grid_hold = False
         ctx.ev_amps_total = 0.0
         for car in list(self.store.cars):
             try:
@@ -418,8 +420,22 @@ class EvController:
         rt["session"] = self._session(ctx, car, rt, plan, desired, mode, car_w, amps)
         if desired and mode == "grid":
             ctx.ev_grid_charging = True
+            if not (rt["status"] == "charge_now" and self._battery_may_feed_ev(ctx)):
+                ctx.ev_grid_hold = True
         if desired:
             ctx.ev_amps_total += amps
+
+    @staticmethod
+    def _battery_may_feed_ev(ctx: Context) -> bool:
+        """"Lad nu" with the battery as no. 1: above "Prioriter 1. indtil" its discharge may charge the car."""
+        rules = ctx.rules
+        return (
+            ctx.battery_cfg is not None
+            and rules["solar_priority"] == "battery"
+            and rules.get("battery_to_ev_above_limit", True)
+            and ctx.battery_soc is not None
+            and ctx.battery_soc > rules["solar_priority_over"]
+        )
 
     def forget_command(self, car_id: str) -> None:
         """Re-send start/stop and the current limit on the next evaluation (after a manual action or an edit)."""

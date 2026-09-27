@@ -92,7 +92,7 @@ Kortet **Regler for opladning** nederst på fanerne Elbiler og Hus batteri (samm
 | Sol prioritet | Sorterbar liste (træk eller tryk ⇅): nr. 1 får solstrømmen først. *Elbil* som nr. 1: bilen får eksport + batteriets ladeeffekt. *Husbatteri* som nr. 1: elbilen lader ikke fra sol |
 | Prioriter 1. indtil (%) | Nr. 1 vinder, indtil dens ladestand når denne procent; derover vinder nr. 2. Vinder elbilen, får den eksport + batteriets ladeeffekt |
 | EV buffer (%) | Kun med husbatteri som nr. 1, altid lavere end Prioriter 1. indtil; 0 slår bufferen fra. Under EV buffer lader bilen ikke fra sol; mellem EV buffer og Prioriter 1. indtil har batteriet forrang, og bilen kører højst med min. ladestrøm (starter kun, hvis solen alene dækker den) |
-| Husbatteri må lade bilen over øvre grænse | Vises med husbatteri som nr. 1. Over den øvre grænse må batteriets ledige afladeeffekt bruges til bilen, hvis solen ikke rækker; under grænsen stopper bilen igen |
+| Husbatteri må lade bilen over øvre grænse | Vises med husbatteri som nr. 1. Over den øvre grænse må batteriets ledige afladeeffekt bruges til bilen, hvis solen ikke rækker; under grænsen stopper bilen igen. Gælder også Lad nu: over grænsen holdes batteriet ikke, ved eller under grænsen sættes det på hold |
 | Start: sol ≥ (W) | Elbilen starter kun fra sol, når solcellerne (effekt-sensoren fra opsætningen) har produceret mindst så meget i det valgte antal minutter. Tom = kun overskuddet afgør starten |
 | Ladestrøm hvert (sek) | Ved solopladning sendes ladestrømmen første gang så mange sekunder efter start og justeres derefter højst så ofte |
 | … i mindst (min) | Hvor længe produktion og overskud skal være over grænsen, før der startes |
@@ -101,7 +101,7 @@ Kortet **Regler for opladning** nederst på fanerne Elbiler og Hus batteri (samm
 | Sol-overskud beregnes fra | *Elnet-sensor*: overskud = det, der sælges til nettet. *Solproduktion − husforbrug*: overskud = solcelle-effekt (Konfigurer) − husforbrug − det, husbatteriet lader med, så ladestrømmen følger produktionen direkte. Med "Husforbruget inkluderer elbilens ladning" lægges bilens eget træk til, mens den lader. Det, husbatteriet aflader med, trækkes altid fra |
 | Hovedsikring (A) | Valgfri øvre grænse pr. fase for elbiler + batteri-opladning fra nettet. Tom = ingen grænse |
 | Ved sikring først til | Vises kun når hovedsikringen er sat: *Elbil* holder batteriet tilbage, *Husbatteri* begrænser eller udsætter bilen |
-| Hold husbatteri ved net-ladning | Standard til: batteriet tømmes ikke ned i bilen om natten |
+| Hold husbatteri ved net-ladning | Standard til: batteriet tømmes ikke ned i bilen om natten. Undtagelse: Lad nu med batteriet over øvre grænse, se ovenfor |
 | Net-/husforbrugs-sensor | Import/eksport-sensor og husforbrugs-sensor til sol-overskud, hvis husbatteriet ikke har dem |
 
 ## Hus batteri

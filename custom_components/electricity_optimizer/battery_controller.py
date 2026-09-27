@@ -319,7 +319,10 @@ class BatteryController:
         rules = ctx.rules
         if cfg["override"] == "auto":
             if mode == "normal" and ctx.ev_grid_charging and rules["hold_battery_while_ev_grid_charging"]:
-                mode, rt["status"] = "hold", "ev_hold"
+                if ctx.ev_grid_hold:
+                    mode, rt["status"] = "hold", "ev_hold"
+                else:
+                    rt["status"] = "ev_feed"  # "Lad nu" and the battery is above its limit: it may discharge into the car
             if mode == "charge" and rules.get("max_total_amps") and rules["grid_priority"] == "ev":
                 battery_amps = cfg["max_charge_kw"] * 1000 / (GRID_VOLTAGE * 3)
                 if ctx.ev_amps_total + battery_amps > rules["max_total_amps"]:
@@ -329,6 +332,8 @@ class BatteryController:
             reason = "Manuel: " + {"normal": "Normal", "hold": "Hold nu", "charge": "Lad fra net nu"}.get(cfg["override"], cfg["override"])
         elif rt.get("status") == "ev_hold":
             reason = "En elbil lader fra nettet (regel)"
+        elif rt.get("status") == "ev_feed":
+            reason = "Lad nu: husbatteriet er over øvre grænse og må lade bilen (regel)"
         elif rt.get("status") == "fuse_wait":
             reason = "Hovedsikringen er optaget af elbil"
         else:
