@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.5
+
+- Prisgrafen: ladeperiodernes piller står nu i samme højde som elprisen over grafen. Ville de ramme hinanden, flyttes ladeperiodens pille til siden, så de står side om side; prisen bliver, hvor den er.
+
 ## 0.41.4
 
 - Kapaciteter: procent-mærkerne er erstattet af små batteri-ikoner, der fyldes efter ladestanden (rød ved eller under 20 %, orange ved eller under 40 %, ellers grøn), ligesom batteriet på Hus batteri-kortet.

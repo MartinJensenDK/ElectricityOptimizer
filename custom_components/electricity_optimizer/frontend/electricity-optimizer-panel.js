@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.4";
+const PANEL_JS_VERSION = "0.41.5";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1462,6 +1462,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       .join("");
 
     // charging periods (car or battery): light blue box from start to expected end, with edge lines
+    const pills = [];
     const sessions = allSessions
       .filter((se) => se.end > t0 && se.start < tEnd)
       .map((se, i) => {
@@ -1473,15 +1474,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
           se.estimated ? " (forventet slut, ændrer sig med solproduktion og forbrug)" : ""
         }`;
         const c = se.color;
-        // the period's label as a pill like the price on the now-marker, in the period's colour
-        const pw = label.length * 6.2 + 12;
-        const px = Math.min(W - padR - pw, Math.max(padL, x1));
-        const py = padT + 4 + i * 21;
+        // the period's label goes into the pill row on top of the chart (same height as the price), in the period's colour
+        pills.push({ x: x1, w: label.length * 6.2 + 12, text: label, fill: c, cls: "session-pill" });
         return `<rect class="session" fill="${c}" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}" aria-label="${esc(title)}"></rect>
           <line class="session-edge" stroke="${c}" x1="${x1.toFixed(1)}" x2="${x1.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
-          <line class="session-edge ${se.estimated ? "est" : ""}" stroke="${c}" x1="${x2.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
-          <rect class="session-pill" fill="${c}" x="${px.toFixed(1)}" y="${py}" width="${pw.toFixed(1)}" height="18" rx="9"/>
-          <text class="session-pill-text" x="${(px + pw / 2).toFixed(1)}" y="${py + 13}" text-anchor="middle">${esc(label)}</text>`;
+          <line class="session-edge ${se.estimated ? "est" : ""}" stroke="${c}" x1="${x2.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>`;
       })
       .join("");
 
@@ -1492,11 +1489,27 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const nx = xOf(nowT);
       const txt = d.currentPrice === null ? "–" : `${fmtNum(d.currentPrice)} ${d.unit}`;
       const pw = txt.length * 6.2 + 12;
-      const px = Math.min(W - padR - pw, Math.max(padL, nx - pw / 2));
-      nowMark = `<line class="now-mark" x1="${nx.toFixed(1)}" x2="${nx.toFixed(1)}" y1="${padT - 2}" y2="${padT + innerH}"/>
-        <rect class="now-pill" x="${px.toFixed(1)}" y="2" width="${pw.toFixed(1)}" height="18" rx="9"/>
-        <text class="now-pill-text" x="${(px + pw / 2).toFixed(1)}" y="15" text-anchor="middle">${esc(txt)}</text>`;
+      pills.push({ x: nx - pw / 2, w: pw, text: txt, cls: "now-pill", priority: true });
+      nowMark = `<line class="now-mark" x1="${nx.toFixed(1)}" x2="${nx.toFixed(1)}" y1="${padT - 2}" y2="${padT + innerH}"/>`;
     }
+    // pills on one row: the price stays put; period pills that would collide move to the side (left first, then right)
+    const placed = [];
+    const fits = (x, w) => x >= padL && x + w <= W - padR && placed.every((q) => x + w + 4 <= q.x || x >= q.x + q.w + 4);
+    for (const pl of pills.sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0) || a.x - b.x)) {
+      let x = Math.min(W - padR - pl.w, Math.max(padL, pl.x));
+      if (!fits(x, pl.w)) {
+        const options = placed.flatMap((q) => [q.x - pl.w - 4, q.x + q.w + 4]).sort((a, b) => Math.abs(a - pl.x) - Math.abs(b - pl.x));
+        const ok = options.find((o) => fits(o, pl.w));
+        if (ok !== undefined) x = ok;
+      }
+      placed.push({ ...pl, x });
+    }
+    const pillRow = placed
+      .map(
+        (pl) => `<rect class="${pl.cls}" ${pl.fill ? `fill="${pl.fill}"` : ""} x="${pl.x.toFixed(1)}" y="2" width="${pl.w.toFixed(1)}" height="18" rx="9"/>
+        <text class="${pl.cls}-text" x="${(pl.x + pl.w / 2).toFixed(1)}" y="15" text-anchor="middle">${esc(pl.text)}</text>`
+      )
+      .join("");
 
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
       ${yTicks.join("")}
@@ -1507,6 +1520,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${meanLine}
       ${ticks.join("")}
       ${nowMark}
+      ${pillRow}
     </svg>`;
   }
 
