@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.5";
+const PANEL_JS_VERSION = "0.41.6";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -260,9 +260,12 @@ const STYLE = `
   .status-row .t .d { font-size: 13px; color: var(--secondary-text-color); }
   .status-row .t .d .reason { font-size: 12px; opacity: 0.85; }
   .status-row.total-top { border-bottom: 1px solid var(--divider-color); padding-bottom: 8px; }
-  .status-row .batt.mini { width: 72px; height: 30px; flex-shrink: 0; }
-  .status-row .batt.mini .bv { font-size: 14px; stroke-width: 3px; }
-  .status-row .batt.mini .bu { font-size: 9px; }
+  .cap-batt { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .cap-batt svg { width: 56px; height: 22px; display: block; }
+  .cap-batt .mb-body { fill: none; stroke: var(--secondary-text-color); stroke-width: 1.25; opacity: 0.55; }
+  .cap-batt .mb-nub { fill: var(--secondary-text-color); opacity: 0.55; }
+  .cap-batt .mb-fill { transition: width 400ms; }
+  .cap-batt .mb-pct { font-size: 13px; font-weight: 500; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; color: var(--primary-text-color); }
   .status-row.total-top .t .n { font-weight: 600; }
   .empty {
     padding: 32px 16px;
@@ -888,19 +891,21 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>`;
   }
 
-  /** Small battery illustration (for lists): fill = SoC in the car-battery colours, percentage inside. */
+  /** Small, plain battery for lists: thin outline, rounded fill in the SoC colour, percentage to the right. */
   _renderMiniBattery(pct, aria = "") {
     const K = ElectricityOptimizerPanel;
     const p = pct === null || pct === undefined ? null : Math.max(0, Math.min(100, pct));
-    const x = 2, y = 3, w = 60, h = 24, pad = 3;
+    const x = 1, y = 3, w = 46, h = 16, pad = 2.5, r = 4;
     const inner = w - 2 * pad;
     const fillW = p === null ? 0 : (inner * p) / 100;
-    return `<svg class="batt mini" viewBox="0 0 72 30" role="img" aria-label="${esc(aria)} ${p === null ? "ukendt" : `${fmtNum(p, 0)} %`}">
-      <rect class="body" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/>
-      <rect class="nub" x="${x + w + 1.5}" y="${y + h / 2 - 5}" width="5" height="10" rx="1.5"/>
-      ${fillW > 0 ? `<rect class="fill" style="fill:${K._carSocColor(p)}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="3"/>` : ""}
-      <text class="bv" x="${x + w / 2}" y="${y + h / 2 + 5}" text-anchor="middle">${p === null ? "–" : fmtNum(p, 0)}<tspan class="bu"> %</tspan></text>
-    </svg>`;
+    return `<span class="cap-batt" role="img" aria-label="${esc(aria)} ${p === null ? "ukendt" : `${fmtNum(p, 0)} %`}">
+      <svg viewBox="0 0 56 22">
+        <rect class="mb-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/>
+        <rect class="mb-nub" x="${x + w + 1.5}" y="${y + h / 2 - 3}" width="2.5" height="6" rx="1.25"/>
+        ${fillW > 0 ? `<rect class="mb-fill" style="fill:${K._carSocColor(p)}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="${r - 1.5}"/>` : ""}
+      </svg>
+      <span class="mb-pct">${p === null ? "–" : `${fmtNum(p, 0)} %`}</span>
+    </span>`;
   }
 
   /** Storage you own: total on top, then every enabled car and the house battery - "stored af capacity kWh" and the percentage. */

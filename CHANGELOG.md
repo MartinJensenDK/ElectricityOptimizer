@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.6
+
+- Kapaciteter: batteri-ikonerne er gjort enklere og mere moderne: tynd kontur, afrundet fyld i ladestandens farve og procenten som tekst til højre for batteriet i stedet for inde i det.
+
 ## 0.41.5
 
 - Prisgrafen: ladeperiodernes piller står nu i samme højde som elprisen over grafen. Ville de ramme hinanden, flyttes ladeperiodens pille til siden, så de står side om side; prisen bliver, hvor den er.
