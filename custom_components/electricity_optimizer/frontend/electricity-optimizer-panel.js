@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.39.0";
+const PANEL_JS_VERSION = "0.39.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -197,10 +197,10 @@ const STYLE = `
   .legend .l-high::before { background: var(--error-color, #db4437); }
   .legend .l-tmr::before { background: var(--secondary-text-color); opacity: 0.55; }
   .legend .l-car::before { background: var(--c); }
-  .session { opacity: 0.22; }
-  .session-edge { stroke-width: 1.5; }
+  .session { opacity: 0.22; pointer-events: none; }
+  .session-edge { stroke-width: 1.5; pointer-events: none; }
   .session-edge.est { stroke-dasharray: 4 3; }
-  .session-label { font-size: 10px; font-weight: 600; }
+  .session-label { font-size: 10px; font-weight: 600; pointer-events: none; }
   .legend .l-session::before { background: var(--c); opacity: 0.45; }
   .form-section { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); margin: 16px 0 6px; display: flex; align-items: center; }
   .form-section:first-of-type { margin-top: 4px; }
@@ -1305,6 +1305,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const stepMs = points.length > 1 ? Math.max(60000, points[1].time.getTime() - points[0].time.getTime()) : 3600000;
     const sortedToday = d.today.map((p) => p.price).sort((a, b) => a - b);
     const mean = typeof d.todayMean === "number" ? d.todayMean : null;
+    const allSessions = this._chargingSessions();
 
     const bars = points
       .map((p, i) => {
@@ -1315,7 +1316,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
         const h = Math.max(1, Math.abs(y(p.price) - zeroY));
         const cls = `bar ${lvl}${p.day === "tomorrow" ? " tomorrow" : ""}${isNow ? " now" : ""}`;
         const end = new Date(p.time.getTime() + stepMs);
-        const label = `${fmtNum(p.price)} ${d.unit}\n${p.day === "today" ? "I dag" : "I morgen"} ${fmtTime(p.time)} – ${fmtTime(end)}`;
+        // charging periods covering this bar go into the same tooltip (the overlay itself ignores the mouse)
+        const inSession = allSessions
+          .filter((se) => se.end > p.time.getTime() && se.start < end.getTime())
+          .map((se) => `\n${se.name}: ${se.source === "solar" ? "lader fra sol" : "netopladning"} ${fmtTime(new Date(se.start))} – ${se.estimated ? "ca. " : ""}${fmtTime(new Date(se.end))}`)
+          .join("");
+        const label = `${fmtNum(p.price)} ${d.unit}\n${p.day === "today" ? "I dag" : "I morgen"} ${fmtTime(p.time)} – ${fmtTime(end)}${inSession}`;
         return `<rect class="${cls}" x="${(x + 1).toFixed(1)}" y="${top.toFixed(1)}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" data-tip="${esc(label)}" data-tip-follow></rect>`;
       })
       .join("");
@@ -1377,7 +1383,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       .join("");
 
     // charging periods (car or battery): light blue box from start to expected end, with edge lines
-    const sessions = this._chargingSessions()
+    const sessions = allSessions
       .filter((se) => se.end > t0 && se.start < tEnd)
       .map((se, i) => {
         const x1 = xOf(se.start), x2 = xOf(se.end);
@@ -1389,7 +1395,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         }`;
         const ly = padT + 12 + i * 12;
         const c = se.color;
-        return `<rect class="session" fill="${c}" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}"><title>${esc(title)}</title></rect>
+        return `<rect class="session" fill="${c}" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}" aria-label="${esc(title)}"></rect>
           <line class="session-edge" stroke="${c}" x1="${x1.toFixed(1)}" x2="${x1.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
           <line class="session-edge ${se.estimated ? "est" : ""}" stroke="${c}" x1="${x2.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
           <text class="session-label" fill="${c}" x="${(Math.min(x1, W - padR - 90) + 3).toFixed(1)}" y="${ly}">${esc(label)}</text>`;

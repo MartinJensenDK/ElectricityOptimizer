@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.39.1
+
+- Prisgrafen på forsiden: søjler, der ligger inde i en ladeperiode, viser nu også prisen og tidsrummet, når man holder musen over dem. Ladeperiode-feltet fangede før musen. Ladeperioden (bil eller husbatteri, start og forventet slut) står nu som en ekstra linje i samme tooltip.
+
 ## 0.39.0
 
 - Prisgrafen på forsiden: ladeperioderne har nu hver deres farve. Hver bil tegnes i samme farve som sine planlagte ladetimer (blå, lilla, turkis …), og husbatteriet er orange. Feltet, kantstregerne, teksten og forklaringen under grafen bruger farven, så man kan se, hvornår bil og husbatteri lader.
