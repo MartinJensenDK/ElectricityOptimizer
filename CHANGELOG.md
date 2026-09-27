@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.0
+
+- Forsiden: nyt kort "Kapaciteter" til venstre for Status. Det viser de lagringskapaciteter, du ejer: husbatteriet og hver elbil (med Smart opladning slået til) med batteristørrelse i kWh og hvor meget der er lagret lige nu ud fra ladestanden, samt en sum. Status-kortet er gjort smallere. På brede skærme (over 1500 px) står de to kort side om side til højre for målerne, på mellemstore skærme under hinanden, og på smalle skærme under målerne.
+
 ## 0.40.0
 
 - Kommandoer: for en switch/input_boolean kan værdifeltet nu være "on" eller "off" (også "tænd"/"sluk"), som bestemmer, om den tændes eller slukkes. Det er nødvendigt, når hold-kommandoen er en switch, der *tillader* afladning: start = switch / "off" (afladning fra), stop = switch / "on" (afladning til). Uden værdi virker det som før: tændes ved start, slukkes ved stop på samme switch.

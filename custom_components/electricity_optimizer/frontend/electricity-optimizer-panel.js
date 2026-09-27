@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.40.0";
+const PANEL_JS_VERSION = "0.41.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -110,12 +110,21 @@ const STYLE = `
     margin-bottom: 12px;
   }
   .grid .card { margin-bottom: 0; }
-  .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 12px; margin-bottom: 12px; align-items: stretch; }
+  .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); gap: 12px; margin-bottom: 12px; align-items: stretch; }
   .top .card { margin-bottom: 0; }
+  .side { display: grid; grid-template-columns: 1fr; gap: 12px; align-content: start; }
   .gauges { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (min-width: 1500px) {
+    .top { grid-template-columns: minmax(0, 1fr) minmax(540px, 620px); }
+    .side { grid-template-columns: 1fr 1fr; }
+  }
   @media (max-width: 1100px) {
     .top { grid-template-columns: 1fr; }
+    .side { grid-template-columns: 1fr 1fr; }
     .gauges { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  }
+  @media (max-width: 700px) {
+    .side { grid-template-columns: 1fr; }
   }
   .card h2 {
     margin: 0 0 12px;
@@ -250,6 +259,7 @@ const STYLE = `
   .status-row .t .n { font-weight: 500; }
   .status-row .t .d { font-size: 13px; color: var(--secondary-text-color); }
   .status-row .t .d .reason { font-size: 12px; opacity: 0.85; }
+  .status-row.total { border-top: 1px solid var(--divider-color); padding-top: 8px; }
   .empty {
     padding: 32px 16px;
     text-align: center;
@@ -824,7 +834,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
     return `
-      ${this._renderLiveRow(this._renderStatusCard(d))}
+      ${this._renderLiveRow(`<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}</div>`)}
       <div class="card">
         <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d)}</div>
@@ -871,6 +881,37 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </table>
           <div class="sub" style="font-size:13px;color:var(--secondary-text-color);margin-top:10px">Her bør husbatteriet levere strøm i stedet for nettet.</div>
         </div>
+      </div>`;
+  }
+
+  /** Storage you own: the house battery and every enabled car, with capacity and what is stored right now. */
+  _renderCapacityCard() {
+    const rows = [];
+    let totalKwh = 0, storedKwh = 0, storedKnown = true;
+    const add = (icon, name, capacity, soc, extra) => {
+      const cap = Number(capacity) || 0;
+      const stored = soc === null || soc === undefined ? null : (cap * Math.max(0, Math.min(100, soc))) / 100;
+      totalKwh += cap;
+      if (stored === null) storedKnown = false;
+      else storedKwh += stored;
+      const lines = [stored === null ? "Ladestand ukendt" : `≈ ${fmtNum(stored, 1)} kWh lagret (${fmtNum(soc, 0)} %)`, extra].filter(Boolean);
+      rows.push(`<div class="status-row"><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div><div class="d">${lines.map(esc).join("<br>")}</div></div><span class="badge neutral">${fmtNum(cap, 1)} kWh</span></div>`);
+    };
+    const b = this._battery;
+    if (b) add("mdi:home-battery", "Husbatteri", b.capacity_kwh, this._readBatteryLive().soc, `reserve ${b.min_soc} %`);
+    for (const car of this._cars || []) {
+      if (car.enabled === false) continue;
+      add("mdi:car-electric", car.name || "Elbil", car.capacity_kwh, this._numState(car.soc_entity).value, "");
+    }
+    if (!rows.length) rows.push(`<div class="status-row"><ha-icon icon="mdi:battery-off-outline"></ha-icon><div class="t"><div class="n">Ingen lagring sat op</div><div class="d">Tilføj et husbatteri eller en elbil</div></div></div>`);
+    else if (rows.length > 1) {
+      const d = storedKnown ? `≈ ${fmtNum(storedKwh, 1)} kWh lagret (${fmtNum((storedKwh / totalKwh) * 100, 0)} %)` : "Ladestand delvist ukendt";
+      rows.push(`<div class="status-row total"><ha-icon icon="mdi:sigma"></ha-icon><div class="t"><div class="n">I alt</div><div class="d">${esc(d)}</div></div><span class="badge neutral">${fmtNum(totalKwh, 1)} kWh</span></div>`);
+    }
+    return `
+      <div class="card">
+        <h2><ha-icon icon="mdi:battery-high"></ha-icon>Kapaciteter${I("De lagringskapaciteter du ejer: husbatteriets og hver elbils batteristørrelse fra indstillingerne, og hvor meget der er lagret lige nu ud fra ladestanden. Kun biler med Smart opladning slået til tælles med.")}</h2>
+        <div class="status-list">${rows.join("")}</div>
       </div>`;
   }
 
