@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.38.2";
+const PANEL_JS_VERSION = "0.38.3";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -2147,6 +2147,19 @@ class ElectricityOptimizerPanel extends HTMLElement {
     fuse_wait: "Venter – hovedsikringen er optaget af elbil (regel)",
   };
 
+  /** The battery's status note; when a car charges from the grid but the battery cannot be held, say why. */
+  _batteryNote(rt) {
+    const base = ElectricityOptimizerPanel.BATTERY_NOTE[rt.status] || "";
+    if (!rt.ev_grid_hold_wanted) return base;
+    const cmds = rt.commands_configured || {};
+    if (rt.status === "disabled") return "Smart styring er slået fra – husbatteriet holdes ikke, selvom en elbil lader fra nettet. Slå Smart styring til for at stoppe afladningen.";
+    if (rt.status === "override" && rt.mode !== "hold") return "Manuel styring – husbatteriet holdes ikke, selvom en elbil lader fra nettet. Tryk Auto for at stoppe afladningen.";
+    if (rt.status === "no_soc") return "SoC-sensoren har ingen værdi – husbatteriet holdes ikke, selvom en elbil lader fra nettet.";
+    if (rt.status === "no_prices") return "Ingen priser fra EnergiDataService – husbatteriet holdes ikke, selvom en elbil lader fra nettet.";
+    if (rt.status === "ev_hold" && cmds.hold === false) return "En elbil lader fra nettet, men der er ingen hold-kommando – husbatteriet holdes ikke. Udfyld 'Kommandoer: hold batteriet'.";
+    return base;
+  }
+
   /** Shorter wording for the badge in the Status card; the full text stays in the description. */
   static STATUS_BADGE_SHORT = { battery_first: "Venter" };
 
@@ -2883,7 +2896,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const live = this._readBatteryLive();
     const rt = this._batteryRuntime || {};
     const [modeText, modeCls, modeWhy] = ElectricityOptimizerPanel.MODE_TEXT[rt.mode] || ["–", "neutral", ""];
-    const note = ElectricityOptimizerPanel.BATTERY_NOTE[rt.status] || modeWhy || "";
+    const note = this._batteryNote(rt) || modeWhy || "";
     const modeBadge = `<span class="badge ${modeCls === "mid" ? "wait" : modeCls}">${modeText}</span>`;
     const parts = [];
     if (live.soc !== null) parts.push(`${fmtNum(live.soc, 0)} %`);
@@ -2916,7 +2929,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const plan = rt.plan || null;
     const mode = rt.mode || "normal";
     const [modeText, modeCls, modeWhy] = ElectricityOptimizerPanel.MODE_TEXT[mode] || ["–", "neutral", ""];
-    const statusNote = { ...ElectricityOptimizerPanel.BATTERY_NOTE, auto: modeWhy }[rt.status] || "";
+    const statusNote = this._batteryNote(rt) || (rt.status === "auto" ? modeWhy : "");
     const cmds = rt.commands_configured || {};
     const why = plan
       ? [

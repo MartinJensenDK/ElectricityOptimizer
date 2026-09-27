@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.38.3
+
+- Husbatteriets status (Status-cardet på forsiden og Hus batteri-fanen) forklarer nu, hvorfor batteriet ikke holdes, når en elbil lader fra nettet og reglen "Hold husbatteri ved net-ladning" er slået til: Smart styring er slået fra, Manuel står ikke på Auto, SoC eller priser mangler, eller der er ingen hold-kommando.
+
 ## 0.38.2
 
 - Hold gensendes først, når husbatteriet aflader mere end 250 W (før 100 W). Aflader batteriet mindre end det, sendes der ikke noget.

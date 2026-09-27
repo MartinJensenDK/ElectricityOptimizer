@@ -314,10 +314,14 @@ class BatteryController:
     async def async_apply(self, ctx: Context, mode: str | None) -> None:
         """Apply the mode after the EV round, honouring the shared rules."""
         cfg = self.store.battery
-        if cfg is None or mode is None:
+        if cfg is None:
             return
         rt = self.runtime
         rules = ctx.rules
+        # for the panel: a car charges from the grid and the rules want the battery held
+        rt["ev_grid_hold_wanted"] = bool(ctx.ev_grid_hold and rules["hold_battery_while_ev_grid_charging"])
+        if mode is None:
+            return
         if cfg["override"] == "auto":
             if mode == "normal" and ctx.ev_grid_charging and rules["hold_battery_while_ev_grid_charging"]:
                 if ctx.ev_grid_hold:

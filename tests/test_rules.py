@@ -928,3 +928,33 @@ async def test_hold_is_resent_when_the_battery_still_discharges(hass: HomeAssist
     freezer.tick(timedelta(seconds=600))
     await _ws(hass, client, 8, {"type": f"{DOMAIN}/evaluate"})
     assert holds() == 3
+
+
+async def test_battery_runtime_flags_unheld_grid_charging(hass: HomeAssistant, hass_ws_client) -> None:
+    """Smart styring off on the battery while a car charges from the grid: the panel gets a flag to explain
+    that the battery is not held (the controller itself stays hands-off)."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.bat_soc", "45")
+    async_mock_service(hass, "switch", "turn_on")
+    select = async_mock_service(hass, "select", "select_option")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {
+        "soc_entity": "sensor.bat_soc", "enabled": False,
+        "hold_start_entity": "select.mode", "hold_start_value": "Hold",
+        "hold_stop_entity": "select.mode", "hold_stop_value": "Self-use",
+    }})
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "source": "plan", "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "charge_now"
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/battery/get"})
+    assert res["runtime"]["status"] == "disabled" and res["runtime"]["ev_grid_hold_wanted"] is True
+    assert select == []  # hands off while Smart styring is off
+
+    await _ws(hass, client, 4, {"type": f"{DOMAIN}/battery/save", "battery": {"enabled": True}})
+    res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/battery/get"})
+    assert res["runtime"]["status"] == "ev_hold" and [c.data["option"] for c in select][-1] == "Hold"
+
+    await _ws(hass, client, 6, {"type": f"{DOMAIN}/rules/save", "rules": {"hold_battery_while_ev_grid_charging": False}})
+    res = await _ws(hass, client, 7, {"type": f"{DOMAIN}/battery/get"})
+    assert res["runtime"]["ev_grid_hold_wanted"] is False
