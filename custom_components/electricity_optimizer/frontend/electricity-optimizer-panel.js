@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.1";
+const PANEL_JS_VERSION = "0.41.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -260,6 +260,7 @@ const STYLE = `
   .status-row .t .d { font-size: 13px; color: var(--secondary-text-color); }
   .status-row .t .d .reason { font-size: 12px; opacity: 0.85; }
   .status-row.total-top { border-bottom: 1px solid var(--divider-color); padding-bottom: 8px; }
+  .status-row .badge.pct { min-width: 52px; box-sizing: border-box; text-align: center; font-variant-numeric: tabular-nums; }
   .status-row.total-top .t .n { font-weight: 600; }
   .empty {
     padding: 32px 16px;
@@ -893,16 +894,16 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const stored = soc === null || soc === undefined ? null : (cap * Math.max(0, Math.min(100, soc))) / 100;
       items.push({ icon, name, cap, stored });
     };
+    const b = this._battery;
+    if (b) add("mdi:home-battery", "Hus batteri", b.capacity_kwh, this._readBatteryLive().soc);
     for (const car of this._cars || []) {
       if (car.enabled === false) continue;
       add("mdi:car-electric", `${car.name || "Elbil"} batteri`, car.capacity_kwh, this._numState(car.soc_entity).value);
     }
-    const b = this._battery;
-    if (b) add("mdi:home-battery", "Hus batteri", b.capacity_kwh, this._readBatteryLive().soc);
     const row = (icon, name, stored, cap, cls = "") => {
       const pct = stored === null || cap <= 0 ? null : (stored / cap) * 100;
       const d = stored === null ? `ladestand ukendt · ${fmtNum(cap, 1)} kWh` : `${fmtNum(stored, 1)} af ${fmtNum(cap, 1)} kWh`;
-      const badge = pct === null ? `<span class="badge neutral">–</span>` : `<span class="badge ${pct <= 20 ? "high" : pct <= 40 ? "mid" : "low"}">${fmtNum(pct, 0)} %</span>`;
+      const badge = pct === null ? `<span class="badge neutral pct">–</span>` : `<span class="badge pct ${pct <= 20 ? "high" : pct <= 40 ? "mid" : "low"}">${fmtNum(pct, 0)} %</span>`;
       return `<div class="status-row ${cls}"><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div><div class="d">${esc(d)}</div></div>${badge}</div>`;
     };
     const rows = [];

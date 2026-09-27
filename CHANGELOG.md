@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.2
+
+- Kapaciteter: Hus batteri står nu altid over elbilerne, og procent-mærkerne har samme bredde uanset antal cifre.
+
 ## 0.41.1
 
 - Kapaciteter: "Samlet kapacitet" står nu øverst, derefter hver elbil og husbatteriet. Hver række viser "lagret af kapacitet kWh" (fx 30 af 65 kWh) og ladestanden i procent som mærke (rød ved eller under 20 %, orange ved eller under 40 %, ellers grøn).
