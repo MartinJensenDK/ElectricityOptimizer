@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.34.1";
+const PANEL_JS_VERSION = "0.35.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -155,6 +155,7 @@ const STYLE = `
   .batt .bv { font-size: 26px; font-weight: 500; fill: var(--primary-text-color); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 4px; stroke-linejoin: round; }
   .batt .bu { font-size: 12px; font-weight: 400; }
   .cars-batt { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .cmdlog td.reason { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
   .cb-row { display: flex; flex-direction: column; gap: 2px; }
   .cb-row .cb-name { min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; justify-content: space-between; gap: 8px; }
   .cb-row .cb-name small { font-size: 11px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; }
@@ -2760,6 +2761,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <td>${fmtDate(at)} ${fmtTime(at)}</td>
           <td>${esc(c.who || "")}</td>
           <td>${esc(c.action || "")}</td>
+          <td class="reason"${c.reason ? ` data-tip="${esc(c.reason)}"` : ""}>${esc(c.reason || "–")}</td>
           <td><code>${esc(c.entity_id || "")}</code>${c.value ? ` = ${esc(c.value)}` : ""}</td>
           <td>${esc(c.service || "")}</td>
           <td>${c.ok ? '<span class="badge low">OK</span>' : `<span class="badge high">Fejl</span> ${esc(c.error || "")}`}</td>
@@ -2769,12 +2771,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       <div class="card">
         <h2><ha-icon icon="mdi:console-line"></ha-icon>Sendte kommandoer${I(
-          "Alle kommandoer, integrationen har sendt til ladere og husbatteri: start, stop, ladestrøm og manuelle tests fra formularen. Service er det kald, Home Assistant fik. OK betyder, at kaldet blev accepteret; om laderen faktisk reagerede, ses på bilens status. De seneste 300 gemmes."
+          "Alle kommandoer, integrationen har sendt til ladere og husbatteri: start, stop, ladestrøm og manuelle tests fra formularen. Årsag er, hvorfor kommandoen blev sendt (hold musen over for hele teksten). Service er det kald, Home Assistant fik. OK betyder, at kaldet blev accepteret; om laderen faktisk reagerede, ses på bilens status. De seneste 300 gemmes."
         )}</h2>
         ${
           rows
             ? `<div class="chart-wrap"><table class="history cmdlog">
-          <thead><tr><th>Tid</th><th>Hvem</th><th>Handling</th><th>Entitet</th><th>Service</th><th>Resultat</th></tr></thead>
+          <thead><tr><th>Tid</th><th>Hvem</th><th>Handling</th><th>Årsag</th><th>Entitet</th><th>Service</th><th>Resultat</th></tr></thead>
           <tbody>${rows}</tbody></table></div>`
             : `<div class="empty"><ha-icon icon="mdi:console-line"></ha-icon>Ingen kommandoer sendt endnu.</div>`
         }

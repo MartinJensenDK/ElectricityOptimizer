@@ -137,7 +137,7 @@ async def ws_command_test(hass: HomeAssistant, connection: websocket_api.ActiveC
         connection.send_error(msg["id"], "command_failed", f"{entity_id} findes ikke i Home Assistant")
         return
     try:
-        await async_run_command(hass, entity_id, msg.get("value") or None, is_stop=msg["is_stop"], start_entity=msg.get("start_entity") or None, who="Test fra panelet", action="stop" if msg["is_stop"] else "start")
+        await async_run_command(hass, entity_id, msg.get("value") or None, is_stop=msg["is_stop"], start_entity=msg.get("start_entity") or None, who="Test fra panelet", action="stop" if msg["is_stop"] else "start", reason="Manuel test fra panelet")
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "command_failed", str(err))
         return

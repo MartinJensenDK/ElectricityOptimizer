@@ -298,7 +298,7 @@ class EvController:
         if not car["enabled"] and not car["charge_now"]:
             rt["status"] = "disabled"
             if self._last_cmd.get(cid):
-                await self._apply(car, False)  # stop what we started manually ("Stop Lad nu")
+                await self._apply(car, False, self.REASON_TEXT["disabled"])  # stop what we started manually ("Stop Lad nu")
                 rt["charging"] = self._last_cmd.get(cid, False)
             return
 
@@ -354,10 +354,11 @@ class EvController:
 
         rt["mode"] = mode if desired else None
         starting = desired and not self._last_cmd.get(cid)
+        reason = self._reason(rt)
         if desired and not (mode == "solar" and starting):
             # solar: the start command goes alone; the current limit follows after the chosen interval
-            await self._apply_amps(ctx, car, amps, rate_limited=(mode == "solar"))
-        await self._apply(car, desired)
+            await self._apply_amps(ctx, car, amps, rate_limited=(mode == "solar"), reason=reason)
+        await self._apply(car, desired, reason)
         rt["charging"] = self._last_cmd.get(car["id"], False)
         rt["amps"] = self._last_amps.get(car["id"]) if desired else None
         if desired and not rt["charging"]:
@@ -396,7 +397,7 @@ class EvController:
             self._start_retry_at[cid] = ctx.now
             self._force_send.add(cid)
             _LOGGER.warning("%s: start was sent but the car draws %s W - sending start again", car["name"], round(car_w))
-            await self._apply(car, True)
+            await self._apply(car, True, self.REASON_TEXT["no_power"])
 
     # ---- notifications
 
@@ -558,7 +559,39 @@ class EvController:
 
     # ---- commands
 
-    async def _apply_amps(self, ctx: Context, car: dict[str, Any], amps: int, *, rate_limited: bool = False) -> None:
+    REASON_TEXT = {
+        "charge_now": "Lad nu (manuelt)",
+        "below_limit": "Prisen er under prisgrænsen",
+        "charging": "Planlagt billig time",
+        "waiting": "Venter på billig strøm",
+        "solar": "Sol-overskud",
+        "solar_min": "Husbatteriet har forrang – min. ladestrøm",
+        "solar_wait": "Ikke nok sol-overskud",
+        "solar_low": "For lav solproduktion",
+        "battery_first": "Husbatteriet har forrang",
+        "fuse_wait": "Hovedsikringen er optaget",
+        "done": "Mål-SoC nået",
+        "not_plugged": "Bilen er ikke tilsluttet",
+        "disabled": "Smart opladning slået fra",
+        "no_power": "Start gensendes – bilen trækker 0 W",
+        "no_soc": "SoC ukendt",
+        "no_prices": "Ingen priser",
+        "no_deadline": "Ingen planlagt dag",
+        "no_solar_sensor": "Mangler solcelle-sensor",
+        "no_grid_sensor": "Mangler sensor til sol-overskud",
+        "cmd_failed": "Forrige kommando fejlede",
+    }
+
+    @classmethod
+    def _reason(cls, rt: dict[str, Any]) -> str:
+        """Why a command is sent right now, in the words the panel uses."""
+        status = rt.get("status") or ""
+        text = cls.REASON_TEXT.get(status, status)
+        if status in ("solar", "solar_min", "solar_wait") and rt.get("surplus_w") is not None:
+            text += f" {round(rt['surplus_w'])} W"
+        return text
+
+    async def _apply_amps(self, ctx: Context, car: dict[str, Any], amps: int, *, rate_limited: bool = False, reason: str = "") -> None:
         """Push the current limit to the charger (only on change; solar modulation is rate limited)."""
         cid = car["id"]
         entity = car.get("current_entity")
@@ -574,7 +607,7 @@ class EvController:
         if rate_limited and reference is not None and (ctx.now - reference).total_seconds() < interval:
             return
         try:
-            await async_run_command(self.hass, entity, str(amps), who=car["name"], action=f"ladestrøm {amps} A")
+            await async_run_command(self.hass, entity, str(amps), who=car["name"], action=f"ladestrøm {amps} A", reason=reason)
             self._last_amps[cid] = amps
             self._last_amps_at[cid] = ctx.now
             _LOGGER.info("%s: set current limit to %s A", car["name"], amps)
@@ -612,7 +645,7 @@ class EvController:
                 return {"start": start.isoformat(), "end": end.isoformat(), "source": "grid", "estimated": any(sl.get("estimated") for sl in chosen)}
         return None
 
-    async def _apply(self, car: dict[str, Any], desired: bool) -> None:
+    async def _apply(self, car: dict[str, Any], desired: bool, reason: str = "") -> None:
         cid = car["id"]
         if cid not in self._force_send and self._last_cmd.get(cid) is desired:
             return
@@ -625,9 +658,9 @@ class EvController:
             self._last_amps_at.pop(cid, None)
         try:
             if desired:
-                await self._activate(car)
+                await self._activate(car, reason)
             else:
-                await self._deactivate(car)
+                await self._deactivate(car, reason)
             self._last_cmd[cid] = desired
             self.runtime[cid]["last_action"] = {"at": dt_util.now().isoformat(), "action": "start" if desired else "stop", "ok": True}
             _LOGGER.info("%s: sent %s", car["name"], "start" if desired else "stop")
@@ -639,8 +672,8 @@ class EvController:
             if self.notifier is not None:
                 self.notifier.notify(f"cmd:{cid}", "Elbil-kommando fejlede", f"{car['name']}: kunne ikke sende {'start' if desired else 'stop'} – {err}")
 
-    async def _activate(self, car: dict[str, Any]) -> None:
-        await async_run_command(self.hass, car["start_entity"], car.get("start_value") or None, who=car["name"], action="start")
+    async def _activate(self, car: dict[str, Any], reason: str = "") -> None:
+        await async_run_command(self.hass, car["start_entity"], car.get("start_value") or None, who=car["name"], action="start", reason=reason)
 
-    async def _deactivate(self, car: dict[str, Any]) -> None:
-        await async_run_command(self.hass, car["stop_entity"], car.get("stop_value") or None, is_stop=True, start_entity=car["start_entity"], who=car["name"], action="stop")
+    async def _deactivate(self, car: dict[str, Any], reason: str = "") -> None:
+        await async_run_command(self.hass, car["stop_entity"], car.get("stop_value") or None, is_stop=True, start_entity=car["start_entity"], who=car["name"], action="stop", reason=reason)

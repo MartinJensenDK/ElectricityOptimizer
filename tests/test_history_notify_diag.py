@@ -190,8 +190,10 @@ async def test_commands_are_logged(hass: HomeAssistant, hass_ws_client) -> None:
     hist = await _ws(hass, client, 3, {"type": f"{DOMAIN}/history/list"})
     cmds = hist["commands"]
     assert cmds[0]["who"] == "Test fra panelet" and cmds[0]["entity_id"] == "button.authorize" and cmds[0]["ok"] and cmds[0]["service"] == "button.press"
+    assert cmds[0]["reason"] == "Manuel test fra panelet"
     tesla = [c for c in cmds if c["who"] == "Tesla"]
     assert tesla and tesla[0]["action"] in ("start", "stop") and tesla[0]["entity_id"] in ("button.authorize", "button.deauthorize")
+    assert tesla[0]["reason"]  # every automatic command carries the reason it was sent
     assert len(press) == 2
 
     # a failing command is logged with its error

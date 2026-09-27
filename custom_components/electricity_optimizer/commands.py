@@ -21,6 +21,7 @@ async def async_run_command(
     start_entity: str | None = None,
     who: str = "",
     action: str = "",
+    reason: str = "",
 ) -> None:
     """Run one command.
 
@@ -33,18 +34,18 @@ async def async_run_command(
         _LOGGER.info("Calling %s with %s", service, data)
         await hass.services.async_call(service.split(".", 1)[0], service.split(".", 1)[1], data, blocking=True)
     except Exception as err:
-        _record(hass, who, action, entity_id, value, ok=False, error=str(err) or type(err).__name__)
+        _record(hass, who, action, entity_id, value, ok=False, error=str(err) or type(err).__name__, reason=reason)
         if isinstance(err, HomeAssistantError):
             raise
         raise HomeAssistantError(f"{type(err).__name__}: {err}") from err
-    _record(hass, who, action, entity_id, value, ok=True, service=service)
+    _record(hass, who, action, entity_id, value, ok=True, service=service, reason=reason)
 
 
-def _record(hass: HomeAssistant, who: str, action: str, entity_id: str, value: str | None, *, ok: bool, service: str = "", error: str = "") -> None:
+def _record(hass: HomeAssistant, who: str, action: str, entity_id: str, value: str | None, *, ok: bool, service: str = "", error: str = "", reason: str = "") -> None:
     history = (hass.data.get(DOMAIN) or {}).get("history")
     if history is None:
         return
-    history.log_command({"who": who, "action": action, "entity_id": entity_id, "value": value, "service": service, "ok": ok, "error": error})
+    history.log_command({"who": who, "action": action, "entity_id": entity_id, "value": value, "service": service, "ok": ok, "error": error, "reason": reason})
 
 
 def _resolve(entity_id: str, value: str | None, is_stop: bool, start_entity: str | None) -> tuple[str, dict]:

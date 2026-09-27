@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.35.0
+
+- Historik, Sendte kommandoer: ny kolonne "Årsag" viser, hvorfor hver kommando blev sendt, fx "Sol-overskud 2.300 W", "Planlagt billig time", "Mål-SoC nået", "Lad nu (manuelt)" eller "Prisen er under dagens gennemsnit, og senere timer er dyrere". Hold musen over for hele teksten.
+
 ## 0.34.1
 
 - Selvforsyning vises nu som et lagkagediagram (grøn = egen strøm, rød = fra nettet) med procenten i midten, i stedet for en måler.

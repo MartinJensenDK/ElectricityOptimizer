@@ -12,6 +12,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .commands import async_run_command
+
+MODE_LABEL = {"normal": "normal", "hold": "hold", "charge": "lad fra net"}
 from .const import GRID_VOLTAGE
 from .ev_controller import Context, Slot
 from .storage import BatteryStore
@@ -307,8 +309,20 @@ class BatteryController:
                 if ctx.ev_amps_total + battery_amps > rules["max_total_amps"]:
                     mode, rt["status"] = "hold", "fuse_wait"
         rt["mode"] = mode
+        if cfg["override"] != "auto":
+            reason = "Manuel: " + {"normal": "Normal", "hold": "Hold nu", "charge": "Lad fra net nu"}.get(cfg["override"], cfg["override"])
+        elif rt.get("status") == "ev_hold":
+            reason = "En elbil lader fra nettet (regel)"
+        elif rt.get("status") == "fuse_wait":
+            reason = "Hovedsikringen er optaget af elbil"
+        else:
+            reason = {
+                "hold": "Prisen er under dagens gennemsnit, og senere timer er dyrere",
+                "charge": "Billig time – dyrere senere eller mål-SoC skal nås",
+                "normal": "Ingen grund til hold eller netopladning",
+            }.get(mode, mode)
         try:
-            await self._apply(cfg, mode)
+            await self._apply(cfg, mode, reason)
             if self.notifier is not None:
                 self.notifier.clear("cmd:battery")
         except HomeAssistantError as err:
@@ -317,13 +331,13 @@ class BatteryController:
             if self.notifier is not None:
                 self.notifier.notify("cmd:battery", "Husbatteri-kommando fejlede", f"Kunne ikke skifte husbatteriet til {mode}: {err}")
 
-    async def _run(self, cfg: dict[str, Any], mode: str, action: str) -> bool:
+    async def _run(self, cfg: dict[str, Any], mode: str, action: str, reason: str = "") -> bool:
         start = cfg[f"{mode}_start_entity"]
         if not start:
             return False
         label = {"charge": "lad fra net", "hold": "hold"}[mode]
         if action == "start":
-            await async_run_command(self.hass, start, cfg[f"{mode}_start_value"] or None, who="Husbatteri", action=f"{label}: start")
+            await async_run_command(self.hass, start, cfg[f"{mode}_start_value"] or None, who="Husbatteri", action=f"{label}: start", reason=reason)
         else:
             await async_run_command(
                 self.hass,
@@ -333,18 +347,19 @@ class BatteryController:
                 start_entity=start,
                 who="Husbatteri",
                 action=f"{label}: stop",
+                reason=reason,
             )
         return True
 
-    async def _apply(self, cfg: dict[str, Any], mode: str) -> None:
+    async def _apply(self, cfg: dict[str, Any], mode: str, reason: str = "") -> None:
         if self._active == mode:
             return
         sent: list[str] = []
         # Stop the previous mode first (both modes on first run, since the inverter state is unknown).
         for old in ("charge", "hold") if self._active is None else (self._active,):
-            if old in ("charge", "hold") and old != mode and await self._run(cfg, old, "stop"):
+            if old in ("charge", "hold") and old != mode and await self._run(cfg, old, "stop", f"Skifter til {MODE_LABEL.get(mode, mode)}: {reason}"):
                 sent.append(f"{old}:stop")
-        if mode in ("charge", "hold") and await self._run(cfg, mode, "start"):
+        if mode in ("charge", "hold") and await self._run(cfg, mode, "start", reason):
             sent.append(f"{mode}:start")
         self._active = mode
         self.runtime["last_action"] = {
