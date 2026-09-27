@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.1
+
+- Kapaciteter: "Samlet kapacitet" står nu øverst, derefter hver elbil og husbatteriet. Hver række viser "lagret af kapacitet kWh" (fx 30 af 65 kWh) og ladestanden i procent som mærke (rød ved eller under 20 %, orange ved eller under 40 %, ellers grøn).
+
 ## 0.41.0
 
 - Forsiden: nyt kort "Kapaciteter" til venstre for Status. Det viser de lagringskapaciteter, du ejer: husbatteriet og hver elbil (med Smart opladning slået til) med batteristørrelse i kWh og hvor meget der er lagret lige nu ud fra ladestanden, samt en sum. Status-kortet er gjort smallere. På brede skærme (over 1500 px) står de to kort side om side til højre for målerne, på mellemstore skærme under hinanden, og på smalle skærme under målerne.
