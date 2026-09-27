@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.39.2";
+const PANEL_JS_VERSION = "0.39.3";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -136,7 +136,7 @@ const STYLE = `
   .kpi.live .value.in { color: var(--error-color, #db4437); }
   .kpi.live .value.out { color: var(--success-color, #43a047); }
   .kpi.live .value.sun { color: var(--warning-color, #ffa600); }
-  .gauge { display: block; width: 100%; max-width: 230px; margin: 0 auto; }
+  .gauge { display: block; width: 100%; max-width: 230px; margin: 0 auto; overflow: visible; }
   .gauge .track { fill: none; stroke: var(--secondary-background-color, #eee); stroke-width: 13; stroke-linecap: round; }
   .gauge .arc { fill: none; stroke-width: 13; stroke-linecap: round; transition: d 300ms; }
   .gauge .dot { stroke: var(--card-background-color, #fff); stroke-width: 2.5; }
@@ -158,7 +158,7 @@ const STYLE = `
   .cmdlog td.reason { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
   .cb-row { display: flex; flex-direction: column; gap: 2px; }
   .cb-row .cb-name { min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; justify-content: space-between; gap: 8px; }
-  .cb-row .cb-name small { font-size: 11px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; }
+  .cb-row .cb-name small { font-size: 11px; line-height: 1.15; color: var(--secondary-text-color); display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; text-align: right; }
   .cb-row .batt { width: 100%; max-width: none; margin: 0; }
   .cb-row .batt .bv { font-size: 14px; stroke-width: 3px; }
   .cb-row .batt .bu { font-size: 9px; }
@@ -943,8 +943,21 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <text class="gt" x="${cx - r - sw / 2}" y="${cy + 12}" text-anchor="start">${esc(o.leftLabel || "")}</text>
       <text class="gt" x="${cx + r + sw / 2}" y="${cy + 12}" text-anchor="end">${esc(o.rightLabel || "")}</text>
       <text class="gv" style="fill:${o.color || "var(--primary-text-color)"}" x="${cx}" y="${cy - 2}" text-anchor="middle">${esc(o.valueText)}<tspan class="gu"> ${esc(o.unit || "")}</tspan></text>
-      <text class="gs" x="${cx}" y="${cy + 28}" text-anchor="middle">${esc(o.sub || "")}</text>
+      ${ElectricityOptimizerPanel._subLines(o.sub, cx, cy + 28, cy + 20)}
     </svg>`;
+  }
+
+  /** Subtext under a gauge: "a · b" becomes two lines (a at yTwo, b 13 below), a single text stays at yOne. */
+  static _subLines(sub, cx, yOne, yTwo) {
+    const lines = String(sub || "")
+      .split(" · ")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (lines.length <= 1) return `<text class="gs" x="${cx}" y="${yOne}" text-anchor="middle">${esc(lines[0] || "")}</text>`;
+    return lines
+      .slice(0, 2)
+      .map((t, i) => `<text class="gs" x="${cx}" y="${yTwo + i * 13}" text-anchor="middle"${i ? ' style="font-size:11px"' : ""}>${esc(t)}</text>`)
+      .join("");
   }
 
   static COLOR_IN = "var(--error-color, #db4437)";
@@ -1090,7 +1103,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const tX = x + pad + (inner * Math.max(0, Math.min(100, target))) / 100;
       const [statusText] = K.STATUS_TEXT[rt.status] || [""];
       return `<div class="cb-row">
-        <span class="cb-name" title="${esc(car.name)}"><span>${esc(car.name)}</span><small>mål ${target} %${statusText ? ` · ${esc(statusText)}` : ""}</small></span>
+        <span class="cb-name" title="${esc(car.name)}"><span>${esc(car.name)}</span><small><span>mål ${target} %</span>${statusText ? `<span>${esc(statusText)}</span>` : ""}</small></span>
         <svg class="batt" viewBox="0 0 200 30" role="img" aria-label="${esc(car.name)} ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}">
           <rect class="body" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/>
           <rect class="nub" x="${x + w + 1.5}" y="${y + h / 2 - 5}" width="5" height="10" rx="1.5"/>
@@ -1145,9 +1158,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderBigBattery(o) {
     const soc = o.soc;
     const pct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
-    const x = 22, y = 30, w = 150, h = 64, pad = 5;
+    const lines = [...String(o.sub || "").split(" · "), ...String(o.sub2 || "").split(" · ")].map((t) => t.trim()).filter(Boolean).slice(0, 3);
+    const x = 22, y = lines.length >= 3 ? 22 : 30, w = 150, h = 64, pad = 5;
     const inner = w - 2 * pad;
     const fillW = (inner * pct) / 100;
+    const y0 = lines.length <= 1 ? 120 : lines.length === 2 ? 113 : 100;
     const mX = o.marker !== null && o.marker !== undefined ? x + pad + (inner * Math.max(0, Math.min(100, o.marker))) / 100 : null;
     return `<svg class="gauge batt" viewBox="0 0 200 128" role="img" aria-label="${esc(o.aria)} ${soc === null ? "ukendt" : `${fmtNum(soc, 0)} %`}">
       <rect class="body" x="${x}" y="${y}" width="${w}" height="${h}" rx="9"/>
@@ -1156,7 +1171,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${mX !== null ? `<line class="reserve" x1="${mX.toFixed(1)}" x2="${mX.toFixed(1)}" y1="${y + 2}" y2="${y + h - 2}"/>` : ""}
       <text class="bv" x="${x + w / 2}" y="${y + h / 2 + 9}" text-anchor="middle">${soc === null ? "–" : fmtNum(soc, 0)}<tspan class="bu"> %</tspan></text>
       ${o.charging ? `<path class="bolt" transform="translate(${x + 12} ${y + 14}) scale(1.6)" d="M7 0 L0 11 h5 l-1 8 7-11 h-5 z"/>` : ""}
-      ${o.sub2 ? `<text class="gs" x="100" y="113" text-anchor="middle">${esc(o.sub || "")}</text><text class="gs" x="100" y="125" text-anchor="middle" style="font-size:11px">${esc(o.sub2)}</text>` : `<text class="gs" x="100" y="120" text-anchor="middle">${esc(o.sub || "")}</text>`}
+      ${lines.map((t, i) => `<text class="gs" x="100" y="${y0 + i * 12}" text-anchor="middle"${i ? ' style="font-size:11px"' : ""}>${esc(t)}</text>`).join("")}
     </svg>`;
   }
 
@@ -1201,7 +1216,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderSelfSufficiencyPie(solar) {
     const K = ElectricityOptimizerPanel;
     const { pct, sub } = this._selfSufficiency(solar);
-    const cx = 100, cy = 58, r = 44, sw = 16;
+    const cx = 100, cy = 60, r = 38, sw = 13;
     const circ = 2 * Math.PI * r;
     const own = pct === null ? 0 : (circ * pct) / 100;
     return `<svg class="gauge pie" viewBox="0 0 200 128" role="img" aria-label="Selvforsyning ${pct === null ? "ukendt" : `${fmtNum(pct, 0)} %`}">
@@ -1209,9 +1224,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${pct !== null ? `<circle class="seg" cx="${cx}" cy="${cy}" r="${r}" style="stroke:${K.COLOR_IN};stroke-width:${sw}" stroke-dasharray="${circ.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>` : ""}
       ${own > 0.5 ? `<circle class="seg" cx="${cx}" cy="${cy}" r="${r}" style="stroke:${K.COLOR_OUT};stroke-width:${sw}" stroke-dasharray="${own.toFixed(2)} ${circ.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>` : ""}
       <text class="gv" x="${cx}" y="${cy + 8}" text-anchor="middle" style="font-size:22px">${pct === null ? "–" : fmtNum(pct, 0)}<tspan class="gu"> %</tspan></text>
-      <text class="gs" x="${cx}" y="${cy + r + sw / 2 + 14}" text-anchor="middle">${esc(sub)}</text>
-      <g class="gt"><rect x="14" y="${cy + r + sw / 2 + 5}" width="8" height="8" rx="2" style="fill:${K.COLOR_OUT}"/><text x="26" y="${cy + r + sw / 2 + 12}">Egen strøm</text></g>
-      <g class="gt"><rect x="${200 - 14 - 60}" y="${cy + r + sw / 2 + 5}" width="8" height="8" rx="2" style="fill:${K.COLOR_IN}"/><text x="${200 - 14 - 48}" y="${cy + r + sw / 2 + 12}">Fra nettet</text></g>
+      ${K._subLines(sub, cx, cy + r + sw / 2 + 16, cy + r + sw / 2 + 14)}
+      <g class="gt"><rect x="6" y="5" width="8" height="8" rx="2" style="fill:${K.COLOR_OUT}"/><text x="18" y="12">Egen strøm</text></g>
+      <g class="gt"><rect x="${200 - 6 - 60}" y="5" width="8" height="8" rx="2" style="fill:${K.COLOR_IN}"/><text x="${200 - 6 - 48}" y="12">Fra nettet</text></g>
     </svg>`;
   }
 

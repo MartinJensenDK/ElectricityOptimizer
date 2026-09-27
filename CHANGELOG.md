@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.39.3
+
+- Forsiden: de små kort viser nu deres to tekster under hinanden i stedet for adskilt af "·": Forbrug (husforbrug / elbil), Hus batteri (kWh / reserve), Elbiler (mål / status, både med én og flere biler) og Selvforsyning (i dag / lige nu). Selvforsynings-kortets forklaring (egen strøm / fra nettet) er flyttet op i hjørnerne, så den ikke længere ligger oven i teksten.
+
 ## 0.39.2
 
 - Prisgrafen på forsiden: husbatteriets ladeperiode er nu lilla i stedet for orange. Bil nr. 2 bruger derfor orange i stedet for lilla.
