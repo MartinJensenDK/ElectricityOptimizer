@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.37.1
+
+- "Lad nu", mens bilen allerede lader (fx fra sol): start-kommandoen sendes ikke igen, når ladeeffekt-sensoren viser, at bilen faktisk lader. Det fjerner fejlen "Running command 'authorize_charge' failed" fra Zaptec, som afviser en ny authorize under opladning. Ladestrømmen sættes stadig op til maks.
+- Infoboksen for "Hold husbatteri ved net-ladning" forklarer nu, at den også gælder Lad nu, og at "Husbatteri må lade bilen over øvre grænse" kun gælder solopladning.
+
 ## 0.37.0
 
 - En genstart af Home Assistant (fx ved opdatering) afbryder ikke længere opladningen. Integrationen husker nu, hvilke biler den var i gang med at lade (og med hvilken ladestrøm) samt husbatteriets tilstand, og fortsætter efter genstarten uden at sende stop og start igen. Reglerne gælder stadig: er der fx ikke længere sol nok, stoppes der som normalt.

@@ -398,6 +398,10 @@ class EvController:
                 amps = min(amps, int(allowed))
 
         rt["mode"] = mode if desired else None
+        if cid in self._force_send and desired and self._last_cmd.get(cid) and car_w is not None and car_w >= self.NO_POWER_W:
+            # e.g. "Lad nu" while already charging from sun: the car really is charging, so a second start
+            # (Zaptec: authorize) would only be rejected - keep the session and just update the current limit
+            self._force_send.discard(cid)
         starting = desired and not self._last_cmd.get(cid)
         reason = self._reason(rt)
         if desired and not (mode == "solar" and starting):

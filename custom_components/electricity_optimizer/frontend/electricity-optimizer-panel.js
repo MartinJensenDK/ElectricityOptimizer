@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.37.0";
+const PANEL_JS_VERSION = "0.37.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -2040,7 +2040,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           "Vis en notifikation i Home Assistant, når en elbil ikke kan nå sit mål-SoC inden deadline, når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil eller husbatteri fejler. Hændelsen electricity_optimizer_notification sendes altid, så du kan lave automationer."
         )}</label>
         <label class="toggle"><input type="checkbox" data-rfield="hold_battery_while_ev_grid_charging" ${r.hold_battery_while_ev_grid_charging ? "checked" : ""}> Hold husbatteri ved net-ladning${info(
-          "Når en elbil lader fra nettet, sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer."
+          "Når en elbil lader fra nettet (planlagt, under prisgrænsen eller med Lad nu), sættes husbatteriet på hold, så det ikke aflader ind i bilen i stedet for at gemme strømmen til dyre timer. Kræver, at husbatteriet har en hold-kommando og Smart styring slået til. 'Husbatteri må lade bilen over øvre grænse' gælder kun solopladning."
         )}</label>
         </div>
         ${sensorForm}

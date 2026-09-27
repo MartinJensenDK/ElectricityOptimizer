@@ -754,3 +754,25 @@ async def test_restart_does_not_interrupt_charging(hass: HomeAssistant, hass_ws_
     freezer.tick(timedelta(seconds=60))
     res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["status"] == "solar_wait" and len(turn_off) == stops + 1
+
+
+async def test_charge_now_while_already_charging_does_not_resend_start(hass: HomeAssistant, hass_ws_client) -> None:
+    """"Lad nu" while the car is charging from sun (and really drawing power): no second start, only the current limit."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.grid", "-6000", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.car_power", "5500", {"unit_of_measurement": "W"})
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    set_value = async_mock_service(hass, "number", "set_value")
+    async_mock_service(hass, "switch", "turn_off")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0, "solar_stop_minutes": 0}})
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "power_entity": "sensor.car_power"}})
+    car = res["car"]
+    assert car["runtime"]["status"] == "solar" and len(turn_on) == 1
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": car["id"], "charge_now": True}})
+    rt = res["car"]["runtime"]
+    assert rt["status"] == "charge_now" and rt["charging"]
+    assert len(turn_on) == 1  # start was NOT sent again
+    assert set_value and set_value[-1].data["value"] == 16.0  # but the limit went to max amps
