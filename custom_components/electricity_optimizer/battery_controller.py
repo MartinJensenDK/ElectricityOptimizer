@@ -197,6 +197,7 @@ class BatteryController:
         self.price_entity = price_entity
         self.runtime: dict[str, Any] = {}
         self._active: str | None = None  # last commanded mode
+        self._hold_retry_at: datetime | None = None
         self.notifier = None  # set by __init__
         self.state: RuntimeStateStore | None = None  # set by __init__
 
@@ -344,6 +345,7 @@ class BatteryController:
             }.get(mode, mode)
         try:
             await self._apply(cfg, mode, reason)
+            await self._verify_hold(ctx, cfg, mode)
             if self.notifier is not None:
                 self.notifier.clear("cmd:battery")
         except HomeAssistantError as err:
@@ -351,6 +353,30 @@ class BatteryController:
             _LOGGER.warning("Battery: could not switch to %s: %s", mode, err)
             if self.notifier is not None:
                 self.notifier.notify("cmd:battery", "Husbatteri-kommando fejlede", f"Kunne ikke skifte husbatteriet til {mode}: {err}")
+
+    HOLD_DISCHARGE_W = 100  # discharging more than this while on hold = the inverter is not holding
+    HOLD_GRACE_S = 120  # give the inverter this long to obey a hold command
+    HOLD_RETRY_S = 300  # re-send hold this often while the battery keeps discharging
+
+    async def _verify_hold(self, ctx: Context, cfg: dict[str, Any], mode: str) -> None:
+        """Hold is active but the battery still discharges (e.g. discharge re-enabled by hand on the inverter):
+        send the hold command again after a grace period, and keep doing so every few minutes."""
+        rt = self.runtime
+        if mode != "hold" or not cfg["hold_start_entity"] or ctx.battery_w is None or ctx.battery_w > -self.HOLD_DISCHARGE_W:
+            rt["discharging_since"] = None
+            return
+        since = rt.get("discharging_since")
+        if since is None:
+            rt["discharging_since"] = since = ctx.now.isoformat()
+        if (ctx.now - datetime.fromisoformat(since)).total_seconds() < self.HOLD_GRACE_S:
+            return
+        if self._hold_retry_at is not None and (ctx.now - self._hold_retry_at).total_seconds() < self.HOLD_RETRY_S:
+            return
+        self._hold_retry_at = ctx.now
+        discharge_w = round(-ctx.battery_w)
+        _LOGGER.warning("Battery: hold is active but the battery discharges %s W - sending hold again", discharge_w)
+        await self._run(cfg, "hold", "start", f"Hold gensendes – batteriet aflader stadig {discharge_w} W")
+        rt["last_action"] = {"at": ctx.now.isoformat(), "mode": "hold", "ok": True, "sent": ["hold:start"]}
 
     async def _run(self, cfg: dict[str, Any], mode: str, action: str, reason: str = "") -> bool:
         start = cfg[f"{mode}_start_entity"]

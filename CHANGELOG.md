@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.38.1
+
+- Husbatteriet: er tilstanden "hold", men batteriet aflader alligevel (fx fordi afladning er slået til igen manuelt på inverteren), gensendes hold-kommandoen efter 2 minutter og derefter hvert 5. minut, så længe batteriet aflader mere end 100 W. Kræver batteriets effekt-sensor. Sendte kommandoer viser årsagen "Hold gensendes – batteriet aflader stadig … W".
+
 ## 0.38.0
 
 - "Lad nu" respekterer nu "Husbatteri må lade bilen over øvre grænse". Er den slået til, og husbatteriet (som nr. 1) er over "Prioriter 1. indtil", holdes batteriet ikke under Lad nu, så det må lade bilen. Er batteriet lig med eller under grænsen, sendes hold-kommandoen ("Kommandoer: hold batteriet"), så det ikke aflader. Husbatteriets status viser "Lad nu: batteriet er over øvre grænse og må lade bilen (regel)", og Sendte kommandoer viser samme årsag.

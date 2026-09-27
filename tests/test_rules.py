@@ -882,3 +882,45 @@ async def test_charge_now_battery_above_limit_may_feed_the_car(hass: HomeAssista
     await _ws(hass, client, 9, {"type": f"{DOMAIN}/rules/save", "rules": {"battery_to_ev_above_limit": False}})
     res = await _ws(hass, client, 10, {"type": f"{DOMAIN}/battery/get"})
     assert res["runtime"]["mode"] == "hold" and res["runtime"]["status"] == "ev_hold"
+
+
+async def test_hold_is_resent_when_the_battery_still_discharges(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """Hold is active, but someone re-enabled discharge on the inverter: after a grace period the hold command
+    is sent again (and again every few minutes while the battery keeps discharging)."""
+    _set_prices(hass)  # flat prices -> battery auto mode is normal; the EV's "Lad nu" forces hold
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.bat_soc", "60")
+    hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})
+    async_mock_service(hass, "switch", "turn_on")
+    select = async_mock_service(hass, "select", "select_option")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {
+        "soc_entity": "sensor.bat_soc", "power_entity": "sensor.bat_power",
+        "hold_start_entity": "select.mode", "hold_start_value": "Hold",
+        "hold_stop_entity": "select.mode", "hold_stop_value": "Self-use",
+    }})
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "source": "plan", "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "charge_now"
+    holds = lambda: [c.data["option"] for c in select].count("Hold")  # noqa: E731
+    assert holds() == 1
+
+    # the inverter is switched back to self-use by hand: the battery discharges 1.5 kW into the car
+    hass.states.async_set("sensor.bat_power", "-1500", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=60))
+    await _ws(hass, client, 3, {"type": f"{DOMAIN}/evaluate"})
+    assert holds() == 1  # within the grace period: nothing yet
+    freezer.tick(timedelta(seconds=120))
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert holds() == 2 and res["runtime"]["status"] == "ev_hold"
+    freezer.tick(timedelta(seconds=60))
+    await _ws(hass, client, 5, {"type": f"{DOMAIN}/evaluate"})
+    assert holds() == 2  # not every minute
+    freezer.tick(timedelta(seconds=300))
+    await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
+    assert holds() == 3  # still discharging: sent again
+
+    hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})  # the inverter obeys
+    freezer.tick(timedelta(seconds=600))
+    await _ws(hass, client, 7, {"type": f"{DOMAIN}/evaluate"})
+    assert holds() == 3
