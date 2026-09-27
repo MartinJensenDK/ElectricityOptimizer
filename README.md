@@ -101,7 +101,7 @@ Kortet **Regler for opladning** nederst på fanerne Elbiler og Hus batteri (samm
 | Sol-overskud beregnes fra | *Elnet-sensor*: overskud = det, der sælges til nettet. *Solproduktion − husforbrug*: overskud = solcelle-effekt (Konfigurer) − husforbrug − det, husbatteriet lader med, så ladestrømmen følger produktionen direkte. Med "Husforbruget inkluderer elbilens ladning" lægges bilens eget træk til, mens den lader. Det, husbatteriet aflader med, trækkes altid fra |
 | Hovedsikring (A) | Valgfri øvre grænse pr. fase for elbiler + batteri-opladning fra nettet. Tom = ingen grænse |
 | Ved sikring først til | Vises kun når hovedsikringen er sat: *Elbil* holder batteriet tilbage, *Husbatteri* begrænser eller udsætter bilen |
-| Hold husbatteri ved net-ladning | Standard til: batteriet tømmes ikke ned i bilen om natten. Undtagelse: Lad nu med batteriet over øvre grænse, se ovenfor. Aflader batteriet alligevel under hold (ændret manuelt på inverteren), gensendes hold-kommandoen efter 2 min og derefter hvert 5. min, så længe batteriet aflader mere end 250 W |
+| Hold husbatteri ved net-ladning | Standard til: batteriet tømmes ikke ned i bilen om natten. Undtagelse: Lad nu med batteriet over øvre grænse, se ovenfor. Aflader batteriet alligevel under hold (ændret manuelt på inverteren), gensendes hold-kommandoen efter 2 min og derefter hvert 5. min, så længe batteriet aflader mere end 250 W. Omvendt gensendes "hold: stop", hvis batteriet i Normal ikke aflader, selvom huset køber mere end 250 W |
 | Net-/husforbrugs-sensor | Import/eksport-sensor og husforbrugs-sensor til sol-overskud, hvis husbatteriet ikke har dem |
 
 ## Hus batteri

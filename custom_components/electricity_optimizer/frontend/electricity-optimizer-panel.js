@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.39.3";
+const PANEL_JS_VERSION = "0.39.4";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -2189,6 +2189,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   /** The battery's status note; when a car charges from the grid but the battery cannot be held, say why. */
   _batteryNote(rt) {
+    if (rt.mismatch) return rt.mismatch;
     const base = ElectricityOptimizerPanel.BATTERY_NOTE[rt.status] || "";
     if (!rt.ev_grid_hold_wanted) return base;
     const cmds = rt.commands_configured || {};

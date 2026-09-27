@@ -197,7 +197,7 @@ class BatteryController:
         self.price_entity = price_entity
         self.runtime: dict[str, Any] = {}
         self._active: str | None = None  # last commanded mode
-        self._hold_retry_at: datetime | None = None
+        self._retry_at: datetime | None = None  # last re-sent command after an inverter mismatch
         self.notifier = None  # set by __init__
         self.state: RuntimeStateStore | None = None  # set by __init__
 
@@ -349,7 +349,7 @@ class BatteryController:
             }.get(mode, mode)
         try:
             await self._apply(cfg, mode, reason)
-            await self._verify_hold(ctx, cfg, mode)
+            await self._verify_inverter(ctx, cfg, mode)
             if self.notifier is not None:
                 self.notifier.clear("cmd:battery")
         except HomeAssistantError as err:
@@ -358,29 +358,52 @@ class BatteryController:
             if self.notifier is not None:
                 self.notifier.notify("cmd:battery", "Husbatteri-kommando fejlede", f"Kunne ikke skifte husbatteriet til {mode}: {err}")
 
-    HOLD_DISCHARGE_W = 250  # discharging more than this while on hold = the inverter is not holding
-    HOLD_GRACE_S = 120  # give the inverter this long to obey a hold command
-    HOLD_RETRY_S = 300  # re-send hold this often while the battery keeps discharging
+    MISMATCH_W = 250  # discharging (hold) or importing (normal) more than this = the inverter is not doing what we asked
+    MISMATCH_GRACE_S = 120  # give the inverter this long to obey a command
+    MISMATCH_RETRY_S = 300  # re-send this often while the mismatch persists
 
-    async def _verify_hold(self, ctx: Context, cfg: dict[str, Any], mode: str) -> None:
-        """Hold is active but the battery still discharges (e.g. discharge re-enabled by hand on the inverter):
-        send the hold command again after a grace period, and keep doing so every few minutes."""
+    async def _verify_inverter(self, ctx: Context, cfg: dict[str, Any], mode: str) -> None:
+        """The inverter does not do what the active mode says (someone changed it by hand, or a command was lost):
+        after a grace period the relevant command is sent again, and again every few minutes.
+
+        hold:   the battery still discharges more than MISMATCH_W  -> send hold start again
+        normal: the house buys more than MISMATCH_W from the grid while the battery (well above its reserve)
+                does not discharge                                   -> send hold stop again (re-enable discharge)
+        """
         rt = self.runtime
-        if mode != "hold" or not cfg["hold_start_entity"] or ctx.battery_w is None or ctx.battery_w > -self.HOLD_DISCHARGE_W:
-            rt["discharging_since"] = None
+        mismatch: str | None = None
+        action: tuple[str, str] | None = None
+        if cfg["hold_start_entity"] and ctx.battery_w is not None:
+            if mode == "hold" and ctx.battery_w < -self.MISMATCH_W:
+                mismatch = f"Batteriet aflader {round(-ctx.battery_w)} W, selvom det skal holdes"
+                action = ("hold", "start")
+            elif (
+                mode == "normal"
+                and ctx.grid_w is not None
+                and ctx.grid_w > self.MISMATCH_W
+                and ctx.battery_w > -50
+                and ctx.battery_soc is not None
+                and ctx.battery_soc > cfg["min_soc"] + 5
+            ):
+                mismatch = f"Batteriet aflader ikke, selvom huset køber {round(ctx.grid_w)} W fra nettet"
+                action = ("hold", "stop")
+        if mismatch is None or action is None:
+            rt["mismatch_since"] = None
+            rt["mismatch"] = None
             return
-        since = rt.get("discharging_since")
+        since = rt.get("mismatch_since")
         if since is None:
-            rt["discharging_since"] = since = ctx.now.isoformat()
-        if (ctx.now - datetime.fromisoformat(since)).total_seconds() < self.HOLD_GRACE_S:
+            rt["mismatch_since"] = since = ctx.now.isoformat()
+        if (ctx.now - datetime.fromisoformat(since)).total_seconds() < self.MISMATCH_GRACE_S:
             return
-        if self._hold_retry_at is not None and (ctx.now - self._hold_retry_at).total_seconds() < self.HOLD_RETRY_S:
+        rt["mismatch"] = mismatch + " – kommandoen gensendes"
+        if self._retry_at is not None and (ctx.now - self._retry_at).total_seconds() < self.MISMATCH_RETRY_S:
             return
-        self._hold_retry_at = ctx.now
-        discharge_w = round(-ctx.battery_w)
-        _LOGGER.warning("Battery: hold is active but the battery discharges %s W - sending hold again", discharge_w)
-        await self._run(cfg, "hold", "start", f"Hold gensendes – batteriet aflader stadig {discharge_w} W")
-        rt["last_action"] = {"at": ctx.now.isoformat(), "mode": "hold", "ok": True, "sent": ["hold:start"]}
+        self._retry_at = ctx.now
+        label = "Hold" if action[1] == "start" else "Normal"
+        _LOGGER.warning("Battery: %s - sending %s again", mismatch, label.lower())
+        await self._run(cfg, action[0], action[1], f"{label} gensendes – {mismatch[0].lower()}{mismatch[1:]}")
+        rt["last_action"] = {"at": ctx.now.isoformat(), "mode": mode, "ok": True, "sent": [f"{action[0]}:{action[1]}"]}
 
     async def _run(self, cfg: dict[str, Any], mode: str, action: str, reason: str = "") -> bool:
         start = cfg[f"{mode}_start_entity"]

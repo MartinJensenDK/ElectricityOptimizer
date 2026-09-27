@@ -958,3 +958,70 @@ async def test_battery_runtime_flags_unheld_grid_charging(hass: HomeAssistant, h
     await _ws(hass, client, 6, {"type": f"{DOMAIN}/rules/save", "rules": {"hold_battery_while_ev_grid_charging": False}})
     res = await _ws(hass, client, 7, {"type": f"{DOMAIN}/battery/get"})
     assert res["runtime"]["ev_grid_hold_wanted"] is False
+
+
+async def test_normal_is_resent_when_the_battery_does_not_discharge(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """Normal mode, but discharge was disabled by hand on the inverter: the house imports while a well-charged
+    battery sits idle. After a grace period "hold: stop" is sent again (and again every few minutes)."""
+    _set_prices(hass)  # flat prices -> normal
+    hass.states.async_set("sensor.bat_soc", "93")
+    hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.grid", "1200", {"unit_of_measurement": "W"})
+    select = async_mock_service(hass, "select", "select_option")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {
+        "soc_entity": "sensor.bat_soc", "power_entity": "sensor.bat_power", "grid_power_entity": "sensor.grid",
+        "hold_start_entity": "select.mode", "hold_start_value": "Hold",
+        "hold_stop_entity": "select.mode", "hold_stop_value": "Self-use",
+    }})
+    assert res["runtime"]["mode"] == "normal"
+    stops = lambda: [c.data["option"] for c in select].count("Self-use")  # noqa: E731
+    assert stops() == 1  # first run: hold stopped once to get a known state
+
+    freezer.tick(timedelta(seconds=60))
+    await _ws(hass, client, 2, {"type": f"{DOMAIN}/evaluate"})
+    assert stops() == 1  # grace period
+    freezer.tick(timedelta(seconds=120))
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/evaluate"})
+    assert stops() == 2 and "aflader ikke" in res["runtime"]["mismatch"]
+    freezer.tick(timedelta(seconds=60))
+    await _ws(hass, client, 4, {"type": f"{DOMAIN}/evaluate"})
+    assert stops() == 2
+    freezer.tick(timedelta(seconds=300))
+    await _ws(hass, client, 5, {"type": f"{DOMAIN}/evaluate"})
+    assert stops() == 3
+
+    hass.states.async_set("sensor.bat_power", "-1100", {"unit_of_measurement": "W"})  # the battery discharges again
+    hass.states.async_set("sensor.grid", "100", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=600))
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/evaluate"})
+    assert stops() == 3 and res["runtime"]["mismatch"] is None
+
+    # a low battery that does not discharge is not a mismatch
+    hass.states.async_set("sensor.bat_soc", "12")
+    hass.states.async_set("sensor.bat_power", "0", {"unit_of_measurement": "W"})
+    hass.states.async_set("sensor.grid", "1200", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=600))
+    await _ws(hass, client, 7, {"type": f"{DOMAIN}/evaluate"})
+    freezer.tick(timedelta(seconds=600))
+    res = await _ws(hass, client, 8, {"type": f"{DOMAIN}/evaluate"})
+    assert stops() == 3 and res["runtime"]["mismatch"] is None
+
+
+async def test_enabling_smart_control_resends_commands(hass: HomeAssistant, hass_ws_client) -> None:
+    """Smart styring off -> on: the inverter may have been changed by hand meanwhile, so the mode is sent afresh."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.bat_soc", "60")
+    select = async_mock_service(hass, "select", "select_option")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/battery/save", "battery": {
+        "soc_entity": "sensor.bat_soc",
+        "hold_start_entity": "select.mode", "hold_start_value": "Hold",
+        "hold_stop_entity": "select.mode", "hold_stop_value": "Self-use",
+    }})
+    assert [c.data["option"] for c in select] == ["Self-use"]
+    await _ws(hass, client, 2, {"type": f"{DOMAIN}/battery/save", "battery": {"enabled": False}})
+    await _ws(hass, client, 3, {"type": f"{DOMAIN}/battery/save", "battery": {"enabled": True}})
+    assert [c.data["option"] for c in select] == ["Self-use", "Self-use"]

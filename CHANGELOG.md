@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.39.4
+
+- Husbatteriet: står tilstanden på "Normal", men batteriet aflader ikke, selvom huset køber mere end 250 W fra nettet og batteriet er mere end 5 % over reserven (afladning slået fra på inverteren), gensendes "hold: stop" efter 2 minutter og derefter hvert 5. minut, så afladningen genaktiveres. Samme princip som gensendelsen af hold i 0.38.1. Kræver batteriets effekt-sensor og en net-sensor.
+- Når Smart styring slås til eller Manuel ændres, sendes kommandoerne igen første gang, da inverterens tilstand ikke er kendt efter en periode uden styring.
+- "Modus lige nu" og Status-cardet viser uoverensstemmelsen, fx "Batteriet aflader ikke, selvom huset køber 1.200 W fra nettet – kommandoen gensendes", i stedet for den generelle tekst.
+
 ## 0.39.3
 
 - Forsiden: de små kort viser nu deres to tekster under hinanden i stedet for adskilt af "·": Forbrug (husforbrug / elbil), Hus batteri (kWh / reserve), Elbiler (mål / status, både med én og flere biler) og Selvforsyning (i dag / lige nu). Selvforsynings-kortets forklaring (egen strøm / fra nettet) er flyttet op i hjørnerne, så den ikke længere ligger oven i teksten.

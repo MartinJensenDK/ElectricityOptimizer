@@ -186,7 +186,8 @@ async def ws_battery_save(hass: HomeAssistant, connection: websocket_api.ActiveC
         return
     entity_keys = [k for k in candidate if k.endswith("_entity") or k.endswith("_value")]
     old = bat["store"].battery or {}
-    if any(candidate.get(k) != old.get(k) for k in entity_keys):
+    if any(candidate.get(k) != old.get(k) for k in entity_keys + ["enabled", "override"]):
+        # new commands, Smart styring switched on/off or a manual override: the inverter's state is no longer known
         bat["controller"].reset()
     await bat["store"].async_update(msg["battery"])
     await _optimizer(hass).async_evaluate()
