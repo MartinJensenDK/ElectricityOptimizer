@@ -431,8 +431,12 @@ class EvController:
             rt[key] = None
 
     @staticmethod
-    def _debounced(rt: dict[str, Any], key: str, condition: bool, active: bool, window_s: float, now: datetime) -> bool:
-        """Start once `condition` has held for window_s; while active, stop once it has failed for window_s."""
+    def _debounced(
+        rt: dict[str, Any], key: str, condition: bool, active: bool, window_s: float, now: datetime, stop_window_s: float | None = None
+    ) -> bool:
+        """Start once `condition` has held for window_s; while active, stop once it has failed for stop_window_s."""
+        if stop_window_s is None:
+            stop_window_s = window_s
         above, below = f"{key}_above_since", f"{key}_below_since"
         if condition:
             rt[below] = None
@@ -448,7 +452,7 @@ class EvController:
         since = rt.get(below)
         if since is None:
             rt[below] = since = now.isoformat()
-        return (now - datetime.fromisoformat(since)).total_seconds() < window_s
+        return (now - datetime.fromisoformat(since)).total_seconds() < stop_window_s
 
     @staticmethod
     def _solar_priority(ctx: Context, car_soc: float | None) -> tuple[str, str | None]:
@@ -493,14 +497,17 @@ class EvController:
 
         now = ctx.now
         window_s = rules["solar_min_minutes"] * 60
+        stop_window_s = rules.get("solar_stop_minutes", rules["solar_min_minutes"]) * 60
         currently_solar = rt.get("mode") == "solar" and self._last_cmd.get(car["id"], False)
         min_w = rules.get("solar_min_w")
+        stop_w = rules.get("solar_stop_w") or min_w  # stop rule: below this production the car stops
         if min_w:
             if ctx.solar_w is None:
                 rt["status"] = "no_solar_sensor"
                 return False, car["max_amps"]
             rt["solar_w"] = round(ctx.solar_w)
-            if not self._debounced(rt, "prod", ctx.solar_w >= min_w, currently_solar, window_s, now):
+            limit_w = stop_w if currently_solar else min_w
+            if not self._debounced(rt, "prod", ctx.solar_w >= limit_w, currently_solar, window_s, now, stop_window_s):
                 rt["status"] = "solar_low"
                 rt["solar_above_since"] = rt["solar_below_since"] = None
                 return False, car["max_amps"]
@@ -548,7 +555,7 @@ class EvController:
             rt["status"] = "solar_min"
             return True, amps
 
-        if not self._debounced(rt, "solar", available >= need_w, currently_solar, window_s, now):
+        if not self._debounced(rt, "solar", available >= need_w, currently_solar, window_s, now, stop_window_s):
             rt["status"] = "solar_wait"
             return False, car["max_amps"]
         amps = int(available // per_amp) if modulating else car["max_amps"]

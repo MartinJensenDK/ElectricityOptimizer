@@ -111,7 +111,9 @@ RULES_DEFAULTS = {
     "max_total_amps": None,  # main fuse, per phase
     "hold_battery_while_ev_grid_charging": True,
     "solar_min_w": None,  # EV solar charging requires production >= this (None = off)
-    "solar_min_minutes": 2,  # how long production/surplus must be above (start) or below (stop)
+    "solar_min_minutes": 2,  # start: how long production/surplus must be above the limit
+    "solar_stop_w": None,  # stop: production below this ends solar charging (None = same as solar_min_w)
+    "solar_stop_minutes": 2,  # stop: how long production/surplus must be below the limit
     "amps_interval_seconds": 30,  # solar mode: the current limit is adjusted at most this often (and first after this delay)
     "notify_enabled": True,  # persistent notifications (events are always fired)
     "surplus_source": "grid",  # grid: export from the grid sensor | solar_house: solar production - house load

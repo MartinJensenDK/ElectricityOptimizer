@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.35.0";
+const PANEL_JS_VERSION = "0.36.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -166,7 +166,7 @@ const STYLE = `
   .badge {
     display: inline-block;
     padding: 2px 10px;
-    border-radius: 999px;
+    border-radius: 6px;
     font-size: 12px;
     font-weight: 500;
     color: #fff;
@@ -338,7 +338,6 @@ const STYLE = `
   .legend .l-charge::before { background: var(--success-color, #43a047); }
   .legend .l-normal::before { background: var(--secondary-background-color); border: 1px solid var(--divider-color); }
   .legend .l-est::before { background: var(--success-color, #43a047); opacity: 0.45; }
-  .badge.info { background: var(--info-color, #039be5); }
   .badge.wait { background: var(--primary-color, #03a9f4); }
   .seg { display: inline-flex; border: 1px solid var(--divider-color); border-radius: 8px; overflow: hidden; }
   .seg button { border: 0; border-right: 1px solid var(--divider-color); border-radius: 0; }
@@ -1893,11 +1892,16 @@ class ElectricityOptimizerPanel extends HTMLElement {
   }
 
   _solarConditionsText(rules) {
-    const conds = [];
-    if (rules.solar_min_w !== null) conds.push(`solcellerne har produceret mindst ${fmtNum(rules.solar_min_w, 0)} W i ${rules.solar_min_minutes} min`);
-    conds.push(`der har været overskud nok i ${rules.solar_min_minutes} min (stopper efter ${rules.solar_min_minutes} min uden)`);
+    const stopMin = rules.solar_stop_minutes === undefined || rules.solar_stop_minutes === null ? rules.solar_min_minutes : rules.solar_stop_minutes;
+    const stopW = rules.solar_stop_w === undefined || rules.solar_stop_w === null ? rules.solar_min_w : rules.solar_stop_w;
+    const start = [];
+    if (rules.solar_min_w !== null) start.push(`solcellerne har produceret mindst ${fmtNum(rules.solar_min_w, 0)} W i ${rules.solar_min_minutes} min`);
+    start.push(`der har været overskud nok i ${rules.solar_min_minutes} min`);
+    const stop = [];
+    if (stopW !== null && stopW !== undefined) stop.push(`produktionen har været under ${fmtNum(stopW, 0)} W i ${stopMin} min`);
+    stop.push(`overskuddet har manglet i ${stopMin} min`);
     const src = rules.surplus_source === "solar_house" ? "Overskud = solproduktion − husforbrug; ladestrømmen følger produktionen." : "Overskud = det, der sælges til nettet.";
-    return `Elbilen lader fra sol, når ${conds.join(", og ")}. ${src}`;
+    return `Elbilen starter fra sol, når ${start.join(", og ")}. Den stopper, når ${stop.join(", eller ")}. ${src}`;
   }
 
   async _setSolarPriority(first) {
@@ -1976,18 +1980,31 @@ class ElectricityOptimizerPanel extends HTMLElement {
               "Elnet-sensor: overskuddet er det, der sælges til nettet lige nu. Solproduktion − husforbrug: overskuddet er solcellernes produktion minus husets forbrug (minus det, husbatteriet lader med), så ladehastigheden følger produktionen direkte. Kræver solcelle-effekt under Konfigurer og en husforbrugs-sensor. I begge tilfælde trækkes det fra, som husbatteriet aflader med, så bilen ikke lader på batteriet."
             )}${sel("surplus_source", [["grid", "Elnet-sensor (eksport)"], ["solar_house", "Solproduktion − husforbrug"]])}</label>
           <label class="field">${head(
-              "Elbil-sol: sol ≥ (W)",
-              "Elbilen lader kun fra sol, når solcellerne producerer mindst dette i mindst det antal minutter, der står ved siden af. Falder produktionen under grænsen lige så længe, stopper bilen. Tom = kun overskuddet afgør det."
-            )}<input type="number" min="0" step="100" data-rfield="solar_min_w" value="${r.solar_min_w === null ? "" : r.solar_min_w}" placeholder="fra"></label>
-          <label class="field">${head(
-              "… i mindst (min)",
-              "Hvor længe produktionen og sol-overskuddet skal være over grænsen, før bilen starter, og under grænsen, før den stopper. Forhindrer tænd/sluk, når skyer passerer."
-            )}<input type="number" min="0" step="0.5" data-rfield="solar_min_minutes" value="${r.solar_min_minutes}"></label>
-          <label class="field">${head(
               "Ladestrøm hvert (sek)",
               "Ved solopladning sendes kun start-kommandoen, når bilen starter. Ladestrømmen (A) sendes første gang efter dette antal sekunder og justeres derefter højst så ofte, så laderen ikke bombarderes, når skyer passerer. Gælder kun biler med en strøm-entitet."
             )}<input type="number" min="5" step="5" data-rfield="amps_interval_seconds" value="${r.amps_interval_seconds}"></label>
-
+        </div>
+        <div class="rules-section">Sol-ladning: start</div>
+        <div class="rules-grid">
+          <label class="field">${head(
+              "Start: sol ≥ (W)",
+              "Elbilen starter kun fra sol, når solcellerne producerer mindst dette i mindst det antal minutter, der står ved siden af. Tom = kun overskuddet afgør starten."
+            )}<input type="number" min="0" step="100" data-rfield="solar_min_w" value="${r.solar_min_w === null ? "" : r.solar_min_w}" placeholder="fra"></label>
+          <label class="field">${head(
+              "… i mindst (min)",
+              "Hvor længe produktionen og sol-overskuddet skal være over grænsen, før bilen starter. Forhindrer, at bilen starter på et kort solglimt."
+            )}<input type="number" min="0" step="0.5" data-rfield="solar_min_minutes" value="${r.solar_min_minutes}"></label>
+        </div>
+        <div class="rules-section">Sol-ladning: stop</div>
+        <div class="rules-grid">
+          <label class="field">${head(
+              "Stop: sol < (W)",
+              "Mens bilen lader fra sol, stopper den, når solcellerne producerer under dette i mindst det antal minutter, der står ved siden af. Tom = samme grænse som start."
+            )}<input type="number" min="0" step="100" data-rfield="solar_stop_w" value="${r.solar_stop_w === null || r.solar_stop_w === undefined ? "" : r.solar_stop_w}" placeholder="som start"></label>
+          <label class="field">${head(
+              "… i mindst (min)",
+              "Hvor længe produktionen skal være under grænsen, eller sol-overskuddet mangle, før bilen stopper. Forhindrer stop, når en sky passerer."
+            )}<input type="number" min="0" step="0.5" data-rfield="solar_stop_minutes" value="${r.solar_stop_minutes === undefined ? r.solar_min_minutes : r.solar_stop_minutes}"></label>
         </div>
         <div class="rules-section">Elnet</div>
         <div class="rules-grid">
@@ -2724,7 +2741,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         const soc = e.soc_start !== null && e.soc_start !== undefined && e.soc_end !== null && e.soc_end !== undefined ? `${fmtNum(e.soc_start, 0)} → ${fmtNum(e.soc_end, 0)} %` : "–";
         return `<tr class="${e.running ? "running" : ""}">
           <td>${fmtDate(start)} ${fmtTime(start)}</td>
-          <td>${end ? `${fmtDate(end) === fmtDate(start) ? "" : fmtDate(end) + " "}${fmtTime(end)}` : '<span class="badge info">i gang</span>'}</td>
+          <td>${end ? `${fmtDate(end) === fmtDate(start) ? "" : fmtDate(end) + " "}${fmtTime(end)}` : '<span class="badge wait">i gang</span>'}</td>
           <td>${esc(e.name)}</td>
           <td>${src(e)}</td>
           <td class="num">${fmtNum(total, 2)}</td>
@@ -2853,7 +2870,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   static MODE_TEXT = {
     normal: ["Normal", "neutral", "Batteriet lader fra sol og forsyner huset"],
-    hold: ["Hold", "info", "Batteriet spares til dyrere timer senere"],
+    hold: ["Hold", "wait", "Batteriet spares til dyrere timer senere"],
     charge: ["Lader fra nettet", "low", "Strømmen er billig nu i forhold til senere"],
   };
 

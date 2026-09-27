@@ -61,7 +61,7 @@ async def test_solar_session_is_recorded_with_savings(hass: HomeAssistant, hass_
     async_mock_service(hass, "number", "set_value")
     await _setup(hass)
     client = await hass_ws_client(hass)
-    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0}})
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0, "solar_stop_minutes": 0, "solar_stop_minutes": 0}})
     res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": CAR})
     assert res["car"]["runtime"]["status"] == "solar"  # start alone; power counted at max amps until the limit is sent
 
@@ -150,7 +150,7 @@ async def test_command_failure_notifies_once(hass: HomeAssistant, hass_ws_client
     client = await hass_ws_client(hass)
     events = []
     hass.bus.async_listen(EVENT_NOTIFICATION, lambda e: events.append(e.data))
-    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0}})
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0, "solar_stop_minutes": 0, "solar_stop_minutes": 0}})
     res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": CAR})
     assert res["car"]["runtime"]["last_action"]["ok"] is False
     await _ws(hass, client, 3, {"type": f"{DOMAIN}/evaluate"})

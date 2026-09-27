@@ -303,6 +303,7 @@ class BatteryStore:
 
 RULES_NUMERIC = {
     "solar_min_minutes": float,
+    "solar_stop_minutes": float,
     "amps_interval_seconds": int,
     "solar_priority_under": int,
     "solar_priority_over": int,
@@ -310,6 +311,7 @@ RULES_NUMERIC = {
 }
 RULES_OPTIONAL_NUMERIC = {
     "solar_min_w": float,
+    "solar_stop_w": float,
     "max_total_amps": float,
 }
 
@@ -329,6 +331,9 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     if existing and "solar_min_minutes" not in existing:
         # migrate from the start/stop minute pair
         rules["solar_min_minutes"] = existing.get("solar_start_minutes", RULES_DEFAULTS["solar_min_minutes"])
+    if existing and "solar_stop_minutes" not in existing:
+        # the stop window is new: start with the same window as the start rule
+        rules["solar_stop_minutes"] = rules["solar_min_minutes"]
     if existing and "solar_priority_over" not in existing:
         # migrate the old "EV gets solar once the battery is above X %" threshold into the priority band
         old_limit = existing.get("battery_min_soc_for_ev_solar")
@@ -337,9 +342,9 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     for key in RULES_DEFAULTS:
         if key in raw:
             rules[key] = raw[key]
-    if "solar_min_minutes" not in raw and ("solar_start_minutes" in raw or "solar_stop_minutes" in raw):
-        rules["solar_min_minutes"] = raw.get("solar_start_minutes", raw.get("solar_stop_minutes"))
-    for key in ("solar_start_minutes", "solar_stop_minutes", "battery_min_soc_for_ev_solar"):
+    if "solar_min_minutes" not in raw and "solar_start_minutes" in raw:
+        rules["solar_min_minutes"] = raw["solar_start_minutes"]
+    for key in ("solar_start_minutes", "battery_min_soc_for_ev_solar"):  # legacy keys (solar_stop_minutes is a real rule again)
         rules.pop(key, None)
     for key, cast in RULES_NUMERIC.items():
         try:
@@ -352,6 +357,7 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     rules["notify_enabled"] = bool(rules["notify_enabled"])
     rules["battery_to_ev_above_limit"] = bool(rules["battery_to_ev_above_limit"])
     rules["solar_min_minutes"] = max(0.0, rules["solar_min_minutes"])
+    rules["solar_stop_minutes"] = max(0.0, rules["solar_stop_minutes"])
     rules["amps_interval_seconds"] = max(5, rules["amps_interval_seconds"])
     rules["solar_priority_under"] = 0
     rules["solar_priority_over"] = max(1, min(100, rules["solar_priority_over"]))

@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.36.0
+
+- Regler for opladning: Sol-ladning har nu separate start- og stopregler. "Sol-ladning: start" har de hidtidige felter (sol ≥ W i mindst X min). "Sol-ladning: stop" har de samme felter for stop: bilen stopper, når produktionen har været under grænsen (tom = samme som start) i det valgte antal minutter, eller overskuddet har manglet lige så længe.
+- Eksisterende opsætninger får samme stopvindue som startvinduet, så intet ændrer sig, før du justerer det.
+- Den blå cirkel er væk overalt: mærkaterne "Hold" og "i gang" (Historik > Ladeperioder) blev fejlagtigt tegnet som (i)-ikonets cirkel. De vises nu som blå bokse, og alle mærkater er kantede bokse i stedet for ovaler.
+
 ## 0.35.0
 
 - Historik, Sendte kommandoer: ny kolonne "Årsag" viser, hvorfor hver kommando blev sendt, fx "Sol-overskud 2.300 W", "Planlagt billig time", "Mål-SoC nået", "Lad nu (manuelt)" eller "Prisen er under dagens gennemsnit, og senere timer er dyrere". Hold musen over for hele teksten.
