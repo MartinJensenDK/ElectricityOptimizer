@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.39.1";
+const PANEL_JS_VERSION = "0.39.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -826,7 +826,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       ${this._renderLiveRow(this._renderStatusCard(d))}
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller orange for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
+        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d)}</div>
         <div class="legend">
           <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
@@ -1427,8 +1427,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     </svg>`;
   }
 
-  static EV_COLORS = ["#1e88e5", "#8e24aa", "#00acc1", "#f4511e", "#3949ab"];
-  static BATTERY_COLOR = "#fb8c00";
+  static EV_COLORS = ["#1e88e5", "#fb8c00", "#00acc1", "#f4511e", "#3949ab"];
+  static BATTERY_COLOR = "#8e24aa";
 
   /** Each enabled car's colour in the chart (plan bars, charging period and legend share it). */
   _carColors() {

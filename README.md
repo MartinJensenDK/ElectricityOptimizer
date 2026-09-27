@@ -7,7 +7,7 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
 
 - **Forsiden** – live-række med gauges for solproduktion, forbrug (husforbrug i blå + elbil-ladning i lilla), elnet og batteri-effekt samt batteri-ikoner for husbatteriet og hver elbil, der fyldes efter ladestanden, og selvforsyningsgrad i % for dagen (andelen lige nu som tekst under),
   prisgraf for i dag og i morgen med lodret nu-streg (prisen lige nu står i toppen), ladeperioder for
-  biler og husbatteri (farvet felt fra start til forventet slut, hver bil i sin egen farve og husbatteriet orange) og elbilernes planlagte ladetimer, billigste og dyreste timer fremover samt status for solceller,
+  biler og husbatteri (farvet felt fra start til forventet slut, hver bil i sin egen farve og husbatteriet lilla) og elbilernes planlagte ladetimer, billigste og dyreste timer fremover samt status for solceller,
   batteri og elbiler.
 - **Solceller** – produktion lige nu (og udnyttelse af kWp), produceret i dag mod prognosen,
   prognose for i dag/i morgen, solens højde og op-/nedgang samt dagens produktionskurve

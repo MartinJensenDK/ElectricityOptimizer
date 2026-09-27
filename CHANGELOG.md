@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.39.2
+
+- Prisgrafen på forsiden: husbatteriets ladeperiode er nu lilla i stedet for orange. Bil nr. 2 bruger derfor orange i stedet for lilla.
+
 ## 0.39.1
 
 - Prisgrafen på forsiden: søjler, der ligger inde i en ladeperiode, viser nu også prisen og tidsrummet, når man holder musen over dem. Ladeperiode-feltet fangede før musen. Ladeperioden (bil eller husbatteri, start og forventet slut) står nu som en ekstra linje i samme tooltip.
