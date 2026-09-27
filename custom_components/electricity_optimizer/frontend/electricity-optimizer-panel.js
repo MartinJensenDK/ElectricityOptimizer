@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.3";
+const PANEL_JS_VERSION = "0.41.4";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -260,7 +260,9 @@ const STYLE = `
   .status-row .t .d { font-size: 13px; color: var(--secondary-text-color); }
   .status-row .t .d .reason { font-size: 12px; opacity: 0.85; }
   .status-row.total-top { border-bottom: 1px solid var(--divider-color); padding-bottom: 8px; }
-  .status-row .badge.pct { min-width: 52px; box-sizing: border-box; text-align: center; font-variant-numeric: tabular-nums; }
+  .status-row .batt.mini { width: 72px; height: 30px; flex-shrink: 0; }
+  .status-row .batt.mini .bv { font-size: 14px; stroke-width: 3px; }
+  .status-row .batt.mini .bu { font-size: 9px; }
   .status-row.total-top .t .n { font-weight: 600; }
   .empty {
     padding: 32px 16px;
@@ -886,6 +888,21 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>`;
   }
 
+  /** Small battery illustration (for lists): fill = SoC in the car-battery colours, percentage inside. */
+  _renderMiniBattery(pct, aria = "") {
+    const K = ElectricityOptimizerPanel;
+    const p = pct === null || pct === undefined ? null : Math.max(0, Math.min(100, pct));
+    const x = 2, y = 3, w = 60, h = 24, pad = 3;
+    const inner = w - 2 * pad;
+    const fillW = p === null ? 0 : (inner * p) / 100;
+    return `<svg class="batt mini" viewBox="0 0 72 30" role="img" aria-label="${esc(aria)} ${p === null ? "ukendt" : `${fmtNum(p, 0)} %`}">
+      <rect class="body" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/>
+      <rect class="nub" x="${x + w + 1.5}" y="${y + h / 2 - 5}" width="5" height="10" rx="1.5"/>
+      ${fillW > 0 ? `<rect class="fill" style="fill:${K._carSocColor(p)}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="3"/>` : ""}
+      <text class="bv" x="${x + w / 2}" y="${y + h / 2 + 5}" text-anchor="middle">${p === null ? "–" : fmtNum(p, 0)}<tspan class="bu"> %</tspan></text>
+    </svg>`;
+  }
+
   /** Storage you own: total on top, then every enabled car and the house battery - "stored af capacity kWh" and the percentage. */
   _renderCapacityCard() {
     const items = [];
@@ -903,8 +920,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const row = (icon, name, stored, cap, cls = "") => {
       const pct = stored === null || cap <= 0 ? null : (stored / cap) * 100;
       const d = stored === null ? `ladestand ukendt · ${fmtNum(cap, 1)} kWh` : `${fmtNum(stored, 1)} af ${fmtNum(cap, 1)} kWh`;
-      const badge = pct === null ? `<span class="badge neutral pct">–</span>` : `<span class="badge pct ${pct <= 20 ? "high" : pct <= 40 ? "mid" : "low"}">${fmtNum(pct, 0)} %</span>`;
-      return `<div class="status-row ${cls}"><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div><div class="d">${esc(d)}</div></div>${badge}</div>`;
+      return `<div class="status-row ${cls}"><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div><div class="d">${esc(d)}</div></div>${this._renderMiniBattery(pct, name)}</div>`;
     };
     const rows = [];
     if (items.length) {

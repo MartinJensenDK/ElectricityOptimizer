@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.4
+
+- Kapaciteter: procent-mærkerne er erstattet af små batteri-ikoner, der fyldes efter ladestanden (rød ved eller under 20 %, orange ved eller under 40 %, ellers grøn), ligesom batteriet på Hus batteri-kortet.
+
 ## 0.41.3
 
 - Forsiden: måler-kortene (Solceller lige nu, Forbrug, Elnet, Batteri effekt, Hus batteri, Elbiler, Selvforsyning) er kvadratiske igen og har samme bredde som før Kapaciteter-kortet kom til. Kapaciteter og Status står nu under hinanden i kolonnen til højre.
