@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.2";
+const PANEL_JS_VERSION = "0.41.3";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -110,14 +110,13 @@ const STYLE = `
     margin-bottom: 12px;
   }
   .grid .card { margin-bottom: 0; }
-  .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); gap: 12px; margin-bottom: 12px; align-items: stretch; }
+  .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 12px; margin-bottom: 12px; align-items: start; }
   .top .card { margin-bottom: 0; }
   .side { display: grid; grid-template-columns: 1fr; gap: 12px; align-content: start; }
   .gauges { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-  @media (min-width: 1500px) {
-    .top { grid-template-columns: minmax(0, 1fr) minmax(540px, 620px); }
-    .side { grid-template-columns: 1fr 1fr; }
-  }
+  .gauges .card.kpi { aspect-ratio: 1 / 1; box-sizing: border-box; justify-content: space-evenly; }
+  .gauges .card.kpi .label { align-self: stretch; }
+  .gauges .gauge { max-width: 260px; }
   @media (max-width: 1100px) {
     .top { grid-template-columns: 1fr; }
     .side { grid-template-columns: 1fr 1fr; }
@@ -209,7 +208,8 @@ const STYLE = `
   .session { opacity: 0.22; pointer-events: none; }
   .session-edge { stroke-width: 1.5; pointer-events: none; }
   .session-edge.est { stroke-dasharray: 4 3; }
-  .session-label { font-size: 10px; font-weight: 600; pointer-events: none; }
+  .session-pill { pointer-events: none; }
+  .session-pill-text { font-size: 11px; font-weight: 600; fill: #fff; pointer-events: none; }
   .legend .l-session::before { background: var(--c); opacity: 0.45; }
   .form-section { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); margin: 16px 0 6px; display: flex; align-items: center; }
   .form-section:first-of-type { margin-top: 4px; }
@@ -1456,12 +1456,16 @@ class ElectricityOptimizerPanel extends HTMLElement {
         const title = `${se.name}: ${se.source === "solar" ? "lader fra sol" : "netopladning"} ${fmtTime(new Date(se.start))} – ${endTxt}${
           se.estimated ? " (forventet slut, ændrer sig med solproduktion og forbrug)" : ""
         }`;
-        const ly = padT + 12 + i * 12;
         const c = se.color;
+        // the period's label as a pill like the price on the now-marker, in the period's colour
+        const pw = label.length * 6.2 + 12;
+        const px = Math.min(W - padR - pw, Math.max(padL, x1));
+        const py = padT + 4 + i * 21;
         return `<rect class="session" fill="${c}" x="${x1.toFixed(1)}" y="${padT}" width="${w.toFixed(1)}" height="${innerH}" aria-label="${esc(title)}"></rect>
           <line class="session-edge" stroke="${c}" x1="${x1.toFixed(1)}" x2="${x1.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
           <line class="session-edge ${se.estimated ? "est" : ""}" stroke="${c}" x1="${x2.toFixed(1)}" x2="${x2.toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>
-          <text class="session-label" fill="${c}" x="${(Math.min(x1, W - padR - 90) + 3).toFixed(1)}" y="${ly}">${esc(label)}</text>`;
+          <rect class="session-pill" fill="${c}" x="${px.toFixed(1)}" y="${py}" width="${pw.toFixed(1)}" height="18" rx="9"/>
+          <text class="session-pill-text" x="${(px + pw / 2).toFixed(1)}" y="${py + 13}" text-anchor="middle">${esc(label)}</text>`;
       })
       .join("");
 

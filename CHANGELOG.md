@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.3
+
+- Forsiden: måler-kortene (Solceller lige nu, Forbrug, Elnet, Batteri effekt, Hus batteri, Elbiler, Selvforsyning) er kvadratiske igen og har samme bredde som før Kapaciteter-kortet kom til. Kapaciteter og Status står nu under hinanden i kolonnen til højre.
+- Prisgrafen: ladeperiodens navn og tidsrum vises nu som en farvet pille øverst i perioden, på samme måde som elprisen på nu-stregen.
+
 ## 0.41.2
 
 - Kapaciteter: Hus batteri står nu altid over elbilerne, og procent-mærkerne har samme bredde uanset antal cifre.
