@@ -720,3 +720,37 @@ async def test_ev_solar_separate_stop_rules(hass: HomeAssistant, hass_ws_client,
     hass.states.async_set("sensor.pv", "1.8", {"unit_of_measurement": "kW"})
     res = await _ws(hass, client, 7, {"type": f"{DOMAIN}/evaluate"})
     assert res["cars"][0]["runtime"]["status"] == "solar_low" and len(turn_on) == 1
+
+
+async def test_restart_does_not_interrupt_charging(hass: HomeAssistant, hass_ws_client, hass_storage, freezer) -> None:
+    """A car charging from solar keeps charging across a Home Assistant restart: no stop/start is sent."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.grid", "-6000", {"unit_of_measurement": "W"})
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    entry = await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_power_entity": "sensor.grid", "solar_min_minutes": 0, "solar_stop_minutes": 0}})
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": CAR})
+    assert res["car"]["runtime"]["status"] == "solar" and len(turn_on) == 1
+    starts, stops = len(turn_on), len(turn_off)
+
+    # "restart": unload and set the entry up again with the same storage
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert f"{DOMAIN}.runtime" in hass_storage
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/evaluate"})
+    rt = res["cars"][0]["runtime"]
+    assert rt["charging"] and rt["status"] == "solar"
+    assert len(turn_on) == starts and len(turn_off) == stops  # nothing re-sent
+
+    # the rules still apply after the restart: heavy import -> stop
+    hass.states.async_set("sensor.grid", "9000", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=60))
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/evaluate"})
+    assert res["cars"][0]["runtime"]["status"] == "solar_wait" and len(turn_off) == stops + 1

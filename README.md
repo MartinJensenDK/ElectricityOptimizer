@@ -171,6 +171,7 @@ custom_components/electricity_optimizer/
 ├── ev_controller.py       # ladeplan for elbiler
 ├── battery_controller.py  # modus-plan for husbatteri
 ├── optimizer.py           # samler regler, elbiler og batteri i én beregning
+├── runtime_state.py       # husker lade-tilstand på tværs af genstart
 ├── commands.py            # generiske start/stop-kommandoer (switch/button/script/select/number)
 ├── websocket.py           # API som panelet bruger
 ├── const.py

@@ -13,6 +13,7 @@ from homeassistant.util import dt as dt_util
 
 from .commands import async_run_command
 from .const import AMPS_CHANGE_MIN_SECONDS, GRID_VOLTAGE
+from .runtime_state import RuntimeStateStore
 from .storage import CarStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -227,8 +228,51 @@ class EvController:
         self._force_send: set[str] = set()  # cars whose next start/stop must be sent even if unchanged
         self._start_retry_at: dict[str, datetime] = {}
         self.notifier = None  # set by __init__
+        self.state: RuntimeStateStore | None = None  # set by __init__
         self._last_amps: dict[str, float] = {}
         self._last_amps_at: dict[str, datetime] = {}
+
+    # ---- persisted state (survives a Home Assistant restart)
+
+    def restore(self) -> None:
+        """Pick up where we left off: cars we were charging keep charging until the rules say otherwise."""
+        if self.state is None:
+            return
+        for cid, st in self.state.data.get("ev", {}).items():
+            if not st.get("charging"):
+                continue
+            self._last_cmd[cid] = True
+            rt = self.runtime.setdefault(cid, {})
+            rt["mode"] = st.get("mode")
+            rt["charging"] = True
+            rt["restored"] = True
+            if st.get("amps") is not None:
+                self._last_amps[cid] = st["amps"]
+            for key, target in (("since", self._charging_since), ("amps_at", self._last_amps_at)):
+                try:
+                    if st.get(key):
+                        target[cid] = datetime.fromisoformat(st[key])
+                except ValueError:
+                    pass
+            _LOGGER.info("Restored charging state for car %s (mode %s) after restart", cid, st.get("mode"))
+
+    def _persist(self, cid: str) -> None:
+        if self.state is None:
+            return
+        since = self._charging_since.get(cid)
+        amps_at = self._last_amps_at.get(cid)
+        self.state.data.setdefault("ev", {})[cid] = {
+            "charging": bool(self._last_cmd.get(cid, False)),
+            "mode": (self.runtime.get(cid) or {}).get("mode"),
+            "amps": self._last_amps.get(cid),
+            "since": since.isoformat() if since else None,
+            "amps_at": amps_at.isoformat() if amps_at else None,
+        }
+        self.state.save()
+
+    def _forget_state(self, cid: str) -> None:
+        if self.state is not None and self.state.data.get("ev", {}).pop(cid, None) is not None:
+            self.state.save()
 
     # ---- sensors
 
@@ -276,6 +320,7 @@ class EvController:
                 self._last_cmd.pop(cid, None)
                 self._last_amps.pop(cid, None)
                 self._last_amps_at.pop(cid, None)
+                self._forget_state(cid)
 
     async def _evaluate_car(self, ctx: Context, car: dict[str, Any]) -> None:
         now = ctx.now
@@ -617,6 +662,7 @@ class EvController:
             await async_run_command(self.hass, entity, str(amps), who=car["name"], action=f"ladestrøm {amps} A", reason=reason)
             self._last_amps[cid] = amps
             self._last_amps_at[cid] = ctx.now
+            self._persist(cid)
             _LOGGER.info("%s: set current limit to %s A", car["name"], amps)
         except HomeAssistantError as err:
             self.runtime[cid]["last_action"] = {"at": ctx.now.isoformat(), "action": "set_amps", "ok": False, "error": str(err)}
@@ -669,6 +715,7 @@ class EvController:
             else:
                 await self._deactivate(car, reason)
             self._last_cmd[cid] = desired
+            self._persist(cid)
             self.runtime[cid]["last_action"] = {"at": dt_util.now().isoformat(), "action": "start" if desired else "stop", "ok": True}
             _LOGGER.info("%s: sent %s", car["name"], "start" if desired else "stop")
             if self.notifier is not None:

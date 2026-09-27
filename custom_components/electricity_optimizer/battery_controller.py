@@ -12,6 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .commands import async_run_command
+from .runtime_state import RuntimeStateStore
 
 MODE_LABEL = {"normal": "normal", "hold": "hold", "charge": "lad fra net"}
 from .const import GRID_VOLTAGE
@@ -197,6 +198,21 @@ class BatteryController:
         self.runtime: dict[str, Any] = {}
         self._active: str | None = None  # last commanded mode
         self.notifier = None  # set by __init__
+        self.state: RuntimeStateStore | None = None  # set by __init__
+
+    def restore(self) -> None:
+        """After a restart: trust the last commanded mode instead of stopping everything to resync."""
+        if self.state is None:
+            return
+        active = self.state.data.get("battery", {}).get("active")
+        if active in ("normal", "hold", "charge"):
+            self._active = active
+            _LOGGER.info("Restored battery mode %s after restart", active)
+
+    def _persist(self) -> None:
+        if self.state is not None:
+            self.state.data.setdefault("battery", {})["active"] = self._active
+            self.state.save()
 
     def _number(self, entity_id: str) -> float | None:
         if not entity_id:
@@ -362,6 +378,7 @@ class BatteryController:
         if mode in ("charge", "hold") and await self._run(cfg, mode, "start", reason):
             sent.append(f"{mode}:start")
         self._active = mode
+        self._persist()
         self.runtime["last_action"] = {
             "at": dt_util.now().isoformat(),
             "mode": mode,
@@ -374,3 +391,4 @@ class BatteryController:
     def reset(self) -> None:
         """Forget the last commanded mode (after config changes)."""
         self._active = None
+        self._persist()

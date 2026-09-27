@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.37.0
+
+- En genstart af Home Assistant (fx ved opdatering) afbryder ikke længere opladningen. Integrationen husker nu, hvilke biler den var i gang med at lade (og med hvilken ladestrøm) samt husbatteriets tilstand, og fortsætter efter genstarten uden at sende stop og start igen. Reglerne gælder stadig: er der fx ikke længere sol nok, stoppes der som normalt.
+
 ## 0.36.0
 
 - Regler for opladning: Sol-ladning har nu separate start- og stopregler. "Sol-ladning: start" har de hidtidige felter (sol ≥ W i mindst X min). "Sol-ladning: stop" har de samme felter for stop: bilen stopper, når produktionen har været under grænsen (tom = samme som start) i det valgte antal minutter, eller overskuddet har manglet lige så længe.
