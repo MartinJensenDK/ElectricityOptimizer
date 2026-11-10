@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.8";
+const PANEL_JS_VERSION = "0.41.9";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -844,7 +844,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       ${this._renderLiveRow(`<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}</div>`)}
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer. Morgendagens priser kommer ca. kl. 13.")}</h2>
+        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer (også når Smart opladning er slået fra). Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d)}</div>
         <div class="legend">
           <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
@@ -1542,7 +1542,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _carColors() {
     const map = new Map();
     for (const car of this._cars || []) {
-      if (car.enabled === false) continue;
       map.set(car.id, ElectricityOptimizerPanel.EV_COLORS[map.size % ElectricityOptimizerPanel.EV_COLORS.length]);
     }
     return map;
@@ -1573,7 +1572,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     for (const car of this._cars || []) {
       const rt = car.runtime || {};
       const plan = rt.plan && Array.isArray(rt.plan.plan) ? rt.plan.plan : null;
-      if (!plan || car.enabled === false) continue;
+      if (!plan) continue; // also with Smart opladning off: the plan still shows when charging would be
       const slots = [];
       for (const s of plan) {
         if (!s.chosen) continue;

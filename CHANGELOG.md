@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.9
+
+- Prisgrafen på forsiden viser nu elbilernes planlagte ladetimer (bjælkerne i bunden og "Ladeplan" i forklaringen), også når Smart opladning er slået fra. Planen beregnes stadig, der sendes blot ingen kommandoer.
+
 ## 0.41.8
 
 - Kapaciteter: elbilerne viser nu også mål-SoC (dagens mål fra ugeplanen) som en ekstra linje, fx "mål 80 % (60,0 kWh)", og som en stiplet streg i det lille batteri.
