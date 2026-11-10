@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.7
+
+- Kapaciteter: elbiler vises nu også, når Smart opladning er slået fra. Før blev bilen udeladt, så kortet kun viste husbatteriet.
+
 ## 0.41.6
 
 - Kapaciteter: batteri-ikonerne er gjort enklere og mere moderne: tynd kontur, afrundet fyld i ladestandens farve og procenten som tekst til højre for batteriet i stedet for inde i det.

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.6";
+const PANEL_JS_VERSION = "0.41.7";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -919,7 +919,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const b = this._battery;
     if (b) add("mdi:home-battery", "Hus batteri", b.capacity_kwh, this._readBatteryLive().soc);
     for (const car of this._cars || []) {
-      if (car.enabled === false) continue;
+      // every car counts, also with Smart opladning off - the battery is still yours
       add("mdi:car-electric", `${car.name || "Elbil"} batteri`, car.capacity_kwh, this._numState(car.soc_entity).value);
     }
     const row = (icon, name, stored, cap, cls = "") => {
@@ -938,7 +938,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:battery-high"></ha-icon>Kapaciteter${I("De lagringskapaciteter du ejer. Øverst den samlede kapacitet, derefter hver elbil (med Smart opladning slået til) og husbatteriet: hvor mange kWh der er lagret lige nu ud fra ladestanden, af batteristørrelsen fra indstillingerne, og ladestanden i procent.")}</h2>
+        <h2><ha-icon icon="mdi:battery-high"></ha-icon>Kapaciteter${I("De lagringskapaciteter du ejer. Øverst den samlede kapacitet, derefter husbatteriet og hver elbil (også med Smart opladning slået fra): hvor mange kWh der er lagret lige nu ud fra ladestanden, af batteristørrelsen fra indstillingerne, og ladestanden i procent.")}</h2>
         <div class="status-list">${rows.join("")}</div>
       </div>`;
   }
