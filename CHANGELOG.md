@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.41.8
+
+- Kapaciteter: elbilerne viser nu også mål-SoC (dagens mål fra ugeplanen) som en ekstra linje, fx "mål 80 % (60,0 kWh)", og som en stiplet streg i det lille batteri.
+
 ## 0.41.7
 
 - Kapaciteter: elbiler vises nu også, når Smart opladning er slået fra. Før blev bilen udeladt, så kortet kun viste husbatteriet.

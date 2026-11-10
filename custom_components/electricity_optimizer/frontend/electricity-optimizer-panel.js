@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.7";
+const PANEL_JS_VERSION = "0.41.8";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -265,6 +265,7 @@ const STYLE = `
   .cap-batt .mb-body { fill: none; stroke: var(--secondary-text-color); stroke-width: 1.25; opacity: 0.55; }
   .cap-batt .mb-nub { fill: var(--secondary-text-color); opacity: 0.55; }
   .cap-batt .mb-fill { transition: width 400ms; }
+  .cap-batt .mb-mark { stroke: var(--primary-text-color); stroke-width: 1.25; stroke-dasharray: 2 1.5; opacity: 0.7; }
   .cap-batt .mb-pct { font-size: 13px; font-weight: 500; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; color: var(--primary-text-color); }
   .status-row.total-top .t .n { font-weight: 600; }
   .empty {
@@ -892,17 +893,19 @@ class ElectricityOptimizerPanel extends HTMLElement {
   }
 
   /** Small, plain battery for lists: thin outline, rounded fill in the SoC colour, percentage to the right. */
-  _renderMiniBattery(pct, aria = "") {
+  _renderMiniBattery(pct, aria = "", marker = null) {
     const K = ElectricityOptimizerPanel;
     const p = pct === null || pct === undefined ? null : Math.max(0, Math.min(100, pct));
     const x = 1, y = 3, w = 46, h = 16, pad = 2.5, r = 4;
     const inner = w - 2 * pad;
     const fillW = p === null ? 0 : (inner * p) / 100;
-    return `<span class="cap-batt" role="img" aria-label="${esc(aria)} ${p === null ? "ukendt" : `${fmtNum(p, 0)} %`}">
+    const mX = marker !== null && marker !== undefined && marker > 0 && marker < 100 ? x + pad + (inner * marker) / 100 : null;
+    return `<span class="cap-batt" role="img" aria-label="${esc(aria)} ${p === null ? "ukendt" : `${fmtNum(p, 0)} %`}${mX !== null ? `, mål ${fmtNum(marker, 0)} %` : ""}">
       <svg viewBox="0 0 56 22">
         <rect class="mb-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/>
         <rect class="mb-nub" x="${x + w + 1.5}" y="${y + h / 2 - 3}" width="2.5" height="6" rx="1.25"/>
         ${fillW > 0 ? `<rect class="mb-fill" style="fill:${K._carSocColor(p)}" x="${x + pad}" y="${y + pad}" width="${fillW.toFixed(1)}" height="${h - 2 * pad}" rx="${r - 1.5}"/>` : ""}
+        ${mX !== null ? `<line class="mb-mark" x1="${mX.toFixed(1)}" x2="${mX.toFixed(1)}" y1="${y + 1}" y2="${y + h - 1}"/>` : ""}
       </svg>
       <span class="mb-pct">${p === null ? "–" : `${fmtNum(p, 0)} %`}</span>
     </span>`;
@@ -911,34 +914,37 @@ class ElectricityOptimizerPanel extends HTMLElement {
   /** Storage you own: total on top, then every enabled car and the house battery - "stored af capacity kWh" and the percentage. */
   _renderCapacityCard() {
     const items = [];
-    const add = (icon, name, capacity, soc) => {
+    const add = (icon, name, capacity, soc, target = null) => {
       const cap = Number(capacity) || 0;
       const stored = soc === null || soc === undefined ? null : (cap * Math.max(0, Math.min(100, soc))) / 100;
-      items.push({ icon, name, cap, stored });
+      items.push({ icon, name, cap, stored, target });
     };
     const b = this._battery;
     if (b) add("mdi:home-battery", "Hus batteri", b.capacity_kwh, this._readBatteryLive().soc);
     for (const car of this._cars || []) {
       // every car counts, also with Smart opladning off - the battery is still yours
-      add("mdi:car-electric", `${car.name || "Elbil"} batteri`, car.capacity_kwh, this._numState(car.soc_entity).value);
+      const rt = car.runtime || {};
+      const target = Number(rt.plan && rt.plan.target_soc ? rt.plan.target_soc : car.target_soc) || null;
+      add("mdi:car-electric", `${car.name || "Elbil"} batteri`, car.capacity_kwh, this._numState(car.soc_entity).value, target);
     }
-    const row = (icon, name, stored, cap, cls = "") => {
+    const row = (icon, name, stored, cap, cls = "", target = null) => {
       const pct = stored === null || cap <= 0 ? null : (stored / cap) * 100;
-      const d = stored === null ? `ladestand ukendt · ${fmtNum(cap, 1)} kWh` : `${fmtNum(stored, 1)} af ${fmtNum(cap, 1)} kWh`;
-      return `<div class="status-row ${cls}"><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div><div class="d">${esc(d)}</div></div>${this._renderMiniBattery(pct, name)}</div>`;
+      const lines = [stored === null ? `ladestand ukendt · ${fmtNum(cap, 1)} kWh` : `${fmtNum(stored, 1)} af ${fmtNum(cap, 1)} kWh`];
+      if (target) lines.push(`mål ${fmtNum(target, 0)} % (${fmtNum((cap * target) / 100, 1)} kWh)`);
+      return `<div class="status-row ${cls}"><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div><div class="d">${lines.map(esc).join("<br>")}</div></div>${this._renderMiniBattery(pct, name, target)}</div>`;
     };
     const rows = [];
     if (items.length) {
       const totalCap = items.reduce((a, it) => a + it.cap, 0);
       const known = items.every((it) => it.stored !== null);
       rows.push(row("mdi:sigma", "Samlet kapacitet", known ? items.reduce((a, it) => a + it.stored, 0) : null, totalCap, "total-top"));
-      for (const it of items) rows.push(row(it.icon, it.name, it.stored, it.cap));
+      for (const it of items) rows.push(row(it.icon, it.name, it.stored, it.cap, "", it.target));
     } else {
       rows.push(`<div class="status-row"><ha-icon icon="mdi:battery-off-outline"></ha-icon><div class="t"><div class="n">Ingen lagring sat op</div><div class="d">Tilføj et husbatteri eller en elbil</div></div></div>`);
     }
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:battery-high"></ha-icon>Kapaciteter${I("De lagringskapaciteter du ejer. Øverst den samlede kapacitet, derefter husbatteriet og hver elbil (også med Smart opladning slået fra): hvor mange kWh der er lagret lige nu ud fra ladestanden, af batteristørrelsen fra indstillingerne, og ladestanden i procent.")}</h2>
+        <h2><ha-icon icon="mdi:battery-high"></ha-icon>Kapaciteter${I("De lagringskapaciteter du ejer. Øverst den samlede kapacitet, derefter husbatteriet og hver elbil (også med Smart opladning slået fra): hvor mange kWh der er lagret lige nu ud fra ladestanden, af batteristørrelsen fra indstillingerne, og ladestanden i procent. For elbiler vises også mål-SoC (fra ugeplanen for i dag) som tekst og som en streg i batteriet.")}</h2>
         <div class="status-list">${rows.join("")}</div>
       </div>`;
   }
