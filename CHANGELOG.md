@@ -2,6 +2,20 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.43.0
+
+- Nyt valg "Sammenhængende opladning" på hver elbil og "Sammenhængende netopladning" på husbatteriet. Slået til lægges netopladningen i én sammenhængende blok af timer (den billigste blok, der er lang nok) i stedet for i de billigste enkelttimer, så lader og inverter kun startes én gang. Valget sættes for hver bil og for husbatteriet for sig og er slået fra som standard.
+- En blok, der er gået i gang, køres færdig og flyttes ikke, selvom et andet tidsrum bliver billigere, efterhånden som behovet falder.
+- Elbil: findes der ingen sammenhængende blok, der er lang nok inden deadline, bruges de billigste enkelttimer alligevel, så bilen når så tæt på målet som muligt. Husbatteri: er der ikke en lang nok blok af timer, hvor netopladning kan betale sig, bruges den længste.
+
+## 0.42.0
+
+- Ny knap "Indstillinger" (tandhjul) øverst til højre på fanerne Solceller, Elbiler og Hus batteri. Den åbner et vindue, hvor alle fanens sensorer og kommando-entiteter vælges samlet og på samme måde på alle tre faner.
+- Solceller: solcelle-sensorerne (produktion nu, i dag, denne måned, prognose i dag/i morgen og installeret effekt) kan nu vælges direkte i panelet sammen med import/eksport-sensorerne. De kan stadig også ændres under Enheder og tjenester → Konfigurer.
+- Elbiler: hver bils SoC-, tilsluttet- og ladeeffekt-sensor, start/stop-kommandoer og laderens strøm-entitet samt net- og husforbrugs-sensoren til sol-overskud ligger nu under Indstillinger. "Rediger" på bilen har kun navn, kapacitet, faser, ladestrøm og kilde tilbage.
+- Hus batteri: batteriets sensorer og lad/hold-kommandoer ligger nu under Indstillinger. "Rediger" har kun kapacitet og effekter tilbage.
+- De små "Vælg sensorer"-knapper på Anlæg-kortet og i Regler for opladning er fjernet. Når en ny bil eller et nyt husbatteri oprettes, udfyldes sensorerne stadig i opret-formularen.
+
 ## 0.41.9
 
 - Prisgrafen på forsiden viser nu elbilernes planlagte ladetimer (bjælkerne i bunden og "Ladeplan" i forklaringen), også når Smart opladning er slået fra. Planen beregnes stadig, der sendes blot ingen kommandoer.

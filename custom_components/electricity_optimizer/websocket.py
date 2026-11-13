@@ -9,8 +9,25 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN
+from .const import (
+    CONF_SOLAR_ENERGY_MONTH_ENTITY,
+    CONF_SOLAR_ENERGY_TODAY_ENTITY,
+    CONF_SOLAR_FORECAST_TODAY_ENTITY,
+    CONF_SOLAR_FORECAST_TOMORROW_ENTITY,
+    CONF_SOLAR_PEAK_KW,
+    CONF_SOLAR_POWER_ENTITY,
+    DOMAIN,
+)
 from .storage import validate_car
+
+# solar sensors the panel's settings dialog may change (the same ones as the options flow)
+SOLAR_PANEL_ENTITY_KEYS = (
+    CONF_SOLAR_POWER_ENTITY,
+    CONF_SOLAR_ENERGY_TODAY_ENTITY,
+    CONF_SOLAR_ENERGY_MONTH_ENTITY,
+    CONF_SOLAR_FORECAST_TODAY_ENTITY,
+    CONF_SOLAR_FORECAST_TOMORROW_ENTITY,
+)
 
 
 def _runtime(hass: HomeAssistant) -> dict[str, Any]:
@@ -147,7 +164,51 @@ async def ws_command_test(hass: HomeAssistant, connection: websocket_api.ActiveC
     connection.send_result(msg["id"], {"ok": True})
 
 
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/solar/save", vol.Required("solar"): dict})
+@websocket_api.async_response
+async def ws_solar_save(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    """Save the solar sensors from the panel into the config entry's options.
+
+    An empty value clears the sensor. Changed options reload the entry (as the options flow does),
+    which registers the panel again with the new config.
+    """
+    from . import effective_config  # local import: __init__ imports this module
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(msg["id"], "not_configured", "Electricity Optimizer er ikke sat op")
+        return
+    entry = entries[0]
+    raw = msg["solar"]
+    options = dict(entry.options)
+    for key in SOLAR_PANEL_ENTITY_KEYS:
+        if key not in raw:
+            continue
+        value = str(raw[key] or "").strip()
+        if value and value.split(".")[0] != "sensor":
+            connection.send_error(msg["id"], "invalid_solar", f"{value} er ikke en sensor")
+            return
+        options[key] = value  # "" overrides a value from the initial setup
+    if CONF_SOLAR_PEAK_KW in raw:
+        peak = raw[CONF_SOLAR_PEAK_KW]
+        if peak in (None, ""):
+            options[CONF_SOLAR_PEAK_KW] = None
+        else:
+            try:
+                options[CONF_SOLAR_PEAK_KW] = float(str(peak).replace(",", "."))
+            except ValueError:
+                connection.send_error(msg["id"], "invalid_solar", "Installeret effekt skal være et tal")
+                return
+            if options[CONF_SOLAR_PEAK_KW] < 0:
+                connection.send_error(msg["id"], "invalid_solar", "Installeret effekt må ikke være negativ")
+                return
+    if options != dict(entry.options):
+        hass.config_entries.async_update_entry(entry, options=options)
+    connection.send_result(msg["id"], {"config": effective_config(entry)})
+
+
 def async_register(hass: HomeAssistant) -> None:
+    websocket_api.async_register_command(hass, ws_solar_save)
     websocket_api.async_register_command(hass, ws_command_test)
     websocket_api.async_register_command(hass, ws_history_list)
     websocket_api.async_register_command(hass, ws_cars_list)

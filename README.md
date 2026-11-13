@@ -34,7 +34,9 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
 4. Indstillinger → Enheder og tjenester → *Tilføj integration* → **Electricity Optimizer**.
 5. Vælg EnergiDataService-prissensoren og (valgfrit) dine solcelle-sensorer. Menupunktet dukker op i sidebaren.
 
-Sensorerne kan altid ændres under Indstillinger → Enheder og tjenester → Electricity Optimizer → **Konfigurer**.
+Solcelle-sensorerne kan altid ændres med knappen **Indstillinger** (tandhjulet) øverst til højre på Solceller-fanen, eller under Indstillinger → Enheder og tjenester → Electricity Optimizer → **Konfigurer** (her skiftes også prissensoren).
+
+Fanerne Solceller, Elbiler og Hus batteri har hver en **Indstillinger**-knap øverst til højre. Den åbner et vindue, hvor alle fanens sensorer og kommando-entiteter vælges samlet.
 
 ### Solcelle-sensorer
 
@@ -46,7 +48,7 @@ Sensorerne kan altid ændres under Indstillinger → Enheder og tjenester → El
 | Prognose i dag / i morgen | sensor i kWh | Solcast eller Forecast.Solar |
 | Installeret effekt | tal i kWp | 6,4 |
 
-Import og eksport af strøm (kWh) i dag og denne måned vælges direkte på Anlæg-kortet på Solceller-fanen med "Vælg sensorer" og vises der under "I dag" og "Denne måned". Samme sted kan du vælge en tænd/sluk-entitet for "Eksport tilladt"; så viser Status-kortet på Forsiden "Eksport aktiveret" eller "Eksport deaktiveret" ved Elnet.
+Import og eksport af strøm (kWh) i dag og denne måned vælges under Indstillinger på Solceller-fanen og vises på Anlæg-kortet under "I dag" og "Denne måned". Samme sted kan du vælge en tænd/sluk-entitet for "Eksport tilladt"; så viser Status-kortet på Forsiden "Eksport aktiveret" eller "Eksport deaktiveret" ved Elnet.
 
 ## Elbiler
 
@@ -66,6 +68,12 @@ Under fanen **Elbiler** tilføjer du en bil med:
 
 Pr. bil kan du løbende ændre **Smart opladning** til/fra, **prisgrænse** (lad altid under denne pris),
 **min./maks. ladestrøm** (A), **kilde** og trykke **Lad nu**.
+
+**Sammenhængende opladning** (pr. bil, slået fra som standard): slået til lægges netopladningen i én
+sammenhængende blok af timer – den billigste blok, der er lang nok til at nå mål-SoC inden deadline –
+i stedet for i de billigste enkelttimer, så laderen kun startes én gang. En blok, der er gået i gang,
+køres færdig. Findes der ingen blok, der er lang nok inden deadline, bruges de billigste enkelttimer
+alligevel. Valget gælder ikke solopladning og prisgrænsen.
 
 **Ugeplan**: på bilens kort (altid synlig) sættes for hver ugedag om bilen skal være klar, kilde,
 klokkeslæt og mål-SoC (rækken "Alle dage" sætter alle syv). På dage med *Kun sol* vælges der ingen
@@ -131,6 +139,11 @@ Modus pr. tidsrum:
   De billigste timer vælges, indtil batteriet kan fyldes.
 - **Normal**: alt andet – batteriet lader fra sol og forsyner huset.
 
+**Sammenhængende netopladning** (slået fra som standard, vælges uafhængigt af bilerne): slået til
+lægges netopladningen i én sammenhængende blok af timer i stedet for i de billigste enkelttimer. Er
+der ikke en lang nok blok af timer, hvor netopladning kan betale sig, bruges den længste. Kan
+ugeplanens mål-SoC ikke nås i én blok inden klokkeslættet, bruges de billigste enkelttimer alligevel.
+
 Kommandoer sendes kun ved skift af modus (stop på den gamle modus før start på den nye). Knapperne
 Auto / Normal / Hold nu / Lad fra net nu tilsidesætter planen, indtil Auto vælges igen.
 
@@ -195,6 +208,6 @@ når en bil skulle lade men ikke er tilsluttet, og når en kommando til bil elle
 under Regler for opladning. Hændelsen `electricity_optimizer_notification` (med `key`, `title` og `message`)
 sendes altid, så du kan bygge automationer, fx en besked til din telefon.
 
-Ved hver start-/stop-entitet i Rediger-formularen er der en Test-knap, der sender kommandoen med det samme og viser
+Ved hver start-/stop-entitet under Indstillinger (og i formularen, når en bil eller et husbatteri oprettes) er der en Test-knap, der sender kommandoen med det samme og viser
 resultatet. Under Indstillinger → Integrationer → Electricity Optimizer kan du hente diagnostik (konfiguration, regler, biler
 med status, husbatteri, seneste beregning, sensorernes tilstand og de seneste ladeperioder) til fejlsøgning.

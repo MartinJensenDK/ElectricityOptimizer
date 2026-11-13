@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
@@ -126,13 +127,82 @@ def next_deadline(now: datetime, car: dict[str, Any]) -> tuple[datetime | None, 
     return None, None
 
 
+def cheapest_window(
+    slots: list[Slot],
+    need_hours: float,
+    avail: Callable[[Slot], float],
+    start_at: datetime | None = None,
+) -> list[Slot] | None:
+    """The cheapest run of back-to-back slots that covers `need_hours`.
+
+    `slots` are the slots charging is allowed in, sorted by start; `avail` gives the usable hours of
+    a slot. Charging starts at the beginning of the run, so only the last slot may be used partly.
+    A run that begins at `start_at` wins whenever it covers the need: a block that has been started
+    is finished instead of being moved to a cheaper place as the need shrinks.
+    Returns None when no unbroken run is long enough.
+    """
+    best: list[Slot] | None = None
+    best_cost = 0.0
+    for i, first in enumerate(slots):
+        if avail(first) <= 0:
+            continue
+        got = cost = 0.0
+        j = i
+        while True:
+            use = min(avail(slots[j]), need_hours - got)
+            got += use
+            cost += use * slots[j].price
+            if got >= need_hours - 1e-9:
+                break
+            if j + 1 >= len(slots) or slots[j + 1].start != slots[j].end or avail(slots[j + 1]) <= 0:
+                j = -1
+                break
+            j += 1
+        if j < 0:
+            continue
+        if start_at is not None and first.start == start_at:
+            return slots[i : j + 1]
+        if best is None or cost < best_cost - 1e-9:
+            best, best_cost = slots[i : j + 1], cost
+    return best
+
+
+def longest_run(slots: list[Slot], avail: Callable[[Slot], float], start_at: datetime | None = None) -> list[Slot]:
+    """The run of back-to-back slots with the most usable hours (the cheapest of equally long ones).
+
+    Used when no run covers the whole need. A run that begins at `start_at` wins (see cheapest_window).
+    """
+    runs: list[list[Slot]] = []
+    for s in slots:
+        if avail(s) <= 0:
+            continue
+        if runs and runs[-1][-1].end == s.start:
+            runs[-1].append(s)
+        else:
+            runs.append([s])
+    if not runs:
+        return []
+    if start_at is not None:
+        for run in runs:
+            if run[0].start == start_at:
+                return run
+    return max(runs, key=lambda r: (round(sum(avail(s) for s in r), 6), -sum(s.price for s in r) / len(r)))
+
+
 def plan_car(
     now: datetime,
     slots: list[Slot],
     soc: float,
     car: dict[str, Any],
+    continue_now: bool = False,
 ) -> dict[str, Any]:
-    """Return the plan for one car: which slots to charge in, and whether to charge now."""
+    """Return the plan for one car: which slots to charge in, and whether to charge now.
+
+    With the car's `contiguous` option the plan is one unbroken block of hours (the cheapest block
+    that is long enough) instead of the cheapest single hours. `continue_now` tells that the car is
+    charging in such a block right now, so the block is finished rather than moved. When no unbroken
+    block before the deadline is long enough, the cheapest single hours are used after all.
+    """
     deadline, target = next_deadline(now, car)
     if deadline is None:
         target = car["target_soc"]
@@ -175,8 +245,15 @@ def plan_car(
         end = min(s.end, deadline)
         return max(0.0, (end - start).total_seconds() / 3600)
 
+    current = next((s for s in candidates if s.start <= now < s.end), None)
     chosen: list[Slot] = []
-    remaining = need_hours
+    contiguous = False
+    if car.get("contiguous") and need_hours > 0:
+        allowed = sorted((s for s in candidates if day_source(car, s.start) != "solar"), key=lambda s: s.start)
+        window = cheapest_window(allowed, need_hours, avail, current.start if continue_now and current else None)
+        if window is not None:
+            chosen, contiguous = window, True
+    remaining = 0.0 if contiguous else need_hours
     for s in sorted(candidates, key=lambda s: (s.price, s.start)):
         if remaining <= 0:
             break
@@ -188,7 +265,6 @@ def plan_car(
         chosen.append(s)
         remaining -= a
     chosen.sort(key=lambda s: s.start)
-    current = next((s for s in candidates if s.start <= now < s.end), None)
     charge_now_in_plan = current is not None and any(c.start == current.start for c in chosen)
     total_avail = sum(avail(s) for s in candidates if day_source(car, s.start) != "solar")
     next_slot = next((s for s in chosen if s.start > now), None)
@@ -202,6 +278,7 @@ def plan_car(
         "enough_time": total_avail >= need_hours,
         "current_price": current.price if current else None,
         "in_plan_now": charge_now_in_plan,
+        "contiguous": contiguous,  # the chosen slots are one unbroken block
         "next_start": next_slot.start.isoformat() if next_slot else None,
         "plan": [
             {
@@ -341,7 +418,9 @@ class EvController:
             rt["plan"] = None
             return
 
-        plan = plan_car(now, ctx.slots, soc, car) if ctx.slots else None
+        # a contiguous block that the car is charging in right now is finished, not moved (see plan_car)
+        in_block = bool(self._last_cmd.get(car["id"])) and rt.get("status") == "charging"
+        plan = plan_car(now, ctx.slots, soc, car, continue_now=in_block) if ctx.slots else None
         rt["plan"] = plan
         cid = car["id"]
         if not car["enabled"] and not car["charge_now"]:

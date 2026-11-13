@@ -190,3 +190,71 @@ async def test_options_flow_updates_panel_config(hass: HomeAssistant) -> None:
     panel = hass.data["frontend_panels"]["electricity-optimizer"]
     assert panel.config["solar_power_entity"] == "sensor.pv_power"
     assert panel.config["solar_peak_kw"] == 6.4
+
+
+async def test_websocket_solar_save_updates_options_and_panel(hass: HomeAssistant, hass_ws_client) -> None:
+    """The panel's settings dialog saves the solar sensors into the entry's options."""
+    _set_prices(hass, set())
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"price_entity": PRICE_ENTITY, "solar_power_entity": "sensor.old_pv", "solar_energy_today_entity": "sensor.pv_today"},
+        unique_id=DOMAIN,
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+
+    # only sensors are accepted
+    await client.send_json({"id": 1, "type": f"{DOMAIN}/solar/save", "solar": {"solar_power_entity": "switch.pv"}})
+    msg = await client.receive_json()
+    assert not msg["success"] and msg["error"]["code"] == "invalid_solar"
+    await client.send_json({"id": 2, "type": f"{DOMAIN}/solar/save", "solar": {"solar_peak_kw": "abc"}})
+    msg = await client.receive_json()
+    assert not msg["success"] and msg["error"]["code"] == "invalid_solar"
+    assert dict(entry.options) == {}
+
+    # change one sensor, clear another, set the peak power (comma as decimal sign); unknown keys are ignored
+    await client.send_json(
+        {
+            "id": 3,
+            "type": f"{DOMAIN}/solar/save",
+            "solar": {
+                "solar_power_entity": " sensor.new_pv ",
+                "solar_energy_today_entity": "",
+                "solar_forecast_today_entity": "sensor.fc_today",
+                "solar_peak_kw": "6,5",
+                "price_entity": "sensor.other",
+            },
+        }
+    )
+    msg = await client.receive_json()
+    assert msg["success"]
+    assert msg["result"]["config"] == {
+        "price_entity": PRICE_ENTITY,
+        "solar_power_entity": "sensor.new_pv",
+        "solar_forecast_today_entity": "sensor.fc_today",
+        "solar_peak_kw": 6.5,
+    }
+    await hass.async_block_till_done()  # the entry reloads
+
+    panel_config = hass.data["frontend_panels"]["electricity-optimizer"].config
+    assert panel_config["solar_power_entity"] == "sensor.new_pv"
+    assert "solar_energy_today_entity" not in panel_config  # cleared, although it was set during the initial setup
+    assert panel_config["solar_peak_kw"] == 6.5
+    assert hass.data[DOMAIN]["optimizer"].config["solar_forecast_today_entity"] == "sensor.fc_today"
+
+    # the rest of the API works after the reload, and an unchanged save does not reload again
+    client = await hass_ws_client(hass)
+    optimizer = hass.data[DOMAIN]["optimizer"]
+    await client.send_json({"id": 4, "type": f"{DOMAIN}/solar/save", "solar": {"solar_power_entity": "sensor.new_pv"}})
+    msg = await client.receive_json()
+    assert msg["success"] and msg["result"]["config"]["solar_power_entity"] == "sensor.new_pv"
+    await hass.async_block_till_done()
+    assert hass.data[DOMAIN]["optimizer"] is optimizer
+
+    # an empty peak power clears it
+    await client.send_json({"id": 5, "type": f"{DOMAIN}/solar/save", "solar": {"solar_peak_kw": ""}})
+    msg = await client.receive_json()
+    assert msg["success"] and "solar_peak_kw" not in msg["result"]["config"]
+    await hass.async_block_till_done()

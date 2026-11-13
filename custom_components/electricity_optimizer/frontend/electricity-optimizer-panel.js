@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.41.9";
+const PANEL_JS_VERSION = "0.43.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -292,7 +292,6 @@ const STYLE = `
   .now-line { stroke: var(--primary-text-color); stroke-width: 1; stroke-dasharray: 3 3; }
   .progress { height: 8px; border-radius: 4px; background: var(--secondary-background-color); overflow: hidden; margin-top: 6px; }
   .progress > div { height: 100%; background: var(--warning-color, #ffa600); border-radius: 4px; transition: width 300ms; }
-  .setup-link { color: var(--primary-color); text-decoration: none; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .row.between { justify-content: space-between; }
   button.btn {
@@ -411,6 +410,39 @@ const STYLE = `
     padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.4;
     box-shadow: 0 2px 8px rgba(0,0,0,0.25); pointer-events: none;
   }
+  .page-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .page-actions .hint { flex: 1 1 240px; margin-right: auto; }
+  .page-actions button.btn { display: inline-flex; align-items: center; gap: 6px; }
+  .page-actions button.btn ha-icon { --mdc-icon-size: 18px; }
+  button.btn.settings-btn ha-icon { color: var(--secondary-text-color); }
+  dialog.settings {
+    border: none; padding: 0; border-radius: 16px; overflow: hidden;
+    width: min(780px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
+    background: var(--card-background-color, var(--ha-card-background, #fff)); color: var(--primary-text-color);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35); font: inherit;
+  }
+  dialog.settings[open] { display: flex; flex-direction: column; }
+  dialog.settings::backdrop { background: rgba(0,0,0,0.5); }
+  .dlg-head { display: flex; align-items: center; gap: 10px; padding: 14px 12px 14px 20px; border-bottom: 1px solid var(--divider-color); }
+  .dlg-head ha-icon { --mdc-icon-size: 22px; color: var(--secondary-text-color); }
+  .dlg-head h2 { margin: 0; font-size: 18px; font-weight: 500; flex: 1; }
+  button.dlg-close {
+    display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0;
+    border: none; border-radius: 50%; background: none; color: var(--secondary-text-color); cursor: pointer; font-size: 18px;
+  }
+  button.dlg-close:hover, button.dlg-close:focus-visible { background: var(--secondary-background-color); color: var(--primary-text-color); outline: none; }
+  .dlg-body { padding: 4px 20px 24px; overflow: auto; flex: 1; min-height: 0; }
+  .dlg-body form + form { margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--divider-color); }
+  .dlg-foot { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--divider-color); }
+  .set-title { display: flex; align-items: center; gap: 8px; margin: 16px 0 4px; font-size: 15px; font-weight: 500; }
+  .set-title ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
+  .set-title + .hint { margin-bottom: 8px; }
+  @media (max-width: 600px) {
+    .dlg-body { padding: 4px 14px 20px; }
+    .form-grid .cmd-field { grid-column: auto; }
+    .cmd { grid-template-columns: 1fr 1fr; }
+    .cmd .picker { grid-column: span 2; }
+  }
   @media (max-width: 600px) {
     .content { padding: 12px; }
     .tab { font-size: 12px; padding: 10px 4px; }
@@ -450,8 +482,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._batteryError = null;
     this._rules = null;
     this._rulesStamp = 0;
-    this._editingRulesSensor = false;
-    this._editingGridEnergy = false;
     this._rulesError = null;
     this._editing = null; // null | {} (new) | car object being edited
     this._formError = null;
@@ -567,8 +597,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const liveKey = this._liveEntityIds
       .map((id) => (this._hass.states[id] ? this._hass.states[id].last_updated : "x"))
       .join(",");
-    if (this._editingRulesSensor && (this._tab === "ev" || this._tab === "battery") && !force) return;
-    if (this._editingGridEnergy && this._tab === "solar" && !force) return;
     const key = [
       liveKey,
       this._batteryStamp,
@@ -599,6 +627,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>
       <div class="tabs" role="tablist"></div>
       <div class="content"></div>
+      <dialog class="settings" aria-labelledby="dlg-title"></dialog>
       <div class="tip" hidden></div>
     `;
     this._tipEl = root.querySelector(".tip");
@@ -640,16 +669,37 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._menuButton.narrow = this._narrow;
     this._tabsEl = root.querySelector(".tabs");
     this._contentEl = root.querySelector(".content");
-    this._contentEl.addEventListener("click", (ev) => this._onContentClick(ev));
+    this._dialogEl = root.querySelector("dialog.settings");
     this._contentEl.addEventListener("change", (ev) => this._onContentChange(ev));
-    this._contentEl.addEventListener("input", (ev) => this._onContentInput(ev));
-    this._contentEl.addEventListener("focusin", (ev) => this._onContentInput(ev));
-    this._contentEl.addEventListener("mouseover", showTip);
-    this._contentEl.addEventListener("mousemove", moveTip);
-    this._contentEl.addEventListener("mouseout", hideTip);
-    this._contentEl.addEventListener("focusin", showTip);
-    this._contentEl.addEventListener("focusout", hideTip);
-    this._contentEl.addEventListener("scroll", () => (this._tipEl.hidden = true));
+    // the settings dialog has the same entity pickers, Test buttons and info tips as the page
+    for (const el of [this._contentEl, this._dialogEl]) {
+      el.addEventListener("click", (ev) => this._onContentClick(ev));
+      el.addEventListener("input", (ev) => this._onContentInput(ev));
+      el.addEventListener("focusin", (ev) => this._onContentInput(ev));
+      el.addEventListener("mouseover", showTip);
+      el.addEventListener("mousemove", moveTip);
+      el.addEventListener("mouseout", hideTip);
+      el.addEventListener("focusin", showTip);
+      el.addEventListener("focusout", hideTip);
+      el.addEventListener("scroll", () => (this._tipEl.hidden = true), true);
+      el.addEventListener("focusout", (ev) => {
+        const list = ev.target.closest && ev.target.closest(".picker") && ev.target.closest(".picker").querySelector(".picker-list");
+        if (list) setTimeout(() => (list.hidden = true), 150);
+      });
+    }
+    // a click on the backdrop closes the dialog (not a drag that merely ends there)
+    this._dialogEl.addEventListener("mousedown", (ev) => (this._dialogDownOnBackdrop = ev.target === this._dialogEl));
+    this._dialogEl.addEventListener("click", (ev) => {
+      if (ev.target === this._dialogEl && this._dialogDownOnBackdrop) this._dialogEl.close();
+    });
+    this._dialogEl.addEventListener("submit", (ev) => ev.preventDefault());
+    this._dialogEl.addEventListener("close", () => {
+      // the tip lives inside the open dialog (top layer); hand it back to the page
+      root.appendChild(this._tipEl);
+      this._tipEl.hidden = true;
+      this._dialogEl.innerHTML = "";
+      this._maybeRender(true);
+    });
     // drag & drop in the solar priority list (two rows: dropping on the other row swaps them)
     this._contentEl.addEventListener("dragstart", (ev) => {
       const li = ev.target.closest && ev.target.closest("[data-prio-item]");
@@ -690,10 +740,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
       items.splice(from, 1);
       items.splice(to, 0, dragged);
       this._setSolarPriority(items[0]);
-    });
-    this._contentEl.addEventListener("focusout", (ev) => {
-      const list = ev.target.closest && ev.target.closest(".picker") && ev.target.closest(".picker").querySelector(".picker-list");
-      if (list) setTimeout(() => (list.hidden = true), 150);
     });
     this._versionEl = root.querySelector(".version");
     this._tabsEl.innerHTML = TABS.map(
@@ -1087,7 +1133,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderSolarGauge(solar, solarW) {
     const K = ElectricityOptimizerPanel;
     const peak = solar.peakKw ? Math.max(500, solar.peakKw * 1000) : 10000;
-    const sub = solar.configured ? (solar.todayKwh !== null ? `${fmtNum(solar.todayKwh, 1)} kWh i dag` : "") : "Ingen sensor – se Konfigurer";
+    const sub = solar.configured ? (solar.todayKwh !== null ? `${fmtNum(solar.todayKwh, 1)} kWh i dag` : "") : "Ingen sensor – se Solceller";
     return this._renderGauge({
       value: solarW,
       min: 0,
@@ -1335,7 +1381,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="top">
       <div class="gauges">
         <div class="card kpi live">
-          <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu${I("Solcellernes produktion lige nu fra effekt-sensoren under Konfigurer. Skalaen går til anlæggets installerede effekt, eller 10 kW hvis den ikke er angivet.")}</div>
+          <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu${I("Solcellernes produktion lige nu fra effekt-sensoren under Indstillinger på Solceller-fanen. Skalaen går til anlæggets installerede effekt, eller 10 kW hvis den ikke er angivet.")}</div>
           ${this._renderSolarGauge(solar, solarW)}
         </div>
         <div class="card kpi live">
@@ -1705,12 +1751,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderSolar(s) {
     if (!s.configured) {
       return `
+        ${this._settingsButton()}
         <div class="card">
           <div class="empty">
             <ha-icon icon="mdi:solar-power-variant-outline"></ha-icon>
             <div>Der er ikke valgt nogen solcelle-sensorer endnu.</div>
-            <div style="margin-top:8px">Gå til <a class="setup-link" href="/config/integrations/integration/electricity_optimizer">Indstillinger → Enheder og tjenester → Electricity Optimizer → Konfigurer</a>
-              og vælg som minimum sensoren for produktion lige nu (W/kW) og produktion i dag (kWh).</div>
+            <div style="margin-top:8px">Tryk på Indstillinger og vælg som minimum sensoren for produktion lige nu (W/kW) og produktion i dag (kWh).</div>
+            <div style="margin-top:12px"><button class="btn primary" data-saction="open">Vælg sensorer</button></div>
           </div>
         </div>`;
     }
@@ -1726,9 +1773,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const producedKwh = s.history ? s.history.buckets.reduce((acc, b) => acc + b.v * (10 / 60), 0) : null;
 
     return `
+      ${this._settingsButton()}
       <div class="grid">
         <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:solar-power"></ha-icon>Produktion lige nu${I("Aktuel effekt fra solcelle-sensoren under Konfigurer. Procenten er udnyttelsen af den installerede effekt (kWp).")}</div>
+          <div class="label"><ha-icon icon="mdi:solar-power"></ha-icon>Produktion lige nu${I("Aktuel effekt fra solcelle-sensoren under Indstillinger. Procenten er udnyttelsen af den installerede effekt (kWp).")}</div>
           <div class="value">${fmtNum(s.powerKw === null ? null : Math.round(s.powerKw * 1000), 0)}<small>W</small></div>
           ${
             pct !== null
@@ -1769,7 +1817,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="grid">
         <div class="card">
-          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Produktion i dag og denne måned fra energi-sensorerne under Konfigurer, samt importeret og eksporteret strøm i dag og denne måned fra de valgfrie energi-sensorer (kWh), du vælger med 'Vælg sensorer' her på kortet.")}</h2>
+          <h2><ha-icon icon="mdi:information-outline"></ha-icon>Anlæg${I("Produktion i dag og denne måned samt importeret og eksporteret strøm i dag og denne måned. Alle sensorerne vælges under Indstillinger øverst på siden.")}</h2>
           <table>
             <tbody>
               <tr class="tsec"><td colspan="2">I dag</td></tr>
@@ -1782,7 +1830,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
               <tr><td>Eksporteret denne måned</td><td class="num">${s.exportMonthKwh !== null ? `${fmtNum(s.exportMonthKwh, 0)} kWh` : "–"}</td></tr>
             </tbody>
           </table>
-          ${this._renderGridEnergyForm()}
+          ${this._renderGridEnergyHint()}
         </div>
         ${this._renderSolarUsageCard()}
       </div>`;
@@ -1799,26 +1847,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return null;
   }
 
-  /** Import/export energy sensors: a "Vælg sensorer" button that opens two pickers, saved into the rules. */
-  _renderGridEnergyForm() {
+  /** Under the Anlæg table: a pointer to the settings dialog while no import/export sensors are chosen. */
+  _renderGridEnergyHint() {
     const r = this._rules;
     if (!r) return "";
-    if (!this._editingGridEnergy) {
-      return `<div class="hint" style="margin-top:8px">${
-        r.grid_import_energy_entity || r.grid_export_energy_entity || r.grid_import_energy_month_entity || r.grid_export_energy_month_entity || r.grid_export_enabled_entity ? "Import/eksport fra de valgte sensorer." : "Vælg energi-sensorer (kWh) for import og eksport samt en tænd/sluk-entitet for, om eksport er tilladt."
-      } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-grid-energy">Vælg sensorer</button></div>`;
-    }
-    return `<form class="rules-form" style="margin-top:10px">
-      <div class="fields">
-        <label class="field"><span class="fl">Importeret i dag (kWh)${I("Energi-sensor med den strøm, der er købt fra nettet i dag (nulstilles dagligt). Vises kun her.")}</span><div class="picker"><input name="grid_import_energy_entity" data-domains="sensor" value="${esc(r.grid_import_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-        <label class="field"><span class="fl">Eksporteret i dag (kWh)${I("Energi-sensor med den strøm, der er solgt til nettet i dag (nulstilles dagligt). Vises kun her.")}</span><div class="picker"><input name="grid_export_energy_entity" data-domains="sensor" value="${esc(r.grid_export_energy_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-        <label class="field"><span class="fl">Importeret denne måned (kWh)${I("Energi-sensor med den strøm, der er købt fra nettet denne måned (fx en månedlig utility meter). Vises kun her.")}</span><div class="picker"><input name="grid_import_energy_month_entity" data-domains="sensor" value="${esc(r.grid_import_energy_month_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-        <label class="field"><span class="fl">Eksporteret denne måned (kWh)${I("Energi-sensor med den strøm, der er solgt til nettet denne måned (fx en månedlig utility meter). Vises kun her.")}</span><div class="picker"><input name="grid_export_energy_month_entity" data-domains="sensor" value="${esc(r.grid_export_energy_month_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-        <label class="field"><span class="fl">Eksport tilladt (tænd/sluk)${I("Entitet, der er tændt, når strøm må sendes til elnettet, fx inverterens 'feed-in'-kontakt eller en input_boolean. Status-kortet på Forsiden viser så 'Eksport aktiveret' eller 'Eksport deaktiveret' ved Elnet.")}</span><div class="picker"><input name="grid_export_enabled_entity" data-domains="switch,binary_sensor,input_boolean,sensor" value="${esc(r.grid_export_enabled_entity || "")}" placeholder="switch.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-      </div>
-      <div class="row" style="margin-top:10px"><button class="btn primary" type="submit" data-raction="save-grid-energy">Gem</button><button class="btn" type="button" data-raction="cancel-grid-energy">Annuller</button></div>
-      ${this._rulesError ? `<div class="err">${esc(this._rulesError)}</div>` : ""}
-    </form>`;
+    if (r.grid_import_energy_entity || r.grid_export_energy_entity || r.grid_import_energy_month_entity || r.grid_export_energy_month_entity) return "";
+    return `<div class="hint" style="margin-top:8px">Vælg energi-sensorer (kWh) for import og eksport under Indstillinger øverst på siden.</div>`;
   }
 
   _renderSolarUsageCard() {
@@ -1923,6 +1957,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const cars = res.cars || [];
       const json = JSON.stringify(cars);
       this._carsLoadedAt = Date.now();
+      if (this._carsLoadFailed) {
+        this._carsLoadFailed = false;
+        this._carsError = null;
+        this._carsJson = null; // render again without the error
+      }
       if (json !== this._carsJson) {
         this._cars = cars;
         this._carsJson = json;
@@ -1933,6 +1972,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       // eslint-disable-next-line no-console
       console.warn("electricity-optimizer: cars/list failed", err);
       this._cars = this._cars || [];
+      this._carsLoadFailed = true;
       this._carsError = err && err.message ? err.message : String(err);
     } finally {
       this._carsLoading = false;
@@ -1979,8 +2019,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
     try {
       const res = await this._hass.callWS({ type: "electricity_optimizer/rules/get" });
       this._rulesLoadedAt = Date.now();
+      if (this._rulesLoadFailed) {
+        this._rulesLoadFailed = false;
+        this._rulesError = null;
+      }
       this._applyRules(res);
     } catch (err) {
+      this._rulesLoadFailed = true;
       this._rulesError = err && err.message ? err.message : String(err);
     } finally {
       this._rulesLoading = false;
@@ -2054,24 +2099,15 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const gridLive = r.grid_power_entity ? this._numState(r.grid_power_entity) : { value: null };
     const sel = (key, opts) =>
       `<select data-rfield="${key}">${opts.map(([v, l]) => `<option value="${v}" ${r[key] === v ? "selected" : ""}>${l}</option>`).join("")}</select>`;
-    const sensorForm = this._editingRulesSensor
-      ? `<form class="rules-form" style="margin-top:10px">
-           <div class="fields">
-             <label class="field"><span class="fl">Net import/eksport (W)${I("Sensor med effekt til og fra nettet. Bruges til at beregne sol-overskud til elbiler, når husbatteriet ikke har sin egen net-sensor.")}</span><div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${esc(r.grid_power_entity)}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-             <label class="field"><span class="fl">Husforbrug (W)${I("Sensor med husets samlede forbrug. Bruges til sol-overskud, når beregningen er sat til solproduktion minus husforbrug, og husbatteriet ikke har sin egen husforbrugs-sensor.")}</span><div class="picker"><input name="house_power_entity" data-domains="sensor" value="${esc(r.house_power_entity || "")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-             <label class="field"><span class="fl">Fortegn${I("Om sensoren viser positive tal, når huset køber fra nettet, eller når huset sælger til nettet.")}</span><select name="grid_sign"><option value="import_positive" ${r.grid_sign === "import_positive" ? "selected" : ""}>Positiv = køber</option><option value="export_positive" ${r.grid_sign === "export_positive" ? "selected" : ""}>Positiv = sælger</option></select></label>
-           </div>
-           <div class="row" style="margin-top:10px"><button class="btn primary" type="submit" data-raction="save-sensor">Gem</button><button class="btn" type="button" data-raction="cancel-sensor">Annuller</button></div>
-         </form>`
-      : `<div class="hint" style="margin-top:8px">${
-          r.surplus_source === "solar_house"
-            ? `Sol-overskud = solproduktion (Konfigurer) − husforbrug: ${
-                r.house_power_entity ? `<code>${esc(r.house_power_entity)}</code>` : "bruger husbatteriets husforbrugs-sensor"
-              }`
-            : `Net-sensor til sol-overskud: ${
-                r.grid_power_entity ? `<code>${esc(r.grid_power_entity)}</code>${gridLive.value !== null ? ` (${fmtNum(gridLive.value, 0)} W)` : ""}` : "bruger husbatteriets net-sensor"
-              }`
-        } <button class="btn" style="padding:4px 10px;font-size:12px;margin-left:6px" data-raction="edit-sensor">Vælg sensorer</button></div>`;
+    const sensorForm = `<div class="hint" style="margin-top:8px">${
+      r.surplus_source === "solar_house"
+        ? `Sol-overskud = solproduktion − husforbrug: ${
+            r.house_power_entity ? `<code>${esc(r.house_power_entity)}</code>` : "bruger husbatteriets husforbrugs-sensor"
+          }`
+        : `Net-sensor til sol-overskud: ${
+            r.grid_power_entity ? `<code>${esc(r.grid_power_entity)}</code>${gridLive.value !== null ? ` (${fmtNum(gridLive.value, 0)} W)` : ""}` : "bruger husbatteriets net-sensor"
+          }`
+    }. Sensorerne vælges under Indstillinger øverst på Elbiler-fanen.</div>`;
     const info = I;
     const head = (text, tip) => `<span class="fl">${text}${info(tip)}</span>`;
     const hasFuse = r.max_total_amps !== null && r.max_total_amps !== "" && Number(r.max_total_amps) > 0;
@@ -2189,37 +2225,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const action = btn.dataset.raction;
     if (action === "prio-swap") {
       await this._setSolarPriority(this._rules.solar_priority === "battery" ? "ev" : "battery");
-      return;
     }
-    try {
-      if (action === "edit-sensor") {
-        this._editingRulesSensor = true;
-      } else if (action === "cancel-sensor") {
-        this._editingRulesSensor = false;
-      } else if (action === "edit-grid-energy") {
-        this._editingGridEnergy = true;
-      } else if (action === "cancel-grid-energy") {
-        this._editingGridEnergy = false;
-      } else if (action === "save-grid-energy") {
-        ev.preventDefault();
-        const form = btn.closest("form");
-        const data = {};
-        for (const el of form.querySelectorAll("input[name]")) data[el.name] = el.value.trim();
-        await this._saveRules(data);
-        this._editingGridEnergy = false;
-      } else if (action === "save-sensor") {
-        ev.preventDefault();
-        const form = btn.closest("form");
-        const data = {};
-        for (const el of form.querySelectorAll("input[name],select[name]")) data[el.name] = el.value;
-        await this._saveRules(data);
-        this._editingRulesSensor = false;
-      }
-      this._rulesError = null;
-    } catch (err) {
-      this._rulesError = err && err.message ? err.message : String(err);
-    }
-    this._maybeRender(true);
   }
 
   /** One short reason line per car for the status bar (why it is or is not charging right now). */
@@ -2253,7 +2259,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       case "no_grid_sensor":
         return "Vælg sensorer under Regler for opladning";
       case "no_solar_sensor":
-        return "Vælg solcelle-effekt under Konfigurer";
+        return "Vælg solcelle-effekt under Indstillinger på Solceller-fanen";
       case "fuse_wait":
         return "Hovedsikringen er optaget";
       case "no_power":
@@ -2338,10 +2344,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
       body = `<div class="car-grid">${cars.map((c, i) => this._renderCarCard(c, i, cars.length)).join("")}</div>`;
     }
     return `
-      <div class="row between" style="margin-bottom:12px">
-        <div class="hint">Bilerne lades i de billigste tidsrum inden deadline. Kommandoer sendes til de valgte start/stop-entiteter.</div>
-        ${cars && cars.length ? '<button class="btn primary" data-action="add-car"><ha-icon icon="mdi:plus" style="--mdc-icon-size:18px"></ha-icon> Tilføj bil</button>' : ""}
-      </div>
+      ${this._settingsButton(
+        `<div class="hint">Bilerne lades i de billigste tidsrum inden deadline. Kommandoer sendes til de valgte start/stop-entiteter.</div>
+        ${cars && cars.length ? '<button class="btn primary" data-action="add-car"><ha-icon icon="mdi:plus" style="--mdc-icon-size:18px"></ha-icon> Tilføj bil</button>' : ""}`
+      )}
       ${this._carsError ? `<div class="err">${esc(this._carsError)}</div>` : ""}
       ${body}
       ${this._renderRulesCard()}`;
@@ -2410,7 +2416,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             })}
           </div>
           <div>
-            <div class="label"><ha-icon icon="mdi:ev-station"></ha-icon>Ladeeffekt${I("Bilens faktiske ladeeffekt lige nu fra ladeeffekt-sensoren (vælges under Rediger). Skalaen går til maks. ladestrøm × 230 V × antal faser.")}</div>
+            <div class="label"><ha-icon icon="mdi:ev-station"></ha-icon>Ladeeffekt${I("Bilens faktiske ladeeffekt lige nu fra ladeeffekt-sensoren (vælges under Indstillinger). Skalaen går til maks. ladestrøm × 230 V × antal faser.")}</div>
             ${this._renderCarPowerGauge(car, liveW)}
           </div>
         </div>
@@ -2421,6 +2427,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <label class="field"><span class="fl">Prisgrænse (kr/kWh)${I("Bilen lader altid, når prisen lige nu er under denne grænse, uanset planen. Tom = ingen prisgrænse.")}</span><input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
           <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til (må ikke være højere end maks.). Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
           <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
+          <label class="toggle"><input type="checkbox" data-field="contiguous" ${car.contiguous ? "checked" : ""}> Sammenhængende opladning${I("Til: netopladningen lægges i én sammenhængende blok af timer – den billigste blok, der er lang nok til at nå mål-SoC inden deadline – så laderen kun startes én gang. Fra: bilen lader i de billigste enkelttimer, også når de ligger spredt. Er der ingen sammenhængende blok, der er lang nok inden deadline, bruges de billigste enkelttimer alligevel. Gælder ikke solopladning og prisgrænsen.")}</label>
         </div>
         ${this._renderSchedule(car)}
         <div class="row" style="margin-top:12px">
@@ -2508,18 +2515,51 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="legend"><span class="l-normal">Ingen ladning</span><span class="l-charge">Planlagt ladning</span><span class="l-est">Estimat (pris ukendt)</span></div>`;
   }
 
+  static CAR_ERRORS = {
+    name_required: "Navn mangler.",
+    soc_required: "Vælg en SoC-sensor.",
+    start_stop_required: "Vælg både start- og stop-entitet.",
+    capacity_power_positive: "Kapacitet og ladestrøm skal være større end 0.",
+    min_amps_above_max: "Min. ladestrøm må ikke være højere end maks. ladestrøm.",
+    current_entity_number: "Strømgrænse-entiteten skal være en number- eller input_number-entitet.",
+    ready_by_invalid: "Ugyldigt klokkeslæt.",
+  };
+
+  static BATTERY_ERRORS = {
+    soc_required: "Vælg en SoC-sensor.",
+    capacity_power_positive: "Kapacitet og effekter skal være større end 0.",
+    charge_start_stop_both: "Angiv både start og stop for 'Lad fra nettet' (eller ingen af dem).",
+    hold_start_stop_both: "Angiv både start og stop for 'Hold' (eller ingen af dem).",
+  };
+
+  /** One entity field with the search-as-you-type picker. */
+  _pickerField(label, tip, name, domains, value, placeholder = "sensor.…") {
+    return `<label class="field"><span class="fl">${label}${I(tip)}</span><div class="picker"><input name="${name}" data-domains="${domains}" value="${esc(value === undefined || value === null ? "" : value)}" placeholder="${esc(placeholder)}" autocomplete="off"><div class="picker-list" hidden></div></div></label>`;
+  }
+
+  /** The car's own sensors. Shown in the settings dialog, and in the form only while a new car is added. */
+  _carSensorFields(car) {
+    return (
+      this._pickerField("SoC-sensor (%)", "Sensor med bilens ladestand i procent, typisk fra bilens egen integration. Uden den kan der ikke planlægges.", "soc_entity", "sensor", car.soc_entity) +
+      this._pickerField("Tilsluttet-sensor (valgfri)", "binary_sensor der er tændt, når bilen sidder i laderen. Uden den antages bilen altid tilsluttet.", "plugged_entity", "binary_sensor", car.plugged_entity, "binary_sensor.…") +
+      this._pickerField("Ladeeffekt-sensor (W, valgfri)", "Bilens eller laderens faktiske effekt. Vises live og bruges i sol-regnestykket, så bilens eget træk ikke tæller som husforbrug.", "power_entity", "sensor", car.power_entity, "sensor.… bilens/laderens effekt")
+    );
+  }
+
+  /** The charger's entities: start/stop commands and the current limit. */
+  _carChargerFields(car) {
+    const v = (k) => esc(car[k] === undefined || car[k] === null ? "" : car[k]);
+    return (
+      this._cmdFields("Start opladning", "start_entity", "start_value", v) +
+      this._pickerField("Laderens strøm-entitet (valgfri)", "number-entitet på laderen, som ladestrømmen i ampere sendes til. Ved solopladning sendes den først efter det interval, der er valgt under Regler, og justeres derefter løbende efter overskuddet. Uden den lades altid med maks. ladestrøm.", "current_entity", "number,input_number", car.current_entity, "number.… fx laderens 'charger current limit'") +
+      this._cmdFields("Stop opladning", "stop_entity", "stop_value", v)
+    );
+  }
+
   _renderCarForm(car) {
     const v = (k, d = "") => esc(car[k] === undefined || car[k] === null ? d : car[k]);
     const isNew = !car.id;
-    const errText = {
-      name_required: "Navn mangler.",
-      soc_required: "Vælg en SoC-sensor.",
-      start_stop_required: "Vælg både start- og stop-entitet.",
-      capacity_power_positive: "Kapacitet og ladestrøm skal være større end 0.",
-      min_amps_above_max: "Min. ladestrøm må ikke være højere end maks. ladestrøm.",
-      current_entity_number: "Strømgrænse-entiteten skal være en number- eller input_number-entitet.",
-      ready_by_invalid: "Ugyldigt klokkeslæt.",
-    };
+    const errText = ElectricityOptimizerPanel.CAR_ERRORS;
     return `
       <div class="card">
         <h2><ha-icon icon="mdi:car-electric"></ha-icon>${isNew ? "Tilføj bil" : `Rediger ${esc(car.name)}`}</h2>
@@ -2527,16 +2567,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="form-section">Bil</div>
           <div class="form-grid">
             <label class="field"><span class="fl">Navn${I("Vises på kortet, i statuslinjen og i prisdiagrammets forklaring.")}</span><input name="name" value="${v("name")}" placeholder="fx Tesla" required></label>
-            <label class="field"><span class="fl">SoC-sensor (%)${I("Sensor med bilens ladestand i procent, typisk fra bilens egen integration. Uden den kan der ikke planlægges.")}</span><div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
             <label class="field"><span class="fl">Batterikapacitet (kWh)${I("Bilens batteristørrelse. Bruges til at beregne, hvor mange kWh og timer der skal lades for at nå mål-SoC.")}</span><input name="capacity_kwh" type="number" step="0.1" min="1" value="${v("capacity_kwh", 60)}"></label>
-            <label class="field"><span class="fl">Tilsluttet-sensor (valgfri)${I("binary_sensor der er tændt, når bilen sidder i laderen. Uden den antages bilen altid tilsluttet.")}</span><div class="picker"><input name="plugged_entity" data-domains="binary_sensor" value="${v("plugged_entity")}" placeholder="binary_sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            ${isNew ? this._carSensorFields(car) : ""}
           </div>
           <div class="form-section">Lader</div>
           <div class="form-grid">
-            ${this._cmdFields("Start opladning", "start_entity", "start_value", v)}
-            ${this._cmdFields("Stop opladning", "stop_entity", "stop_value", v)}
-            <label class="field"><span class="fl">Laderens strøm-entitet (valgfri)${I("number-entitet på laderen, som ladestrømmen i ampere sendes til. Ved solopladning sendes den først efter det interval, der er valgt under Regler, og justeres derefter løbende efter overskuddet. Uden den lades altid med maks. ladestrøm.")}</span><div class="picker"><input name="current_entity" data-domains="number,input_number" value="${v("current_entity")}" placeholder="number.… fx laderens 'charger current limit'" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field"><span class="fl">Ladeeffekt-sensor (W, valgfri)${I("Bilens eller laderens faktiske effekt. Vises live og bruges i sol-regnestykket, så bilens eget træk ikke tæller som husforbrug.")}</span><div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… bilens/laderens effekt" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            ${isNew ? this._carChargerFields(car) : ""}
             <label class="field"><span class="fl">Faser${I("Antal faser laderen bruger. Effekt = ladestrøm × 230 V × faser.")}</span><select name="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
             <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til (må ikke være højere end maks.). Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input name="min_amps" type="number" step="1" min="1" max="64" value="${v("min_amps", 6)}"></label>
             <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input name="max_amps" type="number" step="1" min="1" max="64" value="${v("max_amps", 16)}"></label>
@@ -2547,7 +2583,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${isNew ? `<label class="field"><span class="fl">Klar senest (alle dage)${I("Startværdi for alle ugedage. Kan ændres pr. dag i ugeplanen bagefter.")}</span>${timeInput('name="ready_by"', car.ready_by || "07:00")}</label>
             <label class="field"><span class="fl">Mål-SoC % (alle dage)${I("Startværdi for alle ugedage. Kan ændres pr. dag i ugeplanen bagefter.")}</span><input name="target_soc" type="number" min="1" max="100" value="${v("target_soc", 80)}"></label>` : ""}
           </div>
-          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Maks. ladestrøm × 230 V × faser er effekten, planen regner med. Ved solopladning justeres strømgrænse-entiteten løbende mellem min. og maks. efter overskuddet; uden strømgrænse-entitet startes solopladning kun, når overskuddet dækker maks. ladestrøm. Ladeeffekt-sensoren bruges til at vise og regne med bilens faktiske forbrug.</div>
+          <div class="hint" style="margin-top:10px">${isNew ? `${ElectricityOptimizerPanel.CMD_HINT} ` : "Bilens sensorer og laderens kommandoer vælges under Indstillinger øverst på Elbiler-fanen. "}Maks. ladestrøm × 230 V × faser er effekten, planen regner med. Ved solopladning justeres strømgrænse-entiteten løbende mellem min. og maks. efter overskuddet; uden strømgrænse-entitet startes solopladning kun, når overskuddet dækker maks. ladestrøm. Ladeeffekt-sensoren bruges til at vise og regne med bilens faktiske forbrug.</div>
           ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}
           <div class="row" style="margin-top:14px">
             <button class="btn primary" type="submit" data-action="save-car">Gem</button>
@@ -2555,6 +2591,178 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </div>
         </form>
       </div>`;
+  }
+
+  /* ---------- settings dialog (entities for the solar, EV and battery tabs) ---------- */
+
+  /** The page's top row: optional content to the left, the Indstillinger button to the far right. */
+  _settingsButton(extra = "") {
+    return `<div class="page-actions">${extra}<button class="btn settings-btn" data-saction="open"><ha-icon icon="mdi:cog"></ha-icon>Indstillinger</button></div>`;
+  }
+
+  _settingsSolarForms() {
+    const c = this._config;
+    const r = this._rules;
+    const solar = `<form data-sform="solar">
+      <h3 class="set-title"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller</h3>
+      <div class="form-grid">
+        ${this._pickerField("Produktion lige nu (W/kW)", "Sensor med solcellernes effekt lige nu. Bruges til sol-overskud, gauges og effektkurven.", "solar_power_entity", "sensor", c.solar_power_entity, "sensor.… (valgfri)")}
+        ${this._pickerField("Produceret i dag (kWh)", "Energi-sensor med dagens produktion (nulstilles dagligt).", "solar_energy_today_entity", "sensor", c.solar_energy_today_entity, "sensor.… (valgfri)")}
+        ${this._pickerField("Produceret denne måned (kWh)", "Energi-sensor med månedens produktion, fx en månedlig utility meter.", "solar_energy_month_entity", "sensor", c.solar_energy_month_entity, "sensor.… (valgfri)")}
+        ${this._pickerField("Prognose i dag (kWh)", "Forventet produktion i dag, fx fra Solcast eller Forecast.Solar. Bruges til husbatteriets regel om kun at lade fra nettet, når prognosen er lav.", "solar_forecast_today_entity", "sensor", c.solar_forecast_today_entity, "sensor.… (valgfri)")}
+        ${this._pickerField("Prognose i morgen (kWh)", "Forventet produktion i morgen, fx fra Solcast eller Forecast.Solar.", "solar_forecast_tomorrow_entity", "sensor", c.solar_forecast_tomorrow_entity, "sensor.… (valgfri)")}
+        <label class="field"><span class="fl">Installeret effekt (kWp)${I("Anlæggets installerede effekt. Bruges til udnyttelses-procenten og skalaen på solcelle-gaugen.")}</span><input name="solar_peak_kw" type="number" step="0.1" min="0" max="1000" value="${esc(typeof c.solar_peak_kw === "number" ? c.solar_peak_kw : "")}" placeholder="fx 6,5 (valgfri)"></label>
+      </div>
+      <div class="err" hidden></div>
+    </form>`;
+    if (!r) return solar;
+    return `${solar}<form data-sform="rules">
+      <h3 class="set-title"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet</h3>
+      <div class="form-grid">
+        ${this._pickerField("Importeret i dag (kWh)", "Energi-sensor med den strøm, der er købt fra nettet i dag (nulstilles dagligt). Vises på Anlæg-kortet.", "grid_import_energy_entity", "sensor", r.grid_import_energy_entity, "sensor.… (valgfri)")}
+        ${this._pickerField("Eksporteret i dag (kWh)", "Energi-sensor med den strøm, der er solgt til nettet i dag (nulstilles dagligt). Vises på Anlæg-kortet.", "grid_export_energy_entity", "sensor", r.grid_export_energy_entity, "sensor.… (valgfri)")}
+        ${this._pickerField("Importeret denne måned (kWh)", "Energi-sensor med den strøm, der er købt fra nettet denne måned (fx en månedlig utility meter). Vises på Anlæg-kortet.", "grid_import_energy_month_entity", "sensor", r.grid_import_energy_month_entity, "sensor.… (valgfri)")}
+        ${this._pickerField("Eksporteret denne måned (kWh)", "Energi-sensor med den strøm, der er solgt til nettet denne måned (fx en månedlig utility meter). Vises på Anlæg-kortet.", "grid_export_energy_month_entity", "sensor", r.grid_export_energy_month_entity, "sensor.… (valgfri)")}
+        ${this._pickerField("Eksport tilladt (tænd/sluk)", "Entitet, der er tændt, når strøm må sendes til elnettet, fx inverterens 'feed-in'-kontakt eller en input_boolean. Status-kortet på Forsiden viser så 'Eksport aktiveret' eller 'Eksport deaktiveret' ved Elnet.", "grid_export_enabled_entity", "switch,binary_sensor,input_boolean,sensor", r.grid_export_enabled_entity, "switch.… (valgfri)")}
+      </div>
+      <div class="err" hidden></div>
+    </form>`;
+  }
+
+  _settingsEvForms() {
+    const r = this._rules;
+    const cars = this._cars || [];
+    const carForms = cars.length
+      ? cars
+          .map(
+            (car) => `<form data-sform="car" data-id="${esc(car.id)}">
+      <h3 class="set-title"><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)}</h3>
+      <div class="form-grid">
+        ${this._carSensorFields(car)}
+        ${this._carChargerFields(car)}
+      </div>
+      <div class="err" hidden></div>
+    </form>`
+          )
+          .join("")
+      : `<div class="hint" style="margin-top:16px">Ingen elbiler er tilføjet endnu. Tilføj en bil på Elbiler-fanen, så kan dens sensorer og kommandoer ændres her.</div>`;
+    if (!r) return carForms;
+    const opt = (key, val, label) => `<option value="${val}" ${r[key] === val ? "selected" : ""}>${label}</option>`;
+    return `${carForms}<form data-sform="rules">
+      <h3 class="set-title"><ha-icon icon="mdi:transmission-tower"></ha-icon>Sol-overskud</h3>
+      <div class="hint">Bruges til at beregne sol-overskud til elbilerne, når husbatteriet ikke har sine egne net- og husforbrugs-sensorer.</div>
+      <div class="form-grid">
+        ${this._pickerField("Net import/eksport (W)", "Sensor med effekt til og fra nettet. Bruges til at beregne sol-overskud til elbiler, når husbatteriet ikke har sin egen net-sensor.", "grid_power_entity", "sensor", r.grid_power_entity, "sensor.… (valgfri)")}
+        <label class="field"><span class="fl">Fortegn for net${I("Om sensoren viser positive tal, når huset køber fra nettet, eller når huset sælger til nettet.")}</span><select name="grid_sign">${opt("grid_sign", "import_positive", "Positiv = køber")}${opt("grid_sign", "export_positive", "Positiv = sælger")}</select></label>
+        ${this._pickerField("Husforbrug (W)", "Sensor med husets samlede forbrug. Bruges til sol-overskud, når beregningen er sat til solproduktion minus husforbrug, og husbatteriet ikke har sin egen husforbrugs-sensor.", "house_power_entity", "sensor", r.house_power_entity, "sensor.… (valgfri)")}
+      </div>
+      <div class="err" hidden></div>
+    </form>`;
+  }
+
+  _settingsBatteryForms() {
+    const b = this._battery;
+    if (!b) return `<div class="hint" style="margin-top:16px">Husbatteriet er ikke sat op endnu. Udfyld formularen på Hus batteri-fanen først.</div>`;
+    return `<form data-sform="battery">
+      <h3 class="set-title"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri</h3>
+      ${this._batteryEntityFields(b)}
+      <div class="err" hidden></div>
+    </form>`;
+  }
+
+  async _openSettings() {
+    const tab = this._tab;
+    const builders = { solar: () => this._settingsSolarForms(), ev: () => this._settingsEvForms(), battery: () => this._settingsBatteryForms() };
+    if (!builders[tab] || !this._dialogEl) return;
+    // never show empty fields for values that just are not loaded yet: saving would then clear them
+    if (!this._rules) await this._loadRules(true);
+    if (tab === "ev" && this._cars === null) await this._loadCars(true);
+    if (tab === "battery" && this._battery === undefined) await this._loadBattery(true);
+    const dlg = this._dialogEl;
+    const label = TABS.find((t) => t.id === tab).label;
+    const body = builders[tab]();
+    const canSave = body.includes("data-sform");
+    this.shadowRoot.appendChild(this._tipEl);
+    dlg.innerHTML = `
+      <div class="dlg-head">
+        <ha-icon icon="mdi:cog"></ha-icon>
+        <h2 id="dlg-title">Indstillinger – ${esc(label)}</h2>
+        <button class="dlg-close" type="button" data-saction="close" aria-label="Luk" title="Luk"><ha-icon icon="mdi:close"></ha-icon></button>
+      </div>
+      <div class="dlg-body">
+        ${tab !== "battery" && !this._rules ? `<div class="err">Reglerne kunne ikke hentes${this._rulesError ? `: ${esc(this._rulesError)}` : ""}. Nogle sensorer kan derfor ikke vælges lige nu.</div>` : ""}
+        ${body}
+      </div>
+      <div class="dlg-foot">
+        <button class="btn" type="button" data-saction="close">${canSave ? "Annuller" : "Luk"}</button>
+        ${canSave ? '<button class="btn primary" type="button" data-saction="save">Gem</button>' : ""}
+      </div>`;
+    // the dialog is in the top layer, so the info tip must live inside it to be visible
+    dlg.appendChild(this._tipEl);
+    this._tipEl.hidden = true;
+    if (!dlg.open) dlg.showModal();
+  }
+
+  /** Has the user changed this input/select since the dialog was opened (or last saved)? */
+  static _fieldChanged(el) {
+    if (el.tagName === "SELECT") return !(el.selectedOptions[0] && el.selectedOptions[0].defaultSelected);
+    return el.value.trim() !== el.defaultValue.trim();
+  }
+
+  /** Save every section of the dialog that was changed; it closes only when all of them were saved. */
+  async _saveSettings(btn) {
+    const dlg = this._dialogEl;
+    // the solar sensors go last: saving them reloads the integration
+    const order = { car: 0, battery: 0, rules: 1, solar: 2 };
+    const forms = [...dlg.querySelectorAll("form[data-sform]")].sort((a, b) => order[a.dataset.sform] - order[b.dataset.sform]);
+    const errText = { ...ElectricityOptimizerPanel.CAR_ERRORS, ...ElectricityOptimizerPanel.BATTERY_ERRORS };
+    let failed = false;
+    let carsSaved = false;
+    btn.disabled = true;
+    for (const form of forms) {
+      const kind = form.dataset.sform;
+      const fields = [...form.querySelectorAll("input[name],select[name]")];
+      const patch = {};
+      for (const el of fields) if (ElectricityOptimizerPanel._fieldChanged(el)) patch[el.name] = el.value.trim();
+      const errEl = form.querySelector(".err");
+      errEl.hidden = true;
+      if (!Object.keys(patch).length) continue;
+      try {
+        if (kind === "car") {
+          await this._hass.callWS({ type: "electricity_optimizer/cars/save", car: { id: form.dataset.id, ...patch } });
+          carsSaved = true;
+        } else if (kind === "battery") {
+          await this._saveBattery(patch);
+        } else if (kind === "rules") {
+          await this._saveRules(patch);
+        } else if (kind === "solar") {
+          const res = await this._hass.callWS({ type: "electricity_optimizer/solar/save", solar: patch });
+          // show the new sensors at once; Home Assistant hands over the same config when the reload is done
+          if (res && res.config) this._panel = { ...this._panel, config: { ...res.config, version: this._config.version } };
+        }
+        for (const el of fields) {
+          if (el.tagName === "SELECT") for (const o of el.options) o.defaultSelected = o.selected;
+          else el.defaultValue = el.value;
+        }
+      } catch (err) {
+        failed = true;
+        const msg = (err && (err.message || err.code)) || String(err);
+        errEl.textContent = errText[msg] || msg;
+        errEl.hidden = false;
+        errEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+    if (carsSaved) await this._loadCars(true);
+    btn.disabled = false;
+    if (failed) this._maybeRender(true);
+    else if (dlg.open) dlg.close(); // the close handler renders the page again
+  }
+
+  async _onSettingsClick(btn) {
+    const action = btn.dataset.saction;
+    if (action === "open") await this._openSettings();
+    else if (action === "close") this._dialogEl.close();
+    else if (action === "save") await this._saveSettings(btn);
   }
 
   _entityMatches(domains, query) {
@@ -2718,6 +2926,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
         /* ignore */
       }
       this._maybeRender(true);
+      return;
+    }
+    const sbtn = ev.target.closest && ev.target.closest("[data-saction]");
+    if (sbtn) {
+      await this._onSettingsClick(sbtn);
       return;
     }
     const testBtn = ev.target.closest && ev.target.closest("[data-testcmd]");
@@ -3080,6 +3293,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       : "";
 
     return `
+      ${this._settingsButton()}
       <div class="grid">
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand vist som et batteri, der fyldes op: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
@@ -3096,7 +3310,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="sub">${esc(why)}</div>
         </div>
         <div class="card">
-          <h2><ha-icon icon="mdi:swap-vertical"></ha-icon>Energiflow${I("Effekt lige nu for elnet (køb/salg), husforbrug og batteri (lader/aflader) fra sensorerne under Rediger.")}</h2>
+          <h2><ha-icon icon="mdi:swap-vertical"></ha-icon>Energiflow${I("Effekt lige nu for elnet (køb/salg), husforbrug og batteri (lader/aflader) fra sensorerne under Indstillinger.")}</h2>
           <div class="flow">
             <div class="item ${live.gridW > 0 ? "in" : "out"}"><ha-icon icon="mdi:transmission-tower"></ha-icon><div><div class="v">${live.gridW === null ? "–" : fmtNum(Math.abs(live.gridW), 0) + " W"}</div><div class="l">${live.gridW === null ? "Elnet" : live.gridW > 0 ? "Køber fra nettet" : "Sælger til nettet"}</div></div></div>
             <div class="item"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon><div><div class="v">${live.houseW === null ? "–" : fmtNum(live.houseW, 0) + " W"}</div><div class="l">Husforbrug</div></div></div>
@@ -3118,7 +3332,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             <button class="btn ${b.override === "charge" ? "active" : ""}" data-baction="override" data-value="charge" ${cmds.charge ? "" : "disabled"}>Lad fra net nu</button>
           </span>
         </div>
-        ${!cmds.hold && !cmds.charge ? '<div class="hint" style="margin-top:8px">Ingen styringskommandoer er sat op – planen vises kun. Tryk Rediger for at tilføje.</div>' : ""}
+        ${!cmds.hold && !cmds.charge ? '<div class="hint" style="margin-top:8px">Ingen styringskommandoer er sat op – planen vises kun. Tryk Indstillinger øverst på siden for at tilføje.</div>' : ""}
         ${laText ? `<div class="hint" style="margin-top:8px">${esc(laText)}</div>` : ""}
       </div>
 
@@ -3130,7 +3344,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <label class="field"><span class="fl">Reserve-SoC (%)${I("Batteriet aflades ikke under denne ladestand. Vises som streg på ladestands-bjælken.")}</span><input type="number" min="0" max="100" data-bfield="min_soc" value="${b.min_soc}"></label>
           <label class="field"><span class="fl">Maks-SoC ved netopladning (%)${I("Netopladning stopper, når batteriet når denne ladestand.")}</span><input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>
           <label class="field"><span class="fl">Virkningsgrad (0–1)${I("Andel af den indkøbte strøm, der kommer ud af batteriet igen. 0,9 = 10 % tab ved op- og afladning. Indgår i prisforskel-reglen for netopladning.")}</span><input type="number" step="0.01" min="0.5" max="1" data-bfield="efficiency" value="${b.efficiency}"></label>
-          <label class="field"><span class="fl">Lad kun fra net hvis solprognose &lt; (kWh)${I("Netopladning springes over på dage, hvor solprognosen er over denne grænse, fordi solen forventes at fylde batteriet. Tom = altid tilladt. Kræver prognose-sensorer under Konfigurer.")}</span><input type="number" step="0.5" min="0" data-bfield="grid_charge_max_forecast_kwh" value="${b.grid_charge_max_forecast_kwh === null || b.grid_charge_max_forecast_kwh === undefined ? "" : b.grid_charge_max_forecast_kwh}" placeholder="fra"></label>
+          <label class="field"><span class="fl">Lad kun fra net hvis solprognose &lt; (kWh)${I("Netopladning springes over på dage, hvor solprognosen er over denne grænse, fordi solen forventes at fylde batteriet. Tom = altid tilladt. Kræver prognose-sensorer under Indstillinger på Solceller-fanen.")}</span><input type="number" step="0.5" min="0" data-bfield="grid_charge_max_forecast_kwh" value="${b.grid_charge_max_forecast_kwh === null || b.grid_charge_max_forecast_kwh === undefined ? "" : b.grid_charge_max_forecast_kwh}" placeholder="fra"></label>
+          <label class="toggle"><input type="checkbox" data-bfield="contiguous" ${b.contiguous ? "checked" : ""}> Sammenhængende netopladning${I("Til: netopladningen lægges i én sammenhængende blok af timer – den billigste blok, der er lang nok – så batteriet ikke skifter mellem lad og normal flere gange. Fra: batteriet lader i de billigste enkelttimer, også når de ligger spredt. Er der ikke en lang nok blok af timer, hvor netopladning kan betale sig, bruges den længste. Kan ugeplanens mål-SoC ikke nås i én blok inden klokkeslættet, bruges de billigste enkelttimer alligevel.")}</label>
         </div>
         ${this._renderForecastRuleHint(plan)}
         <div class="hint" style="margin-top:8px">Hold: prisen er under dagens gennemsnit, og en senere time er mindst prisforskellen dyrere. Lad fra nettet: kun på dage hvor det er tilladt, og kun når de dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu – eller når ugeplanens mål-SoC skal nås inden klokkeslættet.</div>
@@ -3149,7 +3364,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (!fc || fc.limit === null || fc.limit === undefined) return "";
     const hasEntity = !!(this._config.solar_forecast_today_entity || this._config.solar_forecast_tomorrow_entity);
     if (!hasEntity) {
-      return `<div class="hint" style="margin-top:6px">Prognose-reglen er sat, men der er ikke valgt nogen solprognose-sensor under Indstillinger → Enheder og tjenester → Electricity Optimizer → Konfigurer. Reglen har derfor ingen effekt.</div>`;
+      return `<div class="hint" style="margin-top:6px">Prognose-reglen er sat, men der er ikke valgt nogen solprognose-sensor under Indstillinger på Solceller-fanen. Reglen har derfor ingen effekt.</div>`;
     }
     const part = (label, v, blocked) => (v === null || v === undefined ? `${label}: ingen prognose` : `${label}: ${fmtNum(v, 1)} kWh → ${blocked ? "ingen netopladning" : "netopladning tilladt"}`);
     return `<div class="hint" style="margin-top:6px">Solprognose-regel (grænse ${fmtNum(fc.limit, 1)} kWh): ${part("i dag", fc.today, fc.blocked_today)} · ${part("i morgen", fc.tomorrow, fc.blocked_tomorrow)}.</div>`;
@@ -3201,36 +3416,21 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return this._renderStrip(slots, (s) => s.mode, (s) => label[s.mode] || s.mode);
   }
 
-  _renderBatteryForm(b) {
+  /** The battery's sensors and command entities. Shown in the settings dialog, and in the form only during the first setup. */
+  _batteryEntityFields(b) {
     const v = (k, d = "") => esc(b[k] === undefined || b[k] === null ? d : b[k]);
     const sel = (k, opts, d) => `<select name="${k}">${opts.map(([val, lab]) => `<option value="${val}" ${(b[k] || d) === val ? "selected" : ""}>${lab}</option>`).join("")}</select>`;
-    const errText = {
-      soc_required: "Vælg en SoC-sensor.",
-      capacity_power_positive: "Kapacitet og effekter skal være større end 0.",
-      charge_start_stop_both: "Angiv både start og stop for 'Lad fra nettet' (eller ingen af dem).",
-      hold_start_stop_both: "Angiv både start og stop for 'Hold' (eller ingen af dem).",
-    };
-    const isNew = !this._battery;
     return `
-      <div class="card">
-        <h2><ha-icon icon="mdi:home-battery"></ha-icon>${isNew ? "Sæt husbatteri op" : "Rediger husbatteri"}</h2>
-        <form class="battery-form">
           <div class="form-section">Sensorer</div>
           <div class="form-grid">
-            <label class="field"><span class="fl">Batteri-SoC (%)${I("Sensor med batteriets ladestand i procent. Påkrævet.")}</span><div class="picker"><input name="soc_entity" data-domains="sensor" value="${v("soc_entity")}" placeholder="sensor.…" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field"><span class="fl">Batteri-effekt (W, fortegn)${I("Én sensor med batteriets effekt, hvor fortegnet viser retningen. Vælg fortegn i feltet ved siden af. Har batteriet separate sensorer, så brug de to felter nedenfor i stedet.")}</span><div class="picker"><input name="power_entity" data-domains="sensor" value="${v("power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            ${this._pickerField("Batteri-SoC (%)", "Sensor med batteriets ladestand i procent. Påkrævet.", "soc_entity", "sensor", b.soc_entity)}
+            ${this._pickerField("Batteri-effekt (W, fortegn)", "Én sensor med batteriets effekt, hvor fortegnet viser retningen. Vælg fortegn i feltet ved siden af. Har batteriet separate sensorer, så brug de to felter nedenfor i stedet.", "power_entity", "sensor", b.power_entity, "sensor.… (valgfri)")}
             <label class="field"><span class="fl">Fortegn for batteri-effekt${I("Om sensoren viser positive tal, når batteriet lader, eller når det aflader.")}</span>${sel("power_sign", [["charge_positive", "Positiv = lader"], ["discharge_positive", "Positiv = aflader"]], "charge_positive")}</label>
-            <label class="field"><span class="fl">…eller ladeeffekt (W)${I("Sensor med effekten ind i batteriet, hvis batteriet har separate sensorer for op- og afladning.")}</span><div class="picker"><input name="charge_power_entity" data-domains="sensor" value="${v("charge_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field"><span class="fl">…og afladeeffekt (W)${I("Sensor med effekten ud af batteriet, hvis batteriet har separate sensorer for op- og afladning.")}</span><div class="picker"><input name="discharge_power_entity" data-domains="sensor" value="${v("discharge_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-            <label class="field"><span class="fl">Net import/eksport (W)${I("Sensor med effekt til og fra nettet. Vises på Forsiden og bruges til sol-overskud for elbiler.")}</span><div class="picker"><input name="grid_power_entity" data-domains="sensor" value="${v("grid_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
+            ${this._pickerField("…eller ladeeffekt (W)", "Sensor med effekten ind i batteriet, hvis batteriet har separate sensorer for op- og afladning.", "charge_power_entity", "sensor", b.charge_power_entity, "sensor.… (valgfri)")}
+            ${this._pickerField("…og afladeeffekt (W)", "Sensor med effekten ud af batteriet, hvis batteriet har separate sensorer for op- og afladning.", "discharge_power_entity", "sensor", b.discharge_power_entity, "sensor.… (valgfri)")}
+            ${this._pickerField("Net import/eksport (W)", "Sensor med effekt til og fra nettet. Vises på Forsiden og bruges til sol-overskud for elbiler.", "grid_power_entity", "sensor", b.grid_power_entity, "sensor.… (valgfri)")}
             <label class="field"><span class="fl">Fortegn for net${I("Om sensoren viser positive tal, når huset køber fra nettet, eller når huset sælger til nettet.")}</span>${sel("grid_sign", [["import_positive", "Positiv = køber"], ["export_positive", "Positiv = sælger"]], "import_positive")}</label>
-            <label class="field"><span class="fl">Husforbrug (W)${I("Sensor med husets samlede forbrug. Vises på Forsiden og i Energiflow.")}</span><div class="picker"><input name="house_power_entity" data-domains="sensor" value="${v("house_power_entity")}" placeholder="sensor.… (valgfri)" autocomplete="off"><div class="picker-list" hidden></div></div></label>
-          </div>
-          <div class="form-section">Batteri</div>
-          <div class="form-grid">
-            <label class="field"><span class="fl">Kapacitet (kWh)${I("Batteriets brugbare størrelse. Bruges til at beregne, hvor mange timer netopladning tager.")}</span><input name="capacity_kwh" type="number" step="0.1" min="0.1" value="${v("capacity_kwh", 10)}"></label>
-            <label class="field"><span class="fl">Maks. ladeeffekt (kW)${I("Højeste effekt batteriet kan lade med. Bruges til planens timeberegning, hovedsikringen og skalaen på Batteri effekt-gaugen.")}</span><input name="max_charge_kw" type="number" step="0.1" min="0.1" value="${v("max_charge_kw", 5)}"></label>
-            <label class="field"><span class="fl">Maks. afladeeffekt (kW)${I("Højeste effekt batteriet kan aflade med. Bruges til skalaen på Batteri effekt-gaugen.")}</span><input name="max_discharge_kw" type="number" step="0.1" min="0.1" value="${v("max_discharge_kw", 5)}"></label>
+            ${this._pickerField("Husforbrug (W)", "Sensor med husets samlede forbrug. Vises på Forsiden og i Energiflow.", "house_power_entity", "sensor", b.house_power_entity, "sensor.… (valgfri)")}
           </div>
           <div class="form-section">Kommandoer: lad fra nettet (valgfri)${I("Kommandoer der tvinger batteriet til at lade fra nettet, fx en switch som force charge eller en select med værdien Charge. Uden dem vises planen kun.")}</div>
           <div class="form-grid">
@@ -3242,7 +3442,24 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${this._cmdFields("Start", "hold_start_entity", "hold_start_value", v)}
             ${this._cmdFields("Stop", "hold_stop_entity", "hold_stop_value", v)}
           </div>
-          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Eksempel med select: start = select.inverter_mode / "Charge", stop = select.inverter_mode / "Self-use". Eksempel med en switch, der tillader afladning, som hold-kommando: start = switch.discharge_enabled / "off", stop = switch.discharge_enabled / "on".</div>
+          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Eksempel med select: start = select.inverter_mode / "Charge", stop = select.inverter_mode / "Self-use". Eksempel med en switch, der tillader afladning, som hold-kommando: start = switch.discharge_enabled / "off", stop = switch.discharge_enabled / "on".</div>`;
+  }
+
+  _renderBatteryForm(b) {
+    const v = (k, d = "") => esc(b[k] === undefined || b[k] === null ? d : b[k]);
+    const errText = ElectricityOptimizerPanel.BATTERY_ERRORS;
+    const isNew = !this._battery;
+    return `
+      <div class="card">
+        <h2><ha-icon icon="mdi:home-battery"></ha-icon>${isNew ? "Sæt husbatteri op" : "Rediger husbatteri"}</h2>
+        <form class="battery-form">
+          <div class="form-section">Batteri</div>
+          <div class="form-grid">
+            <label class="field"><span class="fl">Kapacitet (kWh)${I("Batteriets brugbare størrelse. Bruges til at beregne, hvor mange timer netopladning tager.")}</span><input name="capacity_kwh" type="number" step="0.1" min="0.1" value="${v("capacity_kwh", 10)}"></label>
+            <label class="field"><span class="fl">Maks. ladeeffekt (kW)${I("Højeste effekt batteriet kan lade med. Bruges til planens timeberegning, hovedsikringen og skalaen på Batteri effekt-gaugen.")}</span><input name="max_charge_kw" type="number" step="0.1" min="0.1" value="${v("max_charge_kw", 5)}"></label>
+            <label class="field"><span class="fl">Maks. afladeeffekt (kW)${I("Højeste effekt batteriet kan aflade med. Bruges til skalaen på Batteri effekt-gaugen.")}</span><input name="max_discharge_kw" type="number" step="0.1" min="0.1" value="${v("max_discharge_kw", 5)}"></label>
+          </div>
+          ${isNew ? this._batteryEntityFields(b) : '<div class="hint" style="margin-top:10px">Batteriets sensorer og kommandoer vælges under Indstillinger øverst på Hus batteri-fanen.</div>'}
           ${this._batteryFormError ? `<div class="err">${esc(errText[this._batteryFormError] || this._batteryFormError)}</div>` : ""}
           <div class="row" style="margin-top:14px">
             <button class="btn primary" type="submit" data-baction="save">Gem</button>

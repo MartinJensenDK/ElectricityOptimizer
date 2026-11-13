@@ -16,7 +16,7 @@ from .runtime_state import RuntimeStateStore
 
 MODE_LABEL = {"normal": "normal", "hold": "hold", "charge": "lad fra net"}
 from .const import GRID_VOLTAGE
-from .ev_controller import Context, Slot
+from .ev_controller import Context, Slot, cheapest_window, longest_run
 from .storage import BatteryStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,6 +52,7 @@ def plan_battery(
     soc: float,
     cfg: dict[str, Any],
     forecast: dict[Any, float] | None = None,
+    continue_now: bool = False,
 ) -> dict[str, Any] | None:
     """Assign a mode to every known future slot.
 
@@ -64,6 +65,12 @@ def plan_battery(
 
     Grid charging on a day is also skipped when a solar forecast for that day is known and at least
     `grid_charge_max_forecast_kwh` (when that limit is set).
+
+    With the `contiguous` option each of (a) and (b) picks one unbroken block of slots (the cheapest
+    block that is long enough) instead of the cheapest single slots. `continue_now` tells that the
+    battery is grid charging in such a block right now, so the block is finished rather than moved.
+    For (a) the longest block of profitable slots is used when none is long enough; for (b) the
+    cheapest single slots are used when no unbroken block before the deadline is long enough.
     """
     candidates = [s for s in slots if s.end > now]
     if not candidates:
@@ -88,6 +95,13 @@ def plan_battery(
         by_day.setdefault(s.start.date(), []).append(s.price)
     day_mean = {d: sum(v) / len(v) for d, v in by_day.items()}
 
+    contiguous = bool(cfg.get("contiguous"))
+    current = next((s for s in candidates if s.start <= now < s.end), None)
+    anchor = current.start if continue_now and current else None
+
+    def usable(s: Slot) -> float:
+        return max(0.0, (s.end - max(s.start, now)).total_seconds() / 3600)
+
     modes: dict[datetime, str] = {}
     for i, s in enumerate(candidates):
         if not _day_entry(cfg, s.start)["enabled"]:
@@ -105,20 +119,25 @@ def plan_battery(
         charge_hours = room_kwh / cfg["max_charge_kw"]
         slot_hours = candidates[0].hours or 1.0
         n_expensive = max(1, math.ceil(charge_hours / slot_hours))
-        remaining = charge_hours
-        for s in sorted(candidates, key=lambda s: (s.price, s.start)):
-            if remaining <= 0:
-                break
-            if not grid_allowed(s.start):
-                continue
-            later = [x for x in candidates if x.start > s.start]
-            if not later:
+        profitable: list[Slot] = []
+        for i, s in enumerate(candidates):
+            later = candidates[i + 1 :]
+            if not later or not grid_allowed(s.start):
                 continue
             dearest = sorted((x.price for x in later), reverse=True)[:n_expensive]
             if (sum(dearest) / len(dearest)) * eff - s.price >= thr:
+                profitable.append(s)
+        if contiguous:
+            block = cheapest_window(profitable, charge_hours, usable, anchor) or longest_run(profitable, usable, anchor)
+            for s in block:
                 modes[s.start] = "charge"
-                avail_start = max(s.start, now)
-                remaining -= (s.end - avail_start).total_seconds() / 3600
+        else:
+            remaining = charge_hours
+            for s in sorted(profitable, key=lambda s: (s.price, s.start)):
+                if remaining <= 0:
+                    break
+                modes[s.start] = "charge"
+                remaining -= usable(s)
 
     # (b) weekly schedule target: reach target_soc before the deadline in the cheapest slots.
     # Hours before the deadline without a known price are padded with estimated slots (shown dimmed).
@@ -137,7 +156,17 @@ def plan_battery(
         target_hours = need_kwh / cfg["max_charge_kw"]
         before = [s for s in candidates if s.start < deadline]
         pool = before + extra
+
+        def before_deadline(s: Slot) -> float:
+            return max(0.0, (min(s.end, deadline) - max(s.start, now)).total_seconds() / 3600)
+
         remaining = target_hours
+        if contiguous:
+            block = cheapest_window([s for s in pool if grid_allowed(s.start)], target_hours, before_deadline, anchor)
+            if block is not None:
+                remaining = 0.0
+                for s in block:
+                    modes[s.start] = "charge"
         for s in sorted(pool, key=lambda s: (s.price, s.start)):
             if remaining <= 0:
                 break
@@ -149,7 +178,6 @@ def plan_battery(
             modes[s.start] = "charge"
             remaining -= avail
 
-    current = next((s for s in candidates if s.start <= now < s.end), None)
     today = _day_entry(cfg, now)
     auto_mode = modes.get(current.start, "normal") if current else "normal"
     if not today["enabled"]:
@@ -263,7 +291,9 @@ class BatteryController:
             rt["status"] = "no_soc"
             rt["plan"] = None
             return None
-        plan = plan_battery(ctx.now, ctx.slots, soc, cfg, ctx.solar_forecast_kwh) if ctx.slots else None
+        # a contiguous block that the battery is charging in right now is finished, not moved (see plan_battery)
+        in_block = rt.get("mode") == "charge" and rt.get("status") == "auto"
+        plan = plan_battery(ctx.now, ctx.slots, soc, cfg, ctx.solar_forecast_kwh, continue_now=in_block) if ctx.slots else None
         rt["plan"] = plan
         if plan is None:
             rt["status"] = "no_prices"

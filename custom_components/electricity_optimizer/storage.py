@@ -69,6 +69,7 @@ def normalize_car(raw: dict[str, Any], existing: dict[str, Any] | None = None) -
     car["charge_power_kw"] = amps_to_kw(car["max_amps"], car["phases"])
     car["enabled"] = bool(car["enabled"])
     car["charge_now"] = bool(car["charge_now"])
+    car["contiguous"] = bool(car["contiguous"])
     car["target_soc"] = max(1, min(100, car["target_soc"]))
     for key in ("name", "soc_entity", "start_entity", "start_value", "stop_entity", "stop_value", "plugged_entity", "current_entity", "power_entity", "source", "ready_by"):
         car[key] = str(car[key] or "").strip()
@@ -213,6 +214,7 @@ def normalize_battery(raw: dict[str, Any], existing: dict[str, Any] | None = Non
             cfg[key] = str(cfg[key] or "").strip()
     cfg["enabled"] = bool(cfg["enabled"])
     cfg["grid_charge_enabled"] = bool(cfg["grid_charge_enabled"])
+    cfg["contiguous"] = bool(cfg["contiguous"])
     cfg["min_soc"] = max(0, min(100, cfg["min_soc"]))
     cfg["max_soc"] = max(cfg["min_soc"], min(100, cfg["max_soc"]))
     cfg["efficiency"] = max(0.5, min(1.0, cfg["efficiency"]))
