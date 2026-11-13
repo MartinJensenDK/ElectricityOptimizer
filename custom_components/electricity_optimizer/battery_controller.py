@@ -15,8 +15,8 @@ from .commands import async_run_command
 from .runtime_state import RuntimeStateStore
 
 MODE_LABEL = {"normal": "normal", "hold": "hold", "charge": "lad fra net"}
-from .const import GRID_VOLTAGE
-from .ev_controller import Context, Slot, cheapest_window, longest_run
+from .const import BATTERY_MODES, GRID_VOLTAGE
+from .ev_controller import Context, Slot, cheapest_window, longest_run, remember_slot
 from .storage import BatteryStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -227,6 +227,7 @@ class BatteryController:
         self._active: str | None = None  # last commanded mode
         self._retry_at: datetime | None = None  # last re-sent command after an inverter mismatch
         self._last_soc: tuple[str, float] | None = None  # (SoC entity, last value it reported)
+        self._recent: list[dict[str, Any]] = []  # the mode in the price slots that just passed
         self.notifier = None  # set by __init__
         self.state: RuntimeStateStore | None = None  # set by __init__
 
@@ -326,6 +327,7 @@ class BatteryController:
         if not cfg["enabled"]:
             rt["status"] = "disabled"
             rt["mode"] = "normal"
+            self._remember_mode(ctx, "normal")
             return None
         if cfg["override"] != "auto":
             mode = cfg["override"]
@@ -341,7 +343,13 @@ class BatteryController:
             rt["status"] = "full"
         rt["mode"] = mode
         rt["session"] = self._session(ctx.now, plan, mode)
+        self._remember_mode(ctx, mode)
         return mode
+
+    def _remember_mode(self, ctx: Context, mode: str) -> None:
+        """Keep the mode of the slots that just passed, for the panel's 24-hour strip."""
+        remember_slot(self._recent, ctx.now, ctx.slots, "mode", mode, BATTERY_MODES.index)
+        self.runtime["recent"] = self._recent
 
     @staticmethod
     def _session(now: datetime, plan: dict[str, Any], mode: str) -> dict[str, Any] | None:

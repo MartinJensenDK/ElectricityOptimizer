@@ -2,6 +2,26 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.46.0
+
+- "Regler for opladning" er nu en fælles, lodret sektion til højre for de øvrige bokse på fanerne Elbiler og Hus batteri, og den vises nu også på Solceller-fanen. På smalle skærme (under ca. 1100 px) lægger den sig under de øvrige bokse som før. De tre faner udnytter samtidig mere af skærmens bredde.
+- Forsiden er tilpasset et 16:9-skærmbillede: de syv målere står i én række øverst, elprisen med billigste og dyreste timer til venstre, og Kapaciteter og Status til højre. Hele forsiden skaleres, så den fylder skærmen uden at skulle rulles, uanset opløsning.
+- På smalle eller højkant-skærme (fx telefoner) bruger forsiden det hidtidige layout, hvor boksene står under hinanden. Skal forsiden skaleres til under 60 %, stopper skaleringen, og siden kan rulles.
+- Graferne tilpasser nu bredden med det samme, når man skifter fane.
+
+## 0.45.0
+
+- Heatmappet for opladning på bilens kort og husbatteriets Plan har nu altid 24 felter, ét pr. time: den forgangne time, den aktuelle time (med kant) og de næste 22 timer – altså 1 time tilbage og 23 timer frem.
+- Det første felt viser, hvad der faktisk skete i den forgangne time: om bilen ladede, og hvilken modus husbatteriet var i. Det huskes, så længe Home Assistant kører; lige efter en genstart er feltet tomt (stiplet), indtil der er gået en time.
+- Er elprisen i kvarter, samles de fire kvarter til ét timefelt: feltet vises som ladning, hvis mindst ét kvarter i timen er planlagt. Timer uden plan vises som et tomt, stiplet felt.
+
+## 0.44.0
+
+- Elbiler: Ugeplanen er nu foldet sammen som standard og viser kun rækken "Alle dage" og dagens række. Knappen "Vis hele ugen" folder alle syv dage ud.
+- Elbiler: knappen "Rediger" er fjernet. Navn, batterikapacitet og faser ændres nu direkte på bilens kort under Smart opladning, sammen med prisgrænse og ladestrøm, og gemmes med det samme.
+- Elbiler: "Slet" er flyttet til Indstillinger (tandhjulet øverst på fanen), hvor hver bil har knappen "Slet bil".
+- Elbiler: "Lad nu" står nu øverst til højre på bilens kort, lige efter status-mærkatet.
+
 ## 0.43.1
 
 - Husbatteriets og elbilernes ladestand viser nu altid den sidst målte værdi. Er SoC-sensoren utilgængelig eller uden værdi (fx når bilen sover, eller lige efter en genstart af Home Assistant), vises den seneste måling i stedet for "–" på Forsiden, Elbiler, Hus batteri og i Kapaciteter. Værdien huskes også hen over en genstart.

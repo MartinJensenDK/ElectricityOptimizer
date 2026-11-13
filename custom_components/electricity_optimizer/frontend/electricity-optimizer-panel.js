@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.43.1";
+const PANEL_JS_VERSION = "0.46.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -347,6 +347,8 @@ const STYLE = `
   .slot.chosen { fill: var(--success-color, #43a047); }
   .slot.est { opacity: 0.45; }
   .slot.now { stroke: var(--primary-text-color); stroke-width: 1.5; }
+  .slot.past { opacity: 0.6; }
+  .slot.none { fill: none; stroke: var(--divider-color); stroke-width: 1; stroke-dasharray: 2 2; }
   .err { color: var(--error-color, #db4437); font-size: 13px; margin-top: 6px; }
   .slot.hold { fill: var(--info-color, #039be5); }
   .slot.charge { fill: var(--success-color, #43a047); }
@@ -383,6 +385,15 @@ const STYLE = `
   table.sched tr.all td { border-bottom: 2px solid var(--divider-color); }
   table.sched tr.today td:first-child { font-weight: 600; color: var(--primary-color); }
   .sched-wrap h3 { margin-top: 12px; }
+  button.sched-toggle {
+    display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 2px 8px; font: inherit; font-size: 12px;
+    border: 1px solid var(--divider-color); border-radius: 8px; background: none; color: var(--secondary-text-color); cursor: pointer;
+  }
+  button.sched-toggle:hover, button.sched-toggle:focus-visible { color: var(--primary-color); border-color: var(--primary-color); outline: none; }
+  button.sched-toggle ha-icon { --mdc-icon-size: 18px; }
+  .sched-wrap.collapsed table.sched tbody tr:not(.all):not(.today) { display: none; }
+  .car-head { flex-wrap: wrap; row-gap: 6px; }
+  .car-head button.btn { padding: 4px 12px; font-size: 13px; font-weight: 400; }
   .hint { font-size: 12px; color: var(--secondary-text-color); }
   table.history { min-width: 720px; }
   table.history tr.running td { background: var(--secondary-background-color); }
@@ -410,6 +421,25 @@ const STYLE = `
     padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.4;
     box-shadow: 0 2px 8px rgba(0,0,0,0.25); pointer-events: none;
   }
+  .content.wide { max-width: 1560px; }
+  .with-rules { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: 12px; align-items: start; }
+  .with-rules > .rules-main { min-width: 0; }
+  .rules-side .card { margin-bottom: 0; }
+  @media (max-width: 1100px) {
+    .with-rules { grid-template-columns: 1fr; }
+  }
+  /* front page fitted to a 16:9 screen: a fixed 1600 x 900 layout, zoomed to the space there is */
+  .content.home16 { max-width: none; display: flex; justify-content: center; align-items: flex-start; }
+  .home-box { width: 1600px; height: 900px; flex: none; zoom: var(--home-zoom, 1); display: flex; flex-direction: column; gap: 12px; }
+  .home-box .card { margin-bottom: 0; }
+  .home-box .gauges { grid-template-columns: repeat(7, minmax(0, 1fr)); flex: none; }
+  .home-lower { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; }
+  .home-left { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
+  .home-left > .card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .home-left > .card .chart-wrap { flex: 1; min-height: 0; overflow: hidden; }
+  .home-left > .card svg.chart { width: 100%; height: 100%; }
+  .home-left .grid { margin-bottom: 0; flex: none; }
+  .home-box .side { min-height: 0; overflow: auto; align-content: start; }
   .page-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
   .page-actions .hint { flex: 1 1 240px; margin-right: auto; }
   .page-actions button.btn { display: inline-flex; align-items: center; gap: 6px; }
@@ -483,7 +513,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._rules = null;
     this._rulesStamp = 0;
     this._rulesError = null;
-    this._editing = null; // null | {} (new) | car object being edited
+    this._editing = null; // null | {} (new car being added)
+    this._schedOpen = new Set(); // ids of cars whose weekly schedule is unfolded
     this._formError = null;
     this._built = false;
     try {
@@ -564,16 +595,44 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }, 3000);
     if (typeof ResizeObserver !== "undefined") {
       this._ro = new ResizeObserver(() => {
-        const wrap = this.shadowRoot.querySelector(".chart-wrap");
-        if (!wrap) return;
-        const w = wrap.clientWidth;
-        if (w && Math.abs(w - (this._chartWidth || 0)) > 4) {
-          this._chartWidth = w;
-          this._maybeRender(true);
-        }
+        const zoom = this._homeZoom;
+        const fitChanged = this._tab === "home" && this._homeFit() !== zoom;
+        if (this._measureChart() || fitChanged) this._maybeRender(true);
       });
       this._ro.observe(this);
     }
+  }
+
+  /** Note the width the chart has to fill; true when it changed (the page must then be drawn again). */
+  _measureChart() {
+    if (!this._contentEl || this._contentEl.classList.contains("home16")) return false; // the fitted front page has fixed sizes
+    const wrap = this._contentEl.querySelector(".chart-wrap");
+    if (!wrap) return false;
+    const w = wrap.clientWidth;
+    if (!w || Math.abs(w - (this._chartWidth || 0)) <= 4) return false;
+    this._chartWidth = w;
+    return true;
+  }
+
+  static HOME_W = 1600;
+  static HOME_H = 900;
+
+  /**
+   * Zoom factor that makes the 16:9 front page fill the panel without scrolling, or null when the
+   * panel is too narrow or upright (phones, narrow windows) - then the ordinary stacked layout is used.
+   */
+  _homeFit() {
+    const K = ElectricityOptimizerPanel;
+    const w = this.clientWidth, h = this.clientHeight;
+    let zoom = null;
+    if (this._contentEl && w >= 1100 && w > h) {
+      const top = this._contentEl.getBoundingClientRect().top - this.getBoundingClientRect().top + this.scrollTop;
+      const fit = Math.min((w - 32) / K.HOME_W, (h - top - 32) / K.HOME_H);
+      zoom = Math.round(Math.max(0.6, fit) * 1000) / 1000; // below 60 % the text gets too small: scroll instead
+    }
+    this._homeZoom = zoom;
+    if (zoom !== null) this.style.setProperty("--home-zoom", String(zoom));
+    return zoom;
   }
 
   disconnectedCallback() {
@@ -771,7 +830,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
     const data = this._readPrices();
     let html = "";
-    if (this._tab === "home") html = this._renderHome(data);
+    const fit = this._tab === "home" && this._homeFit() !== null;
+    this._contentEl.classList.toggle("home16", fit);
+    this._contentEl.classList.toggle("wide", ["solar", "ev", "battery"].includes(this._tab));
+    if (this._tab === "home") html = this._renderHome(data, fit);
     else if (this._tab === "solar") html = this._renderSolar(this._readSolar());
     else if (this._tab === "ev") html = this._renderEv();
     else if (this._tab === "battery") html = this._renderBattery();
@@ -785,6 +847,16 @@ class ElectricityOptimizerPanel extends HTMLElement {
       this._loadBattery();
     }
     this._contentEl.innerHTML = html;
+    // the chart is drawn to a width measured from the page; when that width differs (another tab, a
+    // column that appeared) it is drawn once more to fit
+    if (!this._measuring && this._measureChart()) {
+      this._measuring = true;
+      try {
+        this._render();
+      } finally {
+        this._measuring = false;
+      }
+    }
   }
 
   /* ---------- data ---------- */
@@ -873,7 +945,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>`;
   }
 
-  _renderHome(d) {
+  _renderHome(d, fit = false) {
     if (d.missing) return this._renderMissing();
     if (!d.today.length) {
       return `<div class="card"><div class="empty"><ha-icon icon="mdi:timer-sand"></ha-icon>Venter på prisdata fra ${esc(
@@ -887,11 +959,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const expensive = [...hourly].sort((a, b) => b.price - a.price).slice(0, 3).sort((a, b) => a.time - b.time);
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
-    return `
-      ${this._renderLiveRow(`<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}</div>`)}
+    const side = `<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}</div>`;
+    const K = ElectricityOptimizerPanel;
+    const lower = `
       <div class="card">
         <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer (også når Smart opladning er slået fra). Morgendagens priser kommer ca. kl. 13.")}</h2>
-        <div class="chart-wrap">${this._renderChart(d)}</div>
+        <div class="chart-wrap">${this._renderChart(d, fit ? K.HOME_CHART : null)}</div>
         <div class="legend">
           <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
           ${d.tomorrowValid ? '<span class="l-tmr">I morgen (nedtonet)</span>' : ""}
@@ -936,7 +1009,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <div class="sub" style="font-size:13px;color:var(--secondary-text-color);margin-top:10px">Her bør husbatteriet levere strøm i stedet for nettet.</div>
         </div>
       </div>`;
+    if (!fit) return `<div class="top">${this._renderGauges()}${side}</div>${lower}`;
+    return `<div class="home-box">${this._renderGauges()}<div class="home-lower"><div class="home-left">${lower}</div>${side}</div></div>`;
   }
+
+  /** Size the price chart is drawn in on the fitted (16:9) front page; the SVG is stretched to the card. */
+  static HOME_CHART = { W: 1154, H: 280 };
 
   /** Small, plain battery for lists: thin outline, rounded fill in the SoC colour, percentage to the right. */
   _renderMiniBattery(pct, aria = "", marker = null) {
@@ -1372,13 +1450,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return null;
   }
 
-  _renderLiveRow(sideCard = "") {
+  _renderGauges() {
     const solar = this._readSolar();
     const bat = this._battery ? this._readBatteryLive() : { soc: null, batW: null, gridW: null, houseW: null };
     const gridW = this._gridLiveW();
     const solarW = solar.powerKw === null ? null : Math.round(solar.powerKw * 1000);
     return `
-      <div class="top">
       <div class="gauges">
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu${I("Solcellernes produktion lige nu fra effekt-sensoren under Indstillinger på Solceller-fanen. Skalaen går til anlæggets installerede effekt, eller 10 kW hvis den ikke er angivet.")}</div>
@@ -1405,8 +1482,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${this._renderCarBatteries()}
         </div>
         ${this._renderSelfSufficiencyCard(solar)}
-      </div>
-      ${sideCard}
       </div>`;
   }
 
@@ -1423,11 +1498,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div>${badge}</div>`;
   }
 
-  _renderChart(d) {
+  _renderChart(d, size = null) {
     const points = d.all;
     if (!points.length) return "";
-    const W = Math.max(320, Math.floor(this._chartWidth || (this._contentEl && this._contentEl.clientWidth - 34) || 640));
-    const H = 250;
+    const W = size ? size.W : Math.max(320, Math.floor(this._chartWidth || (this._contentEl && this._contentEl.clientWidth - 34) || 640));
+    const H = size ? size.H : 250;
     const padL = 44, padR = 8, padT = 24, padB = 28;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
@@ -1774,6 +1849,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
     return `
       ${this._settingsButton()}
+      ${this._withRules(`
       <div class="grid">
         <div class="card kpi">
           <div class="label"><ha-icon icon="mdi:solar-power"></ha-icon>Produktion lige nu${I("Aktuel effekt fra solcelle-sensoren under Indstillinger. Procenten er udnyttelsen af den installerede effekt (kWp).")}</div>
@@ -1833,7 +1909,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${this._renderGridEnergyHint()}
         </div>
         ${this._renderSolarUsageCard()}
-      </div>`;
+      </div>`)}`;
   }
 
   /** true/false for an on/off entity (switch, binary_sensor, input_boolean or a sensor saying on/off), null if unset or unknown. */
@@ -2092,6 +2168,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._maybeRender(true);
   }
 
+  /** The page's boxes to the left and the shared "Regler for opladning" as a column to the right of them. */
+  _withRules(main) {
+    const rules = this._renderRulesCard();
+    if (!rules) return main;
+    return `<div class="with-rules"><div class="rules-main">${main}</div><aside class="rules-side">${rules}</aside></div>`;
+  }
+
   _renderRulesCard() {
     const r = this._rules;
     if (!r) return "";
@@ -2107,7 +2190,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         : `Net-sensor til sol-overskud: ${
             r.grid_power_entity ? `<code>${esc(r.grid_power_entity)}</code>${gridLive.value !== null ? ` (${fmtNum(gridLive.value, 0)} W)` : ""}` : "bruger husbatteriets net-sensor"
           }`
-    }. Sensorerne vælges under Indstillinger øverst på Elbiler-fanen.</div>`;
+    }. Sensorerne vælges under Indstillinger på Elbiler-fanen.</div>`;
     const info = I;
     const head = (text, tip) => `<span class="fl">${text}${info(tip)}</span>`;
     const hasFuse = r.max_total_amps !== null && r.max_total_amps !== "" && Number(r.max_total_amps) > 0;
@@ -2348,9 +2431,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         `<div class="hint">Bilerne lades i de billigste tidsrum inden deadline. Kommandoer sendes til de valgte start/stop-entiteter.</div>
         ${cars && cars.length ? '<button class="btn primary" data-action="add-car"><ha-icon icon="mdi:plus" style="--mdc-icon-size:18px"></ha-icon> Tilføj bil</button>' : ""}`
       )}
-      ${this._carsError ? `<div class="err">${esc(this._carsError)}</div>` : ""}
-      ${body}
-      ${this._renderRulesCard()}`;
+      ${this._withRules(`${this._carsError ? `<div class="err">${esc(this._carsError)}</div>` : ""}${body}`)}`;
   }
 
   _renderCarCard(car, index = 0, total = 1) {
@@ -2401,7 +2482,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const targetSoc = Number(plan && plan.target_soc ? plan.target_soc : car.target_soc) || 0;
     return `
       <div class="card" data-car="${car.id}">
-        <h2><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="hint" style="font-weight:400">#${index + 1}</span>${I("Nummeret er bilens prioritet: ved sol-overskud og ved hovedsikringen får bil #1 strøm først. Flyt rækkefølgen med pilene nederst på kortet. Mærkatet viser bilens status lige nu.")} <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span></h2>
+        <h2 class="car-head"><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="hint" style="font-weight:400">#${index + 1}</span>${I("Nummeret er bilens prioritet: ved sol-overskud og ved hovedsikringen får bil #1 strøm først. Flyt rækkefølgen med pilene nederst på kortet. Mærkatet viser bilens status lige nu.")} <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span><button class="btn ${car.charge_now ? "active" : ""}" data-action="charge-now" title="Starter opladning med det samme uanset plan, mål-SoC og Smart opladning. Kører til bilen er fuld, tages ud af laderen, eller du trykker Stop.">${car.charge_now ? "Stop 'Lad nu'" : "Lad nu"}</button></h2>
         <div class="car-live">
           <div>
             <div class="label"><ha-icon icon="mdi:battery-medium"></ha-icon>Batteri${I("Bilens ladestand: rød under 20 %, orange under 40 %, ellers grøn. Den stiplede streg er dagens mål-SoC, og lynet viser, at bilen lader lige nu.")}</div>
@@ -2420,21 +2501,19 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </div>
         </div>
         <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
-        ${plan ? this._renderPlanStrip(plan) : ""}
+        ${plan ? this._renderPlanStrip(plan, rt.recent) : ""}
         <label class="switch"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}><span class="slider"></span>Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen, bortset fra når du trykker Lad nu.")}</label>
         <div class="controls" style="margin-top:0">
+          <label class="field" style="flex:1 1 130px"><span class="fl">Navn${I("Vises på kortet, i statuslinjen og i prisdiagrammets forklaring.")}</span><input type="text" data-field="name" value="${esc(car.name)}"></label>
+          <label class="field"><span class="fl">Batterikapacitet (kWh)${I("Bilens batteristørrelse. Bruges til at beregne, hvor mange kWh og timer der skal lades for at nå mål-SoC.")}</span><input type="number" step="0.1" min="1" data-field="capacity_kwh" value="${car.capacity_kwh}"></label>
+          <label class="field"><span class="fl">Faser${I("Antal faser laderen bruger. Effekt = ladestrøm × 230 V × faser.")}</span><select data-field="phases">${[1, 2, 3].map((n) => `<option value="${n}" ${Number(car.phases || 3) === n ? "selected" : ""}>${n} fase${n > 1 ? "r" : ""}</option>`).join("")}</select></label>
           <label class="field"><span class="fl">Prisgrænse (kr/kWh)${I("Bilen lader altid, når prisen lige nu er under denne grænse, uanset planen. Tom = ingen prisgrænse.")}</span><input type="number" step="0.01" data-field="price_limit" value="${car.price_limit === null || car.price_limit === undefined ? "" : car.price_limit}" placeholder="fra"></label>
           <label class="field"><span class="fl">Min. ladestrøm (A)${I("Laveste strøm laderen må sættes til (må ikke være højere end maks.). Ved solopladning startes først, når overskuddet rækker til denne strøm.")}</span><input type="number" min="1" max="64" step="1" data-field="min_amps" value="${car.min_amps}"></label>
           <label class="field"><span class="fl">Maks. ladestrøm (A)${I("Højeste strøm laderen må sættes til. Planen regner med maks. ladestrøm × 230 V × antal faser.")}</span><input type="number" min="1" max="64" step="1" data-field="max_amps" value="${car.max_amps}"></label>
           <label class="toggle"><input type="checkbox" data-field="contiguous" ${car.contiguous ? "checked" : ""}> Sammenhængende opladning${I("Til: netopladningen lægges i én sammenhængende blok af timer – den billigste blok, der er lang nok til at nå mål-SoC inden deadline – så laderen kun startes én gang. Fra: bilen lader i de billigste enkelttimer, også når de ligger spredt. Er der ingen sammenhængende blok, der er lang nok inden deadline, bruges de billigste enkelttimer alligevel. Gælder ikke solopladning og prisgrænsen.")}</label>
         </div>
         ${this._renderSchedule(car)}
-        <div class="row" style="margin-top:12px">
-          <button class="btn ${car.charge_now ? "active" : ""}" data-action="charge-now" title="Starter opladning med det samme uanset plan, mål-SoC og Smart opladning. Kører til bilen er fuld, tages ud af laderen, eller du trykker Stop.">${car.charge_now ? "Stop 'Lad nu'" : "Lad nu"}</button>
-          <button class="btn" data-action="edit-car">Rediger</button>
-          <button class="btn danger" data-action="delete-car">Slet</button>
-          ${total > 1 ? `<span class="seg" style="margin-left:auto"><button class="btn" data-action="move-up" ${index === 0 ? "disabled" : ""} title="Højere prioritet">▲</button><button class="btn" data-action="move-down" ${index === total - 1 ? "disabled" : ""} title="Lavere prioritet">▼</button></span>` : ""}
-        </div>
+        ${total > 1 ? `<div class="row" style="margin-top:12px"><span class="hint">Prioritet</span><span class="seg" style="margin-left:auto"><button class="btn" data-action="move-up" ${index === 0 ? "disabled" : ""} title="Højere prioritet">▲</button><button class="btn" data-action="move-down" ${index === total - 1 ? "disabled" : ""} title="Lavere prioritet">▼</button></span></div>` : ""}
       </div>`;
   }
 
@@ -2450,9 +2529,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <td>${timeInput('data-sched="ready_by"', e.ready_by)}</td>
         <td><input type="number" min="1" max="100" step="1" data-sched="target_soc" value="${e.target_soc}"></td>
       </tr>`;
+    const open = this._schedOpen.has(car.id);
     return `
-      <div class="sched-wrap">
-        <h3>Ugeplan</h3>
+      <div class="sched-wrap${open ? "" : " collapsed"}">
+        <h3>Ugeplan<button type="button" class="sched-toggle" data-action="toggle-sched" aria-expanded="${open}" title="${open ? "Vis kun Alle dage og i dag" : "Vis alle ugens dage"}">${open ? "Skjul ugen" : "Vis hele ugen"}<ha-icon icon="mdi:chevron-${open ? "up" : "down"}"></ha-icon></button></h3>
         <table class="sched">
           <thead><tr><th>Dag${I("Rækken Alle dage sætter samme værdi på alle ugedage. Dagens række er fremhævet.")}</th><th>Til${I("Skal bilen lades den dag. Fra = ingen kommandoer den dag.")}</th><th>Kilde${I("Kun sol: lader kun på sol-overskud. Sol + billige timer: sol om dagen og de billigste timer inden deadline. Kun billige timer: kun netopladning i de billigste timer.")}</th><th>Klar senest${I("Tidspunkt hvor mål-SoC skal være nået. Planen vælger de billigste timer inden da. Ligger tidspunktet før nu, gælder næste dag.")}</th><th>Mål-SoC %${I("Ladestand bilen skal nå inden tidspunktet. Er bilen allerede over, sker der ingen opladning.")}</th></tr></thead>
           <tbody>
@@ -2460,7 +2540,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${sched.map((e, i) => row(DAY_NAMES[i], i === today ? "today" : "", i, e)).join("")}
           </tbody>
         </table>
-        <div class="hint">Slå en dag fra, hvis bilen ikke skal være klar den morgen – så planlægges der frem mod næste aktive dag. Kilde: "Kun sol" lader kun på overskud den dag, "Kun billige timer" bruger kun planen, "Sol + billige timer" begge. "Alle dage" sætter alle syv.</div>
+        ${open ? '<div class="hint">Slå en dag fra, hvis bilen ikke skal være klar den morgen – så planlægges der frem mod næste aktive dag. Kilde: "Kun sol" lader kun på overskud den dag, "Kun billige timer" bruger kun planen, "Sol + billige timer" begge. "Alle dage" sætter alle syv.</div>' : ""}
       </div>`;
   }
 
@@ -2476,42 +2556,66 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   /* Shared plan strip used by cars and the battery: same height, hour ticks every 6 h, day boundary
      markers, current slot outlined, estimated (unknown price) slots dimmed. */
-  _renderStrip(slots, classOf, labelOf) {
-    if (!slots.length) return "";
-    const t0 = Math.min(Date.now(), new Date(slots[0].start).getTime());
-    const t1 = new Date(slots[slots.length - 1].end).getTime();
-    const W = 600, H = 44, barH = 20, textY = H - 4;
-    const x = (t) => ((t - t0) / (t1 - t0)) * W;
-    const now = Date.now();
-    const rects = slots
-      .map((s) => {
-        const a = new Date(s.start).getTime(), b = new Date(s.end).getTime();
-        const isNow = a <= now && now < b;
-        return `<rect class="slot ${classOf(s)} ${s.estimated ? "est" : ""} ${isNow ? "now" : ""}" x="${x(a).toFixed(1)}" y="0" width="${Math.max(0.5, x(b) - x(a) - 0.5).toFixed(1)}" height="${barH}" rx="2"><title>${esc(`${fmtTime(new Date(a))} · ${fmtNum(s.price)}${s.estimated ? " (estimat)" : ""} · ${labelOf(s)}`)}</title></rect>`;
-      })
-      .join("");
+  /**
+   * The charging heatmap: 24 cells of one hour each - the hour that has passed, the current hour
+   * (outlined) and the 22 hours after it.
+   * `slots` is the plan (price slots from now on, an hour or a quarter each) and `recent` what the
+   * backend remembers of the slots that have passed. A cell takes the highest ranked slot inside
+   * its hour, so an hour with one planned quarter shows as planned.
+   */
+  _renderStrip(slots, recent, classOf, rank, labelOf) {
+    const HOUR = 3600000;
+    const nowMs = Date.now();
+    const thisHour = new Date(nowMs);
+    thisHour.setMinutes(0, 0, 0);
+    const t0 = thisHour.getTime() - HOUR;
+    // the plan wins over what is remembered for the same slot
+    const byStart = new Map();
+    for (const s of recent || []) byStart.set(new Date(s.start).getTime(), { ...s, past: true });
+    for (const s of slots || []) byStart.set(new Date(s.start).getTime(), s);
+    const all = [...byStart.entries()].map(([a, s]) => ({ a, b: new Date(s.end).getTime(), s })).filter((m) => m.b > t0 && m.a < t0 + 24 * HOUR);
+    if (!all.length) return "";
+    const W = 600, H = 44, barH = 20, textY = H - 4, cw = W / 24;
+    const rects = [];
     const marks = [];
-    let prevDay = null;
-    for (const s of slots) {
-      const d = new Date(s.start);
-      const day = d.getDate();
-      if (prevDay !== null && day !== prevDay) {
-        const xx = x(d.getTime()).toFixed(1);
-        marks.push(`<line class="strip-day" x1="${xx}" x2="${xx}" y1="0" y2="${barH + 4}"/>`);
-        marks.push(`<text class="tick" x="${x(d.getTime()) + 3}" y="${textY}">${DAY_SHORT[(d.getDay() + 6) % 7]}</text>`);
-      } else if (d.getMinutes() === 0 && d.getHours() % 6 === 0) {
-        marks.push(`<text class="tick" x="${x(d.getTime()).toFixed(1)}" y="${textY}">${pad2(d.getHours())}</text>`);
+    for (let i = 0; i < 24; i++) {
+      const a = t0 + i * HOUR, b = a + HOUR;
+      const d = new Date(a);
+      const past = i === 0;
+      const members = all.filter((m) => m.a < b && m.b > a).map((m) => m.s);
+      let cls = "none";
+      let text = "Ingen data";
+      if (members.length) {
+        const best = members.reduce((p, s) => (rank(s) > rank(p) ? s : p));
+        const est = members.every((s) => s.estimated);
+        const price = members.reduce((sum, s) => sum + Number(s.price), 0) / members.length;
+        cls = `${classOf(best)}${est ? " est" : ""}`;
+        text = `${fmtNum(price)}${est ? " (estimat)" : ""} · ${labelOf(best, past)}`;
       }
-      prevDay = day;
+      const span = `${pad2(d.getHours())}:00–${pad2(new Date(b).getHours())}:00`;
+      rects.push(`<rect class="slot ${cls}${past ? " past" : ""}${i === 1 ? " now" : ""}" x="${(i * cw + 0.75).toFixed(1)}" y="${i === 1 ? 0.75 : 0}" width="${(cw - 1.5).toFixed(1)}" height="${i === 1 ? barH - 1.5 : barH}" rx="2"><title>${esc(`${past ? "Forgangen time " : i === 1 ? "Nu " : ""}${span} · ${text}`)}</title></rect>`);
+      if (i > 0 && d.getHours() === 0) {
+        const xx = (i * cw).toFixed(1);
+        marks.push(`<line class="strip-day" x1="${xx}" x2="${xx}" y1="0" y2="${barH + 4}"/>`);
+        marks.push(`<text class="tick" x="${(i * cw + 3).toFixed(1)}" y="${textY}">${DAY_SHORT[(d.getDay() + 6) % 7]}</text>`);
+      } else if (d.getHours() % 3 === 0) {
+        marks.push(`<text class="tick" x="${(i * cw + 0.75).toFixed(1)}" y="${textY}">${pad2(d.getHours())}</text>`);
+      }
     }
-    return `<svg class="plan-strip" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${rects}${marks.join("")}</svg>`;
+    return `<svg class="plan-strip" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Opladning time for time: den forgangne time og de næste 23 timer">${rects.join("")}${marks.join("")}</svg>`;
   }
 
-  _renderPlanStrip(plan) {
-    const slots = plan.plan || [];
-    if (!slots.length) return "";
-    return `${this._renderStrip(slots, (s) => (s.chosen ? "chosen" : ""), (s) => (s.chosen ? "Planlagt ladning" : "Ingen ladning"))}
-      <div class="legend"><span class="l-normal">Ingen ladning</span><span class="l-charge">Planlagt ladning</span><span class="l-est">Estimat (pris ukendt)</span></div>`;
+  _renderPlanStrip(plan, recent) {
+    const strip = this._renderStrip(
+      plan.plan || [],
+      recent,
+      (s) => (s.chosen ? "chosen" : ""),
+      (s) => (s.chosen ? 1 : 0),
+      (s, past) => (past ? (s.chosen ? "Ladede" : "Ladede ikke") : s.chosen ? "Planlagt ladning" : "Ingen ladning")
+    );
+    if (!strip) return "";
+    return `${strip}
+      <div class="legend"><span class="l-normal">Ingen ladning</span><span class="l-charge">Planlagt ladning</span><span class="l-est">Estimat (pris ukendt)</span><span style="margin-left:auto">1 time tilbage · 23 timer frem</span></div>`;
   }
 
   static CAR_ERRORS = {
@@ -2582,7 +2686,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${isNew ? `<label class="field"><span class="fl">Klar senest (alle dage)${I("Startværdi for alle ugedage. Kan ændres pr. dag i ugeplanen bagefter.")}</span>${timeInput('name="ready_by"', car.ready_by || "07:00")}</label>
             <label class="field"><span class="fl">Mål-SoC % (alle dage)${I("Startværdi for alle ugedage. Kan ændres pr. dag i ugeplanen bagefter.")}</span><input name="target_soc" type="number" min="1" max="100" value="${v("target_soc", 80)}"></label>` : ""}
           </div>
-          <div class="hint" style="margin-top:10px">${isNew ? `${ElectricityOptimizerPanel.CMD_HINT} ` : "Bilens sensorer og laderens kommandoer vælges under Indstillinger øverst på Elbiler-fanen. "}Maks. ladestrøm × 230 V × faser er effekten, planen regner med. Ved solopladning justeres strømgrænse-entiteten løbende mellem min. og maks. efter overskuddet; uden strømgrænse-entitet startes solopladning kun, når overskuddet dækker maks. ladestrøm. Ladeeffekt-sensoren bruges til at vise og regne med bilens faktiske forbrug.</div>
+          <div class="hint" style="margin-top:10px">${ElectricityOptimizerPanel.CMD_HINT} Maks. ladestrøm × 230 V × faser er effekten, planen regner med. Ved solopladning justeres strømgrænse-entiteten løbende mellem min. og maks. efter overskuddet; uden strømgrænse-entitet startes solopladning kun, når overskuddet dækker maks. ladestrøm. Ladeeffekt-sensoren bruges til at vise og regne med bilens faktiske forbrug.</div>
           ${this._formError ? `<div class="err">${esc(errText[this._formError] || this._formError)}</div>` : ""}
           <div class="row" style="margin-top:14px">
             <button class="btn primary" type="submit" data-action="save-car">Gem</button>
@@ -2635,7 +2739,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ? cars
           .map(
             (car) => `<form data-sform="car" data-id="${esc(car.id)}">
-      <h3 class="set-title"><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)}</h3>
+      <h3 class="set-title"><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)}<button class="btn danger" type="button" style="margin-left:auto" data-saction="delete-car">Slet bil</button></h3>
       <div class="form-grid">
         ${this._carSensorFields(car)}
         ${this._carChargerFields(car)}
@@ -2757,11 +2861,29 @@ class ElectricityOptimizerPanel extends HTMLElement {
     else if (dlg.open) dlg.close(); // the close handler renders the page again
   }
 
+  /** "Slet bil" in the settings dialog: only that car's section goes, so edits in the other sections stay. */
+  async _deleteCarFromSettings(form) {
+    const car = (this._cars || []).find((c) => c.id === form.dataset.id);
+    if (!car || !window.confirm(`Slet ${car.name}?`)) return;
+    const errEl = form.querySelector(".err");
+    try {
+      await this._hass.callWS({ type: "electricity_optimizer/cars/delete", car_id: car.id });
+      this._schedOpen.delete(car.id);
+      form.remove();
+      await this._loadCars(true);
+      this._maybeRender(true);
+    } catch (err) {
+      errEl.textContent = (err && (err.message || err.code)) || String(err);
+      errEl.hidden = false;
+    }
+  }
+
   async _onSettingsClick(btn) {
     const action = btn.dataset.saction;
     if (action === "open") await this._openSettings();
     else if (action === "close") this._dialogEl.close();
     else if (action === "save") await this._saveSettings(btn);
+    else if (action === "delete-car") await this._deleteCarFromSettings(btn.closest("form"));
   }
 
   _entityMatches(domains, query) {
@@ -2965,9 +3087,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
         this._editing = {};
         this._formError = null;
         this._maybeRender(true);
-      } else if (action === "edit-car" && car) {
-        this._editing = { ...car };
-        this._formError = null;
+      } else if (action === "toggle-sched" && car) {
+        if (!this._schedOpen.delete(car.id)) this._schedOpen.add(car.id);
         this._maybeRender(true);
       } else if (action === "cancel-car") {
         this._editing = null;
@@ -2989,11 +3110,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
           // keep the typed values
           this._editing = { ...this._editing, ...data };
         }
-        this._maybeRender(true);
-      } else if (action === "delete-car" && car) {
-        if (!window.confirm(`Slet ${car.name}?`)) return;
-        await this._hass.callWS({ type: "electricity_optimizer/cars/delete", car_id: car.id });
-        await this._loadCars(true);
         this._maybeRender(true);
       } else if (action === "charge-now" && car) {
         await this._saveCar({ id: car.id, charge_now: !car.charge_now });
@@ -3309,6 +3425,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
     return `
       ${this._settingsButton()}
+      ${this._withRules(`
       <div class="grid">
         <div class="card kpi live">
           <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand vist som et batteri, der fyldes op: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
@@ -3335,9 +3452,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>
 
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-timeline"></ha-icon>Plan${I("Planlagt modus pr. tidsrum for i dag og i morgen. Manuel-knapperne overstyrer planen, indtil Auto vælges igen. Knapper uden kommandoer er slået fra.")}</h2>
-        ${plan ? this._renderBatteryPlanStrip(plan) : '<div class="hint">Ingen plan endnu.</div>'}
-        <div class="legend"><span class="l-normal">Normal</span><span class="l-hold">Hold</span><span class="l-charge">Lad fra nettet</span><span class="l-est">Estimat (pris ukendt)</span></div>
+        <h2><ha-icon icon="mdi:chart-timeline"></ha-icon>Plan${I("Modus time for time i 24 felter: den forgangne time, den aktuelle time (med kant) og de næste 22 timer. Manuel-knapperne overstyrer planen, indtil Auto vælges igen. Knapper uden kommandoer er slået fra.")}</h2>
+        ${plan ? this._renderBatteryPlanStrip(plan, rt.recent) : '<div class="hint">Ingen plan endnu.</div>'}
+        <div class="legend"><span class="l-normal">Normal</span><span class="l-hold">Hold</span><span class="l-charge">Lad fra nettet</span><span class="l-est">Estimat (pris ukendt)</span><span style="margin-left:auto">1 time tilbage · 23 timer frem</span></div>
         <div class="row" style="margin-top:12px">
           <span class="hint">Manuel:</span>
           <span class="seg">
@@ -3370,8 +3487,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <button class="btn danger" data-baction="delete">Slet</button>
         </div>
         ${this._batteryError ? `<div class="err">${esc(this._batteryError)}</div>` : ""}
-      </div>
-      ${this._renderRulesCard()}`;
+      </div>`)}`;
   }
 
   _renderForecastRuleHint(plan) {
@@ -3424,11 +3540,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }));
   }
 
-  _renderBatteryPlanStrip(plan) {
-    const slots = plan.plan || [];
-    if (!slots.length) return "";
+  _renderBatteryPlanStrip(plan, recent) {
     const label = { normal: "Normal", hold: "Hold", charge: "Lad fra nettet" };
-    return this._renderStrip(slots, (s) => s.mode, (s) => label[s.mode] || s.mode);
+    const order = { normal: 0, hold: 1, charge: 2 };
+    return this._renderStrip(plan.plan || [], recent, (s) => s.mode, (s) => order[s.mode] || 0, (s) => label[s.mode] || s.mode);
   }
 
   /** The battery's sensors and command entities. Shown in the settings dialog, and in the form only during the first setup. */

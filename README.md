@@ -66,8 +66,9 @@ Under fanen **Elbiler** tilføjer du en bil med:
 | Ladeeffekt-sensor | Valgfri sensor (W/kW) med bilens faktiske ladeeffekt; vises live og bruges i sol-regnestykket |
 | Kilde | *Kun sol*, *Sol + billige timer* (standard) eller *Kun billige timer* – vælges pr. ugedag i ugeplanen (formularens valg gælder alle dage ved oprettelse) |
 
-Pr. bil kan du løbende ændre **Smart opladning** til/fra, **prisgrænse** (lad altid under denne pris),
-**min./maks. ladestrøm** (A), **kilde** og trykke **Lad nu**.
+Pr. bil kan du løbende ændre **Smart opladning** til/fra, **navn**, **batterikapacitet**, **faser**,
+**prisgrænse** (lad altid under denne pris), **min./maks. ladestrøm** (A), **kilde** og trykke **Lad nu**
+(øverst til højre på kortet). Bilen slettes under **Indstillinger** øverst på fanen.
 
 **Sammenhængende opladning** (pr. bil, slået fra som standard): slået til lægges netopladningen i én
 sammenhængende blok af timer – den billigste blok, der er lang nok til at nå mål-SoC inden deadline –
@@ -75,7 +76,7 @@ i stedet for i de billigste enkelttimer, så laderen kun startes én gang. En bl
 køres færdig. Findes der ingen blok, der er lang nok inden deadline, bruges de billigste enkelttimer
 alligevel. Valget gælder ikke solopladning og prisgrænsen.
 
-**Ugeplan**: på bilens kort (altid synlig) sættes for hver ugedag om bilen skal være klar, kilde,
+**Ugeplan**: på bilens kort (foldet sammen til "Alle dage" og dagens række; "Vis hele ugen" folder alle dage ud) sættes for hver ugedag om bilen skal være klar, kilde,
 klokkeslæt og mål-SoC (rækken "Alle dage" sætter alle syv). På dage med *Kun sol* vælges der ingen
 billige timer, heller ikke frem mod en deadline på en senere dag. Deadline findes som næste aktive dag, så en slukket lørdag
 betyder, at der planlægges frem mod søndag eller mandag med de billigste timer undervejs.
@@ -93,7 +94,7 @@ med, så den ikke slukker sig selv. Flere biler får sol i den rækkefølge, de 
 
 ## Regler for opladning
 
-Kortet **Regler for opladning** nederst på fanerne Elbiler og Hus batteri (samme indstillinger begge steder) styrer samspillet mellem elbil og husbatteri. Alle kort, målere og felter i panelet har et (i)-ikon med forklaring, og felter uden betydning skjules:
+Kortet **Regler for opladning** står som en kolonne til højre på fanerne Solceller, Elbiler og Hus batteri (samme indstillinger alle tre steder; på smalle skærme under de øvrige bokse) og styrer samspillet mellem elbil og husbatteri. Alle kort, målere og felter i panelet har et (i)-ikon med forklaring, og felter uden betydning skjules:
 
 | Regel | Betydning |
 | --- | --- |

@@ -127,6 +127,27 @@ def next_deadline(now: datetime, car: dict[str, Any]) -> tuple[datetime | None, 
     return None, None
 
 
+RECENT_HOURS = 2  # how long a passed price slot is remembered for the panel's 24-hour strip
+
+
+def remember_slot(recent: list[dict[str, Any]], now: datetime, slots: list[Slot], key: str, value: Any, rank: Callable[[Any], int]) -> None:
+    """Note what happened in the price slot we are in, so the panel can show the hour that has passed.
+
+    `recent` holds one entry per slot (start, end, price and `key`). Within a slot the highest ranked
+    value seen is kept: a car that charged for part of the slot did charge in it.
+    """
+    current = next((s for s in slots if s.start <= now < s.end), None)
+    if current is not None:
+        start = current.start.isoformat()
+        entry = next((e for e in recent if e["start"] == start), None)
+        if entry is None:
+            recent.append({"start": start, "end": current.end.isoformat(), "price": current.price, key: value})
+        elif rank(value) > rank(entry[key]):
+            entry[key] = value
+    cutoff = now - timedelta(hours=RECENT_HOURS)
+    recent[:] = [e for e in recent if datetime.fromisoformat(e["end"]) > cutoff]
+
+
 def cheapest_window(
     slots: list[Slot],
     need_hours: float,
@@ -310,6 +331,7 @@ class EvController:
         self._last_amps: dict[str, float] = {}
         self._last_amps_at: dict[str, datetime] = {}
         self._last_soc: dict[str, tuple[str, float]] = {}  # car id -> (SoC entity, last value it reported)
+        self._recent: dict[str, list[dict[str, Any]]] = {}  # car id -> did it charge in the slots that just passed
 
     # ---- persisted state (survives a Home Assistant restart)
 
@@ -419,6 +441,11 @@ class EvController:
                 await self._evaluate_car(ctx, car)
             except Exception:  # noqa: BLE001 - keep other cars running
                 _LOGGER.exception("Error evaluating car %s", car.get("name"))
+            rt = self.runtime.get(car["id"])
+            if rt is not None:
+                recent = self._recent.setdefault(car["id"], [])
+                remember_slot(recent, ctx.now, ctx.slots, "chosen", bool(rt.get("charging")), int)
+                rt["recent"] = recent
         ids = {c["id"] for c in self.store.cars}
         for cid in list(self.runtime):
             if cid not in ids:
@@ -426,6 +453,7 @@ class EvController:
                 self._last_cmd.pop(cid, None)
                 self._last_amps.pop(cid, None)
                 self._last_amps_at.pop(cid, None)
+                self._recent.pop(cid, None)
                 self._forget_state(cid)
 
     async def _evaluate_car(self, ctx: Context, car: dict[str, Any]) -> None:
