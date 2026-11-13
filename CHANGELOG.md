@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.43.1
+
+- Husbatteriets og elbilernes ladestand viser nu altid den sidst målte værdi. Er SoC-sensoren utilgængelig eller uden værdi (fx når bilen sover, eller lige efter en genstart af Home Assistant), vises den seneste måling i stedet for "–" på Forsiden, Elbiler, Hus batteri og i Kapaciteter. Værdien huskes også hen over en genstart.
+- Det gælder kun visningen: planlægning og styring bruger stadig kun en aktuel måling, så der startes ikke opladning ud fra en gammel ladestand.
+
 ## 0.43.0
 
 - Nyt valg "Sammenhængende opladning" på hver elbil og "Sammenhængende netopladning" på husbatteriet. Slået til lægges netopladningen i én sammenhængende blok af timer (den billigste blok, der er lang nok) i stedet for i de billigste enkelttimer, så lader og inverter kun startes én gang. Valget sættes for hver bil og for husbatteriet for sig og er slået fra som standard.

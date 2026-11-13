@@ -226,6 +226,7 @@ class BatteryController:
         self.runtime: dict[str, Any] = {}
         self._active: str | None = None  # last commanded mode
         self._retry_at: datetime | None = None  # last re-sent command after an inverter mismatch
+        self._last_soc: tuple[str, float] | None = None  # (SoC entity, last value it reported)
         self.notifier = None  # set by __init__
         self.state: RuntimeStateStore | None = None  # set by __init__
 
@@ -233,7 +234,13 @@ class BatteryController:
         """After a restart: trust the last commanded mode instead of stopping everything to resync."""
         if self.state is None:
             return
-        active = self.state.data.get("battery", {}).get("active")
+        saved = self.state.data.get("battery", {})
+        if saved.get("last_soc") is not None and saved.get("last_soc_entity"):
+            try:
+                self._last_soc = (str(saved["last_soc_entity"]), float(saved["last_soc"]))
+            except (TypeError, ValueError):
+                pass
+        active = saved.get("active")
         if active in ("normal", "hold", "charge"):
             self._active = active
             _LOGGER.info("Restored battery mode %s after restart", active)
@@ -242,6 +249,22 @@ class BatteryController:
         if self.state is not None:
             self.state.data.setdefault("battery", {})["active"] = self._active
             self.state.save()
+
+    def _remember_soc(self, cfg: dict[str, Any], soc: float | None) -> float | None:
+        """Keep the last value the SoC sensor reported (also across restarts) and return it.
+
+        Only for display: while the sensor is unavailable the panel shows this instead of nothing.
+        The value belongs to the sensor it came from, so it is dropped when another sensor is chosen.
+        """
+        entity = cfg["soc_entity"]
+        if self._last_soc is not None and self._last_soc[0] != entity:
+            self._last_soc = None
+        if soc is not None and (self._last_soc is None or self._last_soc[1] != soc):
+            self._last_soc = (entity, soc)
+            if self.state is not None:
+                self.state.data.setdefault("battery", {}).update(last_soc_entity=entity, last_soc=soc)
+                self.state.save()
+        return self._last_soc[1] if self._last_soc else None
 
     def _number(self, entity_id: str) -> float | None:
         if not entity_id:
@@ -286,6 +309,7 @@ class BatteryController:
         rt["evaluated_at"] = ctx.now.isoformat()
         soc = ctx.battery_soc
         rt["soc"] = soc
+        rt["last_soc"] = self._remember_soc(cfg, soc)
         rt["commands_configured"] = {"charge": bool(cfg["charge_start_entity"]), "hold": bool(cfg["hold_start_entity"])}
         if soc is None:
             rt["status"] = "no_soc"

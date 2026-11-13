@@ -309,6 +309,7 @@ class EvController:
         self.state: RuntimeStateStore | None = None  # set by __init__
         self._last_amps: dict[str, float] = {}
         self._last_amps_at: dict[str, datetime] = {}
+        self._last_soc: dict[str, tuple[str, float]] = {}  # car id -> (SoC entity, last value it reported)
 
     # ---- persisted state (survives a Home Assistant restart)
 
@@ -317,6 +318,11 @@ class EvController:
         if self.state is None:
             return
         for cid, st in self.state.data.get("ev", {}).items():
+            if st.get("last_soc") is not None and st.get("last_soc_entity"):
+                try:
+                    self._last_soc[cid] = (str(st["last_soc_entity"]), float(st["last_soc"]))
+                except (TypeError, ValueError):
+                    pass
             if not st.get("charging"):
                 continue
             self._last_cmd[cid] = True
@@ -339,7 +345,10 @@ class EvController:
             return
         since = self._charging_since.get(cid)
         amps_at = self._last_amps_at.get(cid)
+        last_soc = self._last_soc.get(cid)
         self.state.data.setdefault("ev", {})[cid] = {
+            "last_soc_entity": last_soc[0] if last_soc else None,
+            "last_soc": last_soc[1] if last_soc else None,
             "charging": bool(self._last_cmd.get(cid, False)),
             "mode": (self.runtime.get(cid) or {}).get("mode"),
             "amps": self._last_amps.get(cid),
@@ -367,6 +376,22 @@ class EvController:
 
     def _read_soc(self, car: dict[str, Any]) -> float | None:
         return self._read_number(car["soc_entity"])[0]
+
+    def _remember_soc(self, car: dict[str, Any], soc: float | None) -> float | None:
+        """Keep the last value the SoC sensor reported (also across restarts) and return it.
+
+        Only for display: while the sensor is unavailable the panel shows this instead of nothing.
+        The value belongs to the sensor it came from, so it is dropped when another sensor is chosen.
+        """
+        cid, entity = car["id"], car["soc_entity"]
+        last = self._last_soc.get(cid)
+        if last is not None and last[0] != entity:
+            last = None
+            self._last_soc.pop(cid, None)
+        if soc is not None and (last is None or last[1] != soc):
+            last = self._last_soc[cid] = (entity, soc)
+            self._persist(cid)
+        return last[1] if last else None
 
     def _read_power_w(self, car: dict[str, Any]) -> float | None:
         value, unit = self._read_number(car.get("power_entity", ""))
@@ -412,6 +437,7 @@ class EvController:
         car_w = self._read_power_w(car)
         rt.update(soc=soc, plugged=plugged, car_w=car_w, amps=self._last_amps.get(car["id"]))
         rt["charging"] = self._last_cmd.get(car["id"], False)
+        rt["last_soc"] = self._remember_soc(car, soc)
 
         if soc is None:
             rt["status"] = "no_soc"

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.43.0";
+const PANEL_JS_VERSION = "0.43.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -971,7 +971,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       // every car counts, also with Smart opladning off - the battery is still yours
       const rt = car.runtime || {};
       const target = Number(rt.plan && rt.plan.target_soc ? rt.plan.target_soc : car.target_soc) || null;
-      add("mdi:car-electric", `${car.name || "Elbil"} batteri`, car.capacity_kwh, this._numState(car.soc_entity).value, target);
+      add("mdi:car-electric", `${car.name || "Elbil"} batteri`, car.capacity_kwh, this._carSoc(car), target);
     }
     const row = (icon, name, stored, cap, cls = "", target = null) => {
       const pct = stored === null || cap <= 0 ? null : (stored / cap) * 100;
@@ -1199,7 +1199,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (cars.length === 1) {
       const car = cars[0];
       const rt = car.runtime || {};
-      const soc = this._numState(car.soc_entity).value;
+      const soc = this._carSoc(car);
       const target = Number(rt.plan && rt.plan.target_soc ? rt.plan.target_soc : car.target_soc) || 0;
       const [statusText] = K.STATUS_TEXT[rt.status] || [""];
       return this._renderBigBattery({
@@ -1214,7 +1214,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
     const rows = cars.map((car) => {
       const rt = car.runtime || {};
-      const soc = this._numState(car.soc_entity).value;
+      const soc = this._carSoc(car);
       const target = Number(rt.plan && rt.plan.target_soc ? rt.plan.target_soc : car.target_soc) || 0;
       const pct = soc === null ? 0 : Math.max(0, Math.min(100, soc));
       const color = carColor(soc);
@@ -2311,7 +2311,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const charging = cars.filter((c) => c.runtime && c.runtime.charging).length;
     const desc = cars
       .map((c) => {
-        const v = this._numState(c.soc_entity).value;
+        const v = this._carSoc(c);
         const [text] = K.STATUS_TEXT[(c.runtime || {}).status] || ["–"];
         const detail = c.runtime ? this._carStatusDetail(c, c.runtime) : "";
         return esc(`${c.name}: ${v !== null ? fmtNum(v, 0) + " %" : "–"} – ${text}`) + (detail ? `<br><span class="reason">${esc(detail)}</span>` : "");
@@ -2356,8 +2356,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderCarCard(car, index = 0, total = 1) {
     const rt = car.runtime || {};
     const [statusText, statusCls] = ElectricityOptimizerPanel.STATUS_TEXT[rt.status] || ["Ukendt", "neutral"];
-    const liveSoc = this._numState(car.soc_entity).value;
-    const soc = liveSoc !== null ? liveSoc : rt.soc !== null && rt.soc !== undefined ? Number(rt.soc) : null;
+    const soc = this._carSoc(car);
     const plan = rt.plan || null;
     const now = new Date();
     const dayLabel = (d) => (d.getDate() === now.getDate() ? "i dag" : "i morgen");
@@ -3201,9 +3200,25 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return res;
   }
 
+  /** The car's SoC: the sensor's value, or the last value it reported while it is unavailable. */
+  _carSoc(car) {
+    const live = this._numState(car.soc_entity).value;
+    if (live !== null) return live;
+    const last = (car.runtime || {}).last_soc;
+    return last === null || last === undefined ? null : Number(last);
+  }
+
+  /** The house battery's SoC: the sensor's value, or the last value it reported while it is unavailable. */
+  _batterySoc() {
+    const live = this._numState((this._battery || {}).soc_entity).value;
+    if (live !== null) return live;
+    const last = (this._batteryRuntime || {}).last_soc;
+    return last === null || last === undefined ? null : Number(last);
+  }
+
   _readBatteryLive() {
     const b = this._battery || {};
-    const soc = this._numState(b.soc_entity).value;
+    const soc = this._batterySoc();
     let batW = null;
     if (b.power_entity) {
       const p = this._numState(b.power_entity);
