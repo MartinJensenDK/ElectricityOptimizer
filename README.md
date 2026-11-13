@@ -32,7 +32,9 @@ Integrationen tilføjer et menupunkt **Electricity Optimizer** i Home Assistants
 2. Tilføj `https://github.com/MartinJensenDK/ElectricityOptimizer` med kategori *Integration*.
 3. Installer **Electricity Optimizer** og genstart Home Assistant.
 4. Indstillinger → Enheder og tjenester → *Tilføj integration* → **Electricity Optimizer**.
-5. Vælg EnergiDataService-prissensoren og (valgfrit) dine solcelle-sensorer. Menupunktet dukker op i sidebaren.
+5. Vælg **Opsæt med mine egne sensorer**, og vælg derefter elpris-sensoren (påkrævet, EnergiDataService anbefales) og dine solcelle-sensorer (valgfri). Menupunktet dukker op i sidebaren.
+
+Vil du blot se, hvordan det ser ud, så vælg **Prøv med demodata** i trin 5. Så kører panelet på simulerede elpriser, solceller, et husbatteri og en elbil. Der læses og styres ingen rigtige enheder, demodata gemmes adskilt fra dine rigtige data, og panelet viser mærkatet "Demo" øverst. Slet tjenesten, og tilføj den igen for at skifte til dine egne sensorer.
 
 Solcelle-sensorerne kan altid ændres med knappen **Indstillinger** (tandhjulet) øverst til højre på Solceller-fanen, eller under Indstillinger → Enheder og tjenester → Electricity Optimizer → **Konfigurer** (her skiftes også prissensoren).
 

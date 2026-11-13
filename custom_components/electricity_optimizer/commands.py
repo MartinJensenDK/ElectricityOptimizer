@@ -37,7 +37,11 @@ async def async_run_command(
     try:
         service, data = _resolve(entity_id, value, is_stop, start_entity)
         _LOGGER.info("Calling %s with %s", service, data)
-        await hass.services.async_call(service.split(".", 1)[0], service.split(".", 1)[1], data, blocking=True)
+        demo = (hass.data.get(DOMAIN) or {}).get("demo")
+        if demo is not None and demo.owns(entity_id):
+            demo.handle_command(service, data)  # demo mode: the simulator plays the charger and the inverter
+        else:
+            await hass.services.async_call(service.split(".", 1)[0], service.split(".", 1)[1], data, blocking=True)
     except Exception as err:
         _record(hass, who, action, entity_id, value, ok=False, error=str(err) or type(err).__name__, reason=reason)
         if isinstance(err, HomeAssistantError):

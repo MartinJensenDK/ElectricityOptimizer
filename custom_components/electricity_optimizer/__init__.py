@@ -17,7 +17,9 @@ from homeassistant.loader import async_get_loaded_integration
 
 from . import websocket
 from .const import (
+    CONF_DEMO,
     CONF_PRICE_ENTITY,
+    DEMO_STORAGE_SUFFIX,
     CONF_SOLAR_PEAK_KW,
     DEFAULT_PRICE_ENTITY,
     DOMAIN,
@@ -31,6 +33,7 @@ from .const import (
     EVALUATE_INTERVAL_SECONDS,
 )
 from .battery_controller import BatteryController
+from .demo import DemoSimulator, async_seed
 from .ev_controller import EvController
 from .history import HistoryStore, HistoryTracker
 from .notify import Notifier
@@ -52,6 +55,8 @@ def effective_config(entry: ConfigEntry) -> dict[str, Any]:
             config[key] = merged[key]
     if merged.get(CONF_SOLAR_PEAK_KW):
         config[CONF_SOLAR_PEAK_KW] = float(merged[CONF_SOLAR_PEAK_KW])
+    if entry.data.get(CONF_DEMO):
+        config[CONF_DEMO] = True
     return config
 
 
@@ -90,24 +95,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     config = effective_config(entry)
     domain_data[entry.entry_id] = config
+
+    # demo mode: simulated sensors, and its own storage so real cars, rules and history are never touched
+    demo = bool(config.get(CONF_DEMO))
+    suffix = DEMO_STORAGE_SUFFIX if demo else ""
+    if demo:
+        simulator = DemoSimulator(hass)
+        simulator.start()  # the states must exist before the first evaluation
+        domain_data["demo"] = simulator
+        entry.async_on_unload(simulator.stop)
+
     await _async_register_panel(hass, config)
 
-    store = CarStore(hass)
+    store = CarStore(hass, suffix)
     await store.async_load()
     controller = EvController(hass, store, config[CONF_PRICE_ENTITY])
     domain_data["ev"] = {"store": store, "controller": controller}
 
-    battery_store = BatteryStore(hass)
+    battery_store = BatteryStore(hass, suffix)
     await battery_store.async_load()
+    if demo:
+        await async_seed(store, battery_store)
     battery_controller = BatteryController(hass, battery_store, config[CONF_PRICE_ENTITY])
     domain_data["battery"] = {"store": battery_store, "controller": battery_controller}
 
-    rules_store = RulesStore(hass)
+    rules_store = RulesStore(hass, suffix)
     await rules_store.async_load()
     optimizer = Optimizer(hass, config[CONF_PRICE_ENTITY], controller, battery_controller, rules_store, config)
     domain_data["optimizer"] = optimizer
 
-    history_store = HistoryStore(hass)
+    history_store = HistoryStore(hass, suffix)
     await history_store.async_load()
     history = HistoryTracker(hass, history_store)
     optimizer.history = history
@@ -119,7 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data["notifier"] = notifier
 
     # remembered charger/battery state, so a restart does not interrupt charging
-    runtime_state = RuntimeStateStore(hass)
+    runtime_state = RuntimeStateStore(hass, suffix)
     await runtime_state.async_load()
     controller.state = runtime_state
     controller.restore()
@@ -178,6 +195,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN].pop("ev", None)
     hass.data[DOMAIN].pop("battery", None)
     hass.data[DOMAIN].pop("optimizer", None)
+    hass.data[DOMAIN].pop("demo", None)  # the simulator itself is stopped by the entry's unload callback
     history = hass.data[DOMAIN].pop("history", None)
     hass.data[DOMAIN].pop("notifier", None)
     runtime_state = hass.data[DOMAIN].pop("runtime_state", None)

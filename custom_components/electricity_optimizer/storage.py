@@ -142,8 +142,8 @@ def validate_car(car: dict[str, Any]) -> str | None:
 class CarStore:
     """Load/save the list of cars."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_CARS)
+    def __init__(self, hass: HomeAssistant, suffix: str = "") -> None:
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_CARS + suffix)
         self.cars: list[dict[str, Any]] = []
 
     async def async_load(self) -> None:
@@ -282,8 +282,8 @@ def validate_battery(cfg: dict[str, Any]) -> str | None:
 class BatteryStore:
     """Load/save the single house battery configuration."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_BATTERY)
+    def __init__(self, hass: HomeAssistant, suffix: str = "") -> None:
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_BATTERY + suffix)
         self.battery: dict[str, Any] | None = None
 
     async def async_load(self) -> None:
@@ -386,8 +386,8 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
 class RulesStore:
     """Load/save the shared rules."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_RULES)
+    def __init__(self, hass: HomeAssistant, suffix: str = "") -> None:
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_RULES + suffix)
         self.rules: dict[str, Any] = dict(RULES_DEFAULTS)
 
     async def async_load(self) -> None:

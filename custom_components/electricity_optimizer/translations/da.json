@@ -3,27 +3,46 @@
     "step": {
       "user": {
         "title": "Electricity Optimizer",
-        "description": "Vælg EnergiDataService-prissensoren.",
+        "description": "Vælg, om du vil sætte integrationen op med dine egne sensorer, eller blot se hvordan den ser ud med demodata.",
+        "menu_options": {
+          "sensors": "Opsæt med mine egne sensorer",
+          "demo": "Prøv med demodata"
+        }
+      },
+      "sensors": {
+        "title": "Electricity Optimizer",
+        "description": "Vælg elpris-sensoren. Felter med * er påkrævede. Felter mærket \"valgfri\" kan stå tomme.",
         "data": {
-          "price_entity": "Elpris-sensor"
+          "price_entity": "Elpris-sensor - EnergiDataService anbefales"
+        },
+        "data_description": {
+          "price_entity": "Påkrævet. Sensoren skal have attributterne raw_today og raw_tomorrow med timepriser, som EnergiDataService leverer."
         }
       },
       "solar": {
         "title": "Solceller",
-        "description": "Valgfrit: vælg sensorerne for dit solcelleanlæg. Kan ændres senere under Konfigurer.",
+        "description": "Alle felter her er valgfri: vælg sensorerne for dit solcelleanlæg, eller gå videre uden. De kan ændres senere under Indstillinger på Solceller-fanen eller under Konfigurer.",
         "data": {
-          "solar_power_entity": "Solcelleproduktion lige nu (W eller kW)",
-          "solar_energy_today_entity": "Solcelleproduktion i dag (kWh)",
-          "solar_energy_month_entity": "Solcelleproduktion denne måned (kWh)",
-          "solar_forecast_today_entity": "Solprognose i dag (kWh)",
-          "solar_forecast_tomorrow_entity": "Solprognose i morgen (kWh)",
-          "solar_peak_kw": "Installeret effekt (kWp)"
+          "solar_power_entity": "Solcelleproduktion lige nu (W eller kW) (valgfri)",
+          "solar_energy_today_entity": "Solcelleproduktion i dag (kWh) (valgfri)",
+          "solar_energy_month_entity": "Solcelleproduktion denne måned (kWh) (valgfri)",
+          "solar_forecast_today_entity": "Solprognose i dag (kWh) (valgfri)",
+          "solar_forecast_tomorrow_entity": "Solprognose i morgen (kWh) (valgfri)",
+          "solar_peak_kw": "Installeret effekt (kWp) (valgfri)"
+        },
+        "data_description": {
+          "solar_power_entity": "Valgfri. Bruges til sol-overskud, målere og effektkurven.",
+          "solar_energy_today_entity": "Valgfri. Nulstilles dagligt.",
+          "solar_energy_month_entity": "Valgfri. Fx en månedlig utility meter.",
+          "solar_forecast_today_entity": "Valgfri. Fx fra Solcast eller Forecast.Solar.",
+          "solar_forecast_tomorrow_entity": "Valgfri. Fx fra Solcast eller Forecast.Solar.",
+          "solar_peak_kw": "Valgfri. Bruges til udnyttelses-procenten."
         }
       }
     },
     "error": {
       "entity_not_found": "Enheden blev ikke fundet.",
-      "not_energidataservice": "Sensoren ligner ikke en EnergiDataService-prissensor (mangler attributten raw_today)."
+      "not_energidataservice": "Sensoren mangler attributten raw_today med timepriser. Brug en EnergiDataService-prissensor."
     },
     "abort": {
       "already_configured": "Electricity Optimizer er allerede sat op."
@@ -33,21 +52,30 @@
     "step": {
       "init": {
         "title": "Electricity Optimizer",
-        "description": "Prissensor og solcelle-sensorer.",
+        "description": "Prissensor og solcelle-sensorer. Felter med * er påkrævede. Felter mærket \"valgfri\" kan stå tomme.",
         "data": {
-          "price_entity": "Elpris-sensor",
-          "solar_power_entity": "Solcelleproduktion lige nu (W eller kW)",
-          "solar_energy_today_entity": "Solcelleproduktion i dag (kWh)",
-          "solar_energy_month_entity": "Solcelleproduktion denne måned (kWh)",
-          "solar_forecast_today_entity": "Solprognose i dag (kWh)",
-          "solar_forecast_tomorrow_entity": "Solprognose i morgen (kWh)",
-          "solar_peak_kw": "Installeret effekt (kWp)"
+          "price_entity": "Elpris-sensor - EnergiDataService anbefales",
+          "solar_power_entity": "Solcelleproduktion lige nu (W eller kW) (valgfri)",
+          "solar_energy_today_entity": "Solcelleproduktion i dag (kWh) (valgfri)",
+          "solar_energy_month_entity": "Solcelleproduktion denne måned (kWh) (valgfri)",
+          "solar_forecast_today_entity": "Solprognose i dag (kWh) (valgfri)",
+          "solar_forecast_tomorrow_entity": "Solprognose i morgen (kWh) (valgfri)",
+          "solar_peak_kw": "Installeret effekt (kWp) (valgfri)"
+        },
+        "data_description": {
+          "price_entity": "Påkrævet. Sensoren skal have attributterne raw_today og raw_tomorrow med timepriser, som EnergiDataService leverer.",
+          "solar_power_entity": "Valgfri. Bruges til sol-overskud, målere og effektkurven.",
+          "solar_energy_today_entity": "Valgfri. Nulstilles dagligt.",
+          "solar_energy_month_entity": "Valgfri. Fx en månedlig utility meter.",
+          "solar_forecast_today_entity": "Valgfri. Fx fra Solcast eller Forecast.Solar.",
+          "solar_forecast_tomorrow_entity": "Valgfri. Fx fra Solcast eller Forecast.Solar.",
+          "solar_peak_kw": "Valgfri. Bruges til udnyttelses-procenten."
         }
       }
     },
     "error": {
       "entity_not_found": "Enheden blev ikke fundet.",
-      "not_energidataservice": "Sensoren ligner ikke en EnergiDataService-prissensor (mangler attributten raw_today)."
+      "not_energidataservice": "Sensoren mangler attributten raw_today med timepriser. Brug en EnergiDataService-prissensor."
     }
   }
 }

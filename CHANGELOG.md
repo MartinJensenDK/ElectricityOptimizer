@@ -2,6 +2,13 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.47.0
+
+- Opsætning: det fremgår nu, hvilke felter der er påkrævede, og hvilke der er valgfri. Påkrævede felter har en * og hjælpeteksten "Påkrævet", og valgfri felter er mærket "(valgfri)" med hjælpeteksten "Valgfri". Det gælder både ved tilføjelse af tjenesten og under Konfigurer.
+- Opsætning: elpris-feltet hedder nu "Elpris-sensor - EnergiDataService anbefales".
+- Ny demo-tilstand: når tjenesten tilføjes, kan du vælge "Prøv med demodata" i stedet for dine egne sensorer. Så kører panelet på simulerede elpriser, solceller, et husbatteri og en elbil, så du kan se, hvordan det hele ser ud. Der læses og styres ingen rigtige enheder, og demodata gemmes adskilt fra dine rigtige biler, regler og historik. Panelet viser mærkatet "Demo" øverst. Slet tjenesten, og tilføj den igen for at bruge dine egne sensorer.
+- Forsiden (16:9): "Kapaciteter" står nu i øverste højre hjørne med "Status" lige under. De syv målere, elprisen og billigste/dyreste timer ligger til venstre for dem.
+
 ## 0.46.0
 
 - "Regler for opladning" er nu en fælles, lodret sektion til højre for de øvrige bokse på fanerne Elbiler og Hus batteri, og den vises nu også på Solceller-fanen. På smalle skærme (under ca. 1100 px) lægger den sig under de øvrige bokse som før. De tre faner udnytter samtidig mere af skærmens bredde.

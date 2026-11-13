@@ -5,6 +5,8 @@ NAME = "Electricity Optimizer"
 
 # Config entry keys
 CONF_PRICE_ENTITY = "price_entity"
+CONF_DEMO = "demo"  # the entry runs on simulated data (see demo.py)
+DEMO_STORAGE_SUFFIX = ".demo"  # demo data is stored apart from the real cars, battery, rules and history
 DEFAULT_PRICE_ENTITY = "sensor.energi_data_service"
 
 # Solar (all optional)

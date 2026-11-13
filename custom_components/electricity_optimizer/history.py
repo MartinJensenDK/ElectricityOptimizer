@@ -30,8 +30,8 @@ def _round(v: float, digits: int = 3) -> float:
 class HistoryStore:
     """Persisted closed sessions plus the sessions currently open."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_HISTORY)
+    def __init__(self, hass: HomeAssistant, suffix: str = "") -> None:
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_HISTORY + suffix)
         self.entries: list[dict[str, Any]] = []
         self.open: dict[str, dict[str, Any]] = {}
         self.commands: list[dict[str, Any]] = []

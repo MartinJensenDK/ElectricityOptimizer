@@ -20,8 +20,8 @@ SAVE_DELAY_S = 2
 class RuntimeStateStore:
     """Small key/value store: per-car charging state and the battery's last commanded mode."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
-        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_RUNTIME)
+    def __init__(self, hass: HomeAssistant, suffix: str = "") -> None:
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_RUNTIME + suffix)
         self.data: dict[str, Any] = {"ev": {}, "battery": {}}
 
     async def async_load(self) -> None:

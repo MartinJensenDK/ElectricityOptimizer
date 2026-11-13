@@ -3,51 +3,79 @@
     "step": {
       "user": {
         "title": "Electricity Optimizer",
-        "description": "Select the EnergiDataService price sensor.",
+        "description": "Choose whether to set the integration up with your own sensors, or just see what it looks like with demo data.",
+        "menu_options": {
+          "sensors": "Set up with my own sensors",
+          "demo": "Try it with demo data"
+        }
+      },
+      "sensors": {
+        "title": "Electricity Optimizer",
+        "description": "Choose the electricity price sensor. Fields with * are required. Fields marked \"optional\" may be left empty.",
         "data": {
-          "price_entity": "Electricity price sensor"
+          "price_entity": "Electricity price sensor - EnergiDataService recommended"
+        },
+        "data_description": {
+          "price_entity": "Required. The sensor must have the attributes raw_today and raw_tomorrow with hourly prices, as EnergiDataService provides."
         }
       },
       "solar": {
-        "title": "Solar panels",
-        "description": "Optional: select the sensors for your solar installation. You can change these later under Configure.",
+        "title": "Solar",
+        "description": "All fields here are optional: choose the sensors for your solar installation, or continue without. They can be changed later under Indstillinger on the Solceller tab or under Configure.",
         "data": {
-          "solar_power_entity": "Solar production now (W or kW)",
-          "solar_energy_today_entity": "Solar energy produced today (kWh)",
-          "solar_energy_month_entity": "Solar energy this month (kWh)",
-          "solar_forecast_today_entity": "Solar forecast today (kWh)",
-          "solar_forecast_tomorrow_entity": "Solar forecast tomorrow (kWh)",
-          "solar_peak_kw": "Installed peak power (kWp)"
+          "solar_power_entity": "Solar production right now (W or kW) (optional)",
+          "solar_energy_today_entity": "Solar production today (kWh) (optional)",
+          "solar_energy_month_entity": "Solar production this month (kWh) (optional)",
+          "solar_forecast_today_entity": "Solar forecast today (kWh) (optional)",
+          "solar_forecast_tomorrow_entity": "Solar forecast tomorrow (kWh) (optional)",
+          "solar_peak_kw": "Installed peak power (kWp) (optional)"
+        },
+        "data_description": {
+          "solar_power_entity": "Optional. Used for the solar surplus, the gauges and the power curve.",
+          "solar_energy_today_entity": "Optional. Resets daily.",
+          "solar_energy_month_entity": "Optional. E.g. a monthly utility meter.",
+          "solar_forecast_today_entity": "Optional. E.g. from Solcast or Forecast.Solar.",
+          "solar_forecast_tomorrow_entity": "Optional. E.g. from Solcast or Forecast.Solar.",
+          "solar_peak_kw": "Optional. Used for the utilisation percentage."
         }
       }
     },
     "error": {
       "entity_not_found": "The entity was not found.",
-      "not_energidataservice": "The sensor does not look like an EnergiDataService price sensor (missing raw_today attribute)."
+      "not_energidataservice": "The sensor has no raw_today attribute with hourly prices. Use an EnergiDataService price sensor."
     },
     "abort": {
-      "already_configured": "Electricity Optimizer is already configured."
+      "already_configured": "Electricity Optimizer is already set up."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Electricity Optimizer",
-        "description": "Price sensor and solar sensors.",
+        "description": "Price sensor and solar sensors. Fields with * are required. Fields marked \"optional\" may be left empty.",
         "data": {
-          "price_entity": "Electricity price sensor",
-          "solar_power_entity": "Solar production now (W or kW)",
-          "solar_energy_today_entity": "Solar energy produced today (kWh)",
-          "solar_energy_month_entity": "Solar energy this month (kWh)",
-          "solar_forecast_today_entity": "Solar forecast today (kWh)",
-          "solar_forecast_tomorrow_entity": "Solar forecast tomorrow (kWh)",
-          "solar_peak_kw": "Installed peak power (kWp)"
+          "price_entity": "Electricity price sensor - EnergiDataService recommended",
+          "solar_power_entity": "Solar production right now (W or kW) (optional)",
+          "solar_energy_today_entity": "Solar production today (kWh) (optional)",
+          "solar_energy_month_entity": "Solar production this month (kWh) (optional)",
+          "solar_forecast_today_entity": "Solar forecast today (kWh) (optional)",
+          "solar_forecast_tomorrow_entity": "Solar forecast tomorrow (kWh) (optional)",
+          "solar_peak_kw": "Installed peak power (kWp) (optional)"
+        },
+        "data_description": {
+          "price_entity": "Required. The sensor must have the attributes raw_today and raw_tomorrow with hourly prices, as EnergiDataService provides.",
+          "solar_power_entity": "Optional. Used for the solar surplus, the gauges and the power curve.",
+          "solar_energy_today_entity": "Optional. Resets daily.",
+          "solar_energy_month_entity": "Optional. E.g. a monthly utility meter.",
+          "solar_forecast_today_entity": "Optional. E.g. from Solcast or Forecast.Solar.",
+          "solar_forecast_tomorrow_entity": "Optional. E.g. from Solcast or Forecast.Solar.",
+          "solar_peak_kw": "Optional. Used for the utilisation percentage."
         }
       }
     },
     "error": {
       "entity_not_found": "The entity was not found.",
-      "not_energidataservice": "The sensor does not look like an EnergiDataService price sensor (missing raw_today attribute)."
+      "not_energidataservice": "The sensor has no raw_today attribute with hourly prices. Use an EnergiDataService price sensor."
     }
   }
 }

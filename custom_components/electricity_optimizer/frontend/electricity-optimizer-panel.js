@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.46.0";
+const PANEL_JS_VERSION = "0.47.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -61,6 +61,12 @@ const STYLE = `
   .toolbar ha-menu-button { margin-right: 8px; }
   .toolbar .title { font-size: 20px; font-weight: 400; flex: 1; }
   .toolbar .version { font-size: 12px; opacity: 0.7; }
+  .demo-badge {
+    display: inline-block; margin-left: 12px; padding: 2px 10px; border-radius: 10px; vertical-align: middle; cursor: help;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    background: var(--warning-color, #ffa600); color: #fff;
+  }
+  .demo-badge[hidden] { display: none; }
 
   .tabs {
     display: flex;
@@ -430,10 +436,11 @@ const STYLE = `
   }
   /* front page fitted to a 16:9 screen: a fixed 1600 x 900 layout, zoomed to the space there is */
   .content.home16 { max-width: none; display: flex; justify-content: center; align-items: flex-start; }
-  .home-box { width: 1600px; height: 900px; flex: none; zoom: var(--home-zoom, 1); display: flex; flex-direction: column; gap: 12px; }
+  .home-box { width: 1600px; height: 900px; flex: none; zoom: var(--home-zoom, 1); display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; }
   .home-box .card { margin-bottom: 0; }
-  .home-box .gauges { grid-template-columns: repeat(7, minmax(0, 1fr)); flex: none; }
-  .home-lower { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; }
+  .home-box .gauges { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; flex: none; }
+  .home-box .gauges .card.kpi { padding: 10px; }
+  .home-box .gauges .card.kpi .label { font-size: 12px; }
   .home-left { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
   .home-left > .card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .home-left > .card .chart-wrap { flex: 1; min-height: 0; overflow: hidden; }
@@ -681,7 +688,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <style>${STYLE}</style>
       <div class="toolbar">
         <ha-menu-button></ha-menu-button>
-        <div class="title">Electricity Optimizer</div>
+        <div class="title">Electricity Optimizer<span class="demo-badge" hidden title="Integrationen kører på demodata: priser, solceller, husbatteri og bil er simulerede, og der sendes ingen kommandoer til rigtige enheder. Slet tjenesten under Enheder og tjenester, og tilføj den igen for at bruge dine egne sensorer.">Demo</span></div>
         <div class="version"></div>
       </div>
       <div class="tabs" role="tablist"></div>
@@ -801,6 +808,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       this._setSolarPriority(items[0]);
     });
     this._versionEl = root.querySelector(".version");
+    this._demoEl = root.querySelector(".demo-badge");
     this._tabsEl.innerHTML = TABS.map(
       (t) => `
         <button class="tab" role="tab" data-tab="${t.id}" aria-selected="${t.id === this._tab}">
@@ -825,6 +833,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (!this._built) this._buildShell();
     this._menuButton.hass = this._hass;
     this._versionEl.textContent = this._config.version ? `v${this._config.version}` : "";
+    this._demoEl.hidden = !this._config.demo;
     for (const b of this._tabsEl.querySelectorAll("button.tab")) {
       b.setAttribute("aria-selected", String(b.dataset.tab === this._tab));
     }
@@ -1010,11 +1019,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
         </div>
       </div>`;
     if (!fit) return `<div class="top">${this._renderGauges()}${side}</div>${lower}`;
-    return `<div class="home-box">${this._renderGauges()}<div class="home-lower"><div class="home-left">${lower}</div>${side}</div></div>`;
+    // left: the gauges in one row, the price chart and the cheapest/dearest hours; right, from the top: Kapaciteter, then Status
+    return `<div class="home-box"><div class="home-left">${this._renderGauges()}${lower}</div>${side}</div>`;
   }
 
   /** Size the price chart is drawn in on the fitted (16:9) front page; the SVG is stretched to the card. */
-  static HOME_CHART = { W: 1154, H: 280 };
+  static HOME_CHART = { W: 1194, H: 331 };
 
   /** Small, plain battery for lists: thin outline, rounded fill in the SoC colour, percentage to the right. */
   _renderMiniBattery(pct, aria = "", marker = null) {

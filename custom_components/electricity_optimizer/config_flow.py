@@ -27,6 +27,7 @@ from .const import (
     DOMAIN,
     NAME,
 )
+from .demo import DEMO_ENTRY_DATA
 
 
 def _sensor(device_class: str | None = None) -> selector.EntitySelector:
@@ -81,10 +82,21 @@ class ElectricityOptimizerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 1: pick the EnergiDataService price sensor."""
+        """Start: set up with your own sensors, or just look around with demo data."""
         await self.async_set_unique_id(DOMAIN)
         self._abort_if_unique_id_configured()
+        return self.async_show_menu(step_id="user", menu_options=["sensors", "demo"])
 
+    async def async_step_demo(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Demo: simulated prices, solar, battery and car - nothing real is read or controlled."""
+        return self.async_create_entry(title=f"{NAME} (demo)", data=dict(DEMO_ENTRY_DATA))
+
+    async def async_step_sensors(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 1: pick the price sensor (EnergiDataService is recommended)."""
         errors: dict[str, str] = {}
         if user_input is not None:
             entity_id = user_input[CONF_PRICE_ENTITY]
@@ -98,7 +110,7 @@ class ElectricityOptimizerConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_solar()
 
         return self.async_show_form(
-            step_id="user",
+            step_id="sensors",
             data_schema=_user_schema(self._data),
             errors=errors,
         )
