@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.49.0
+
+- Nyt kort på forsiden: "Egenforbrug" viser, hvor stor en del af dagens solproduktion du selv har brugt (hus, husbatteri og elbiler) i stedet for at sælge den: (solproduktion − eksport) / solproduktion. Kræver eksport-sensoren i dag under Indstillinger på Solceller-fanen.
+- Kortene "Hus batteri" og "Elbiler" er fjernet fra forsidens øverste række, da ladestanden allerede vises under Kapaciteter i højre side.
+- "Billigste timer fremover" og "Dyreste timer fremover" hedder nu "Billigste timer" og "Dyreste timer", og begge viser fem timer.
+
 ## 0.48.1
 
 - Elpris-grafen på forsiden viser nu også husbatteriets planlagte opladning fra nettet som lilla bjælker i bunden, ligesom elbilernes ladeplan, med "Ladeplan: Husbatteri" i forklaringen under grafen.
