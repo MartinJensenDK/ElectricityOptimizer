@@ -2,6 +2,13 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.48.0
+
+- "Regler for opladning" er gjort meget enklere. Kortet viser nu kun de daglige valg: hvem der får solstrømmen først (to knapper: Elbil eller Husbatteri) og indtil hvilken ladestand, en kort forklaring i almindeligt sprog, hovedsikringen og de to kontakter for hold af husbatteriet og notifikationer.
+- Al finjustering af solopladningen (start- og stopgrænser, EV buffer, justering af ladestrøm, hvordan sol-overskuddet beregnes og den detaljerede forklaring) ligger under "Avanceret", som er foldet sammen som standard. Ingen indstillinger er fjernet.
+- Felterne er skrevet som korte sætninger, fx "Start sol-ladning ved over … W i … min", i stedet for en række separate felter med overskrifter.
+- Valget "Ved fuld sikring først til" (Elbil eller Husbatteri) vises igen, når en hovedsikring er angivet. Reglen fandtes i forvejen, men kunne ikke ændres i panelet.
+
 ## 0.47.0
 
 - Opsætning: det fremgår nu, hvilke felter der er påkrævede, og hvilke der er valgfri. Påkrævede felter har en * og hjælpeteksten "Påkrævet", og valgfri felter er mærket "(valgfri)" med hjælpeteksten "Valgfri". Det gælder både ved tilføjelse af tjenesten og under Konfigurer.
