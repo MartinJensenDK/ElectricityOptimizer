@@ -241,14 +241,19 @@ class BatteryController:
                 self._last_soc = (str(saved["last_soc_entity"]), float(saved["last_soc"]))
             except (TypeError, ValueError):
                 pass
+        if isinstance(saved.get("recent"), list):
+            self._recent = [e for e in saved["recent"] if isinstance(e, dict) and "start" in e and "end" in e and e.get("mode") in BATTERY_MODES]
         active = saved.get("active")
         if active in ("normal", "hold", "charge"):
             self._active = active
+            # a contiguous charging block under way is recognised and finished (see compute)
+            self.runtime["mode"] = active
+            self.runtime["status"] = saved.get("status")
             _LOGGER.info("Restored battery mode %s after restart", active)
 
     def _persist(self) -> None:
         if self.state is not None:
-            self.state.data.setdefault("battery", {})["active"] = self._active
+            self.state.data.setdefault("battery", {}).update(active=self._active, status=self.runtime.get("status"), recent=self._recent)
             self.state.save()
 
     def _remember_soc(self, cfg: dict[str, Any], soc: float | None) -> float | None:
@@ -348,8 +353,11 @@ class BatteryController:
 
     def _remember_mode(self, ctx: Context, mode: str) -> None:
         """Keep the mode of the slots that just passed, for the panel's 24-hour strip."""
+        before = [dict(e) for e in self._recent]
         remember_slot(self._recent, ctx.now, ctx.slots, "mode", mode, BATTERY_MODES.index)
         self.runtime["recent"] = self._recent
+        if self._recent != before:
+            self._persist()  # the hour that has passed stays in the panel after a restart
 
     @staticmethod
     def _session(now: datetime, plan: dict[str, Any], mode: str) -> dict[str, Any] | None:

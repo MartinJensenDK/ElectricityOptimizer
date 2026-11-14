@@ -40,6 +40,8 @@ GRID_VOLTAGE = 230
 STORAGE_KEY_CARS = f"{DOMAIN}.cars"
 STORAGE_VERSION = 1
 EVALUATE_INTERVAL_SECONDS = 60
+# after a Home Assistant restart: how long to wait for sensors that have no value yet before deciding without them
+STARTUP_HOLD_SECONDS = 180
 ACTIVATE_DOMAINS = ("switch", "input_boolean", "button", "script", "automation")
 CAR_DEFAULTS = {
     "name": "",

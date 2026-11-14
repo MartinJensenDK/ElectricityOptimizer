@@ -86,6 +86,8 @@ Er alle dage slået fra, lades kun fra sol, prisgrænse eller "Lad nu".
 
 En bil på 98 % eller derover regnes som fuld: der planlægges og startes ingen opladning (hverken plan, sol eller prisgrænse), uanset mål-SoC. En opladning, der allerede er i gang, kører færdig til målet, og "Lad nu" virker stadig op til 100 %.
 
+Ved genstart af Home Assistant fortsætter alt, som det var: en igangværende opladning, husbatteriets modus og heatmappets forgangne time huskes. Lige efter en genstart har sensorer fra andre integrationer endnu ingen værdi, så Electricity Optimizer venter med at beslutte noget og sender ingen kommandoer, før alle sensorer har en værdi – dog højst 3 minutter.
+
 Planen genberegnes hvert minut: de billigste tidsrum (EnergiDataService, 15 eller 60 min) inden
 deadline vælges, indtil behovet er dækket. Timer uden kendt pris (før kl. 13) estimeres til dagens
 gennemsnit. Der sendes kun start/stop, når den ønskede tilstand skifter.

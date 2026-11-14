@@ -352,11 +352,14 @@ class EvController:
                     self._last_soc[cid] = (str(st["last_soc_entity"]), float(st["last_soc"]))
                 except (TypeError, ValueError):
                     pass
+            if isinstance(st.get("recent"), list):
+                self._recent[cid] = [e for e in st["recent"] if isinstance(e, dict) and "start" in e and "end" in e and "chosen" in e]
             if not st.get("charging"):
                 continue
             self._last_cmd[cid] = True
             rt = self.runtime.setdefault(cid, {})
             rt["mode"] = st.get("mode")
+            rt["status"] = st.get("status")  # a contiguous block under way is recognised and finished
             rt["charging"] = True
             rt["restored"] = True
             if st.get("amps") is not None:
@@ -380,6 +383,8 @@ class EvController:
             "last_soc": last_soc[1] if last_soc else None,
             "charging": bool(self._last_cmd.get(cid, False)),
             "mode": (self.runtime.get(cid) or {}).get("mode"),
+            "status": (self.runtime.get(cid) or {}).get("status"),
+            "recent": self._recent.get(cid, []),
             "amps": self._last_amps.get(cid),
             "since": since.isoformat() if since else None,
             "amps_at": amps_at.isoformat() if amps_at else None,
@@ -451,8 +456,11 @@ class EvController:
             rt = self.runtime.get(car["id"])
             if rt is not None:
                 recent = self._recent.setdefault(car["id"], [])
+                before = [dict(e) for e in recent]
                 remember_slot(recent, ctx.now, ctx.slots, "chosen", bool(rt.get("charging")), int)
                 rt["recent"] = recent
+                if recent != before:
+                    self._persist(car["id"])  # the hour that has passed stays in the panel after a restart
         ids = {c["id"] for c in self.store.cars}
         for cid in list(self.runtime):
             if cid not in ids:

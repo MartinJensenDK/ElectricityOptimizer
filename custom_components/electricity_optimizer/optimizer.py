@@ -7,9 +7,10 @@ import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from .battery_controller import BatteryController
+from .const import STARTUP_HOLD_SECONDS
 from .ev_controller import Context, EvController, read_price_slots
 from .storage import RulesStore
 
@@ -34,6 +35,39 @@ class Optimizer:
         self.rules_store = rules
         self.last_context: Context | None = None
         self.history = None  # HistoryTracker, set by __init__
+        self._startup_hold_until: datetime | None = None
+
+    def hold_for_startup(self) -> None:
+        """Home Assistant is starting: wait for the sensors before deciding anything.
+
+        Right after a restart the price, SoC and power sensors of other integrations have no value
+        yet. Deciding without them would stop a charge that is under way and start it again a moment
+        later, so nothing is evaluated (and no command is sent) until every sensor has a value, or
+        until STARTUP_HOLD_SECONDS have passed - a sensor that stays unavailable must not block for ever.
+        """
+        self._startup_hold_until = dt_util.now() + timedelta(seconds=STARTUP_HOLD_SECONDS)
+
+    def _missing_at_startup(self) -> list[str]:
+        missing = []
+        for entity_id in sorted(self.watched_entities()):
+            st = self.hass.states.get(entity_id)
+            if st is None or st.state in ("unknown", "unavailable"):
+                missing.append(entity_id)
+        if self.price_entity not in missing and not read_price_slots(self.hass, self.price_entity):
+            missing.append(self.price_entity)
+        return missing
+
+    def _held_at_startup(self) -> bool:
+        if self._startup_hold_until is None:
+            return False
+        missing = self._missing_at_startup()
+        if missing and dt_util.now() < self._startup_hold_until:
+            _LOGGER.debug("Startup: waiting for %s before evaluating", ", ".join(missing))
+            return True
+        if missing:
+            _LOGGER.warning("Startup: still no value from %s after %s s - continuing without", ", ".join(missing), STARTUP_HOLD_SECONDS)
+        self._startup_hold_until = None
+        return False
 
     def _watts(self, entity_id: str | None) -> float | None:
         if not entity_id:
@@ -142,6 +176,8 @@ class Optimizer:
         )
 
     async def async_evaluate(self) -> None:
+        if self._held_at_startup():
+            return
         ctx = self.build_context()
         battery_mode = self.battery.compute(ctx)
         ctx.battery_grid_charging = battery_mode == "charge"

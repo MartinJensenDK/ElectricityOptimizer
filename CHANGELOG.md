@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.50.0
+
+- En genstart af Home Assistant afbryder ikke længere en opladning. Lige efter en genstart har sensorer fra andre integrationer (elpris, ladestand, elnet, solceller) endnu ingen værdi, og før blev opladningen stoppet og startet igen. Nu ventes der med at beslutte noget og sende kommandoer, til alle sensorer har en værdi – dog højst 3 minutter.
+- Bilens og husbatteriets status huskes over en genstart, så en sammenhængende ladeblok køres færdig i stedet for at blive flyttet.
+- Heatmappets forgangne time huskes også over en genstart.
+
 ## 0.49.1
 
 - En elbil på 98 % eller derover regnes nu som fuld: der planlægges og vises ingen opladning, og bilen startes ikke fra plan, sol-overskud eller prisgrænse, uanset mål-SoC. En opladning, der allerede er i gang, kører færdig til målet, og "Lad nu" virker stadig op til 100 %.

@@ -11,7 +11,7 @@ from homeassistant.components import frontend, panel_custom
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_STATE_CHANGED
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.loader import async_get_loaded_integration
 
@@ -154,6 +154,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(
         async_track_time_interval(hass, _tick, timedelta(seconds=EVALUATE_INTERVAL_SECONDS))
     )
+    if hass.state is not CoreState.running:
+        optimizer.hold_for_startup()  # sensors of other integrations are not ready yet
     hass.async_create_task(optimizer.async_evaluate())
 
     # Re-evaluate shortly after a relevant sensor changes (prices, SoC, grid/battery power).
