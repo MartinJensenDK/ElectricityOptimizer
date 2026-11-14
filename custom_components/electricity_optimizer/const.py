@@ -105,6 +105,7 @@ BATTERY_DEFAULTS = {
 # Shared rules (EV <-> battery)
 STORAGE_KEY_RULES = f"{DOMAIN}.rules"
 AMPS_CHANGE_MIN_SECONDS = 30
+EV_FULL_SOC = 98  # a car at or above this is treated as full: no charging is planned or started
 RULES_DEFAULTS = {
     "solar_priority": "ev",  # ev | battery: who gets solar first (no. 1 in the panel's list)
     "solar_priority_under": 0,  # kept for old data; always 0 now

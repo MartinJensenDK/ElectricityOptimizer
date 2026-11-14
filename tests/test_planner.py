@@ -89,3 +89,29 @@ def test_deadline_rolls_to_tomorrow_when_passed():
     now = day + timedelta(hours=8)
     plan = plan_car(now, slots, soc=50, car=_car(ready_by="07:00"))
     assert datetime.fromisoformat(plan["deadline"]) == day + timedelta(days=1, hours=7)
+
+
+def test_nothing_planned_at_98_percent_or_above():
+    day = datetime(2026, 9, 25, 0, 0, tzinfo=TZ)
+    slots = _hourly_slots(day, [1.0] * 24)
+    now = day + timedelta(hours=1)
+    car = _car(target_soc=100)
+
+    assert any(p["chosen"] for p in plan_car(now, slots, soc=97, car=car)["plan"])
+    for soc in (98, 99.5):
+        plan = plan_car(now, slots, soc=soc, car=car)
+        assert not any(p["chosen"] for p in plan["plan"])
+        assert plan["need_kwh"] == 0
+        assert plan["in_plan_now"] is False
+        assert plan["next_start"] is None
+        assert plan["enough_time"] is True
+
+
+def test_charge_under_way_is_finished_past_98_percent():
+    day = datetime(2026, 9, 25, 0, 0, tzinfo=TZ)
+    slots = _hourly_slots(day, [1.0] * 24)
+    now = day + timedelta(hours=1)
+
+    plan = plan_car(now, slots, soc=98.5, car=_car(target_soc=100), charging=True)
+    assert plan["need_kwh"] > 0
+    assert any(p["chosen"] for p in plan["plan"])

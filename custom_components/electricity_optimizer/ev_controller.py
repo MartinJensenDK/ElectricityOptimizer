@@ -13,7 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .commands import async_run_command
-from .const import AMPS_CHANGE_MIN_SECONDS, GRID_VOLTAGE
+from .const import AMPS_CHANGE_MIN_SECONDS, EV_FULL_SOC, GRID_VOLTAGE
 from .runtime_state import RuntimeStateStore
 from .storage import CarStore
 
@@ -216,6 +216,7 @@ def plan_car(
     soc: float,
     car: dict[str, Any],
     continue_now: bool = False,
+    charging: bool = False,
 ) -> dict[str, Any]:
     """Return the plan for one car: which slots to charge in, and whether to charge now.
 
@@ -223,11 +224,17 @@ def plan_car(
     that is long enough) instead of the cheapest single hours. `continue_now` tells that the car is
     charging in such a block right now, so the block is finished rather than moved. When no unbroken
     block before the deadline is long enough, the cheapest single hours are used after all.
+
+    A car at EV_FULL_SOC or above counts as full, so nothing is planned for it, whatever the target.
+    `charging` tells that the car is charging right now: a charge that is under way is finished to
+    its target instead of being cut off when it passes that level.
     """
     deadline, target = next_deadline(now, car)
     if deadline is None:
         target = car["target_soc"]
     need_kwh = max(0.0, (target - soc) / 100 * car["capacity_kwh"])
+    if soc >= EV_FULL_SOC and not charging:
+        need_kwh = 0.0
     need_hours = need_kwh / car["charge_power_kw"] if car["charge_power_kw"] > 0 else 0.0
 
     if deadline is None:
@@ -473,8 +480,11 @@ class EvController:
             return
 
         # a contiguous block that the car is charging in right now is finished, not moved (see plan_car)
-        in_block = bool(self._last_cmd.get(car["id"])) and rt.get("status") == "charging"
-        plan = plan_car(now, ctx.slots, soc, car, continue_now=in_block) if ctx.slots else None
+        charging = bool(self._last_cmd.get(car["id"]))
+        in_block = charging and rt.get("status") == "charging"
+        # at EV_FULL_SOC or above nothing new is started (a charge that is under way runs on to its target)
+        full = soc >= EV_FULL_SOC and not charging
+        plan = plan_car(now, ctx.slots, soc, car, continue_now=in_block, charging=charging) if ctx.slots else None
         rt["plan"] = plan
         cid = car["id"]
         if not car["enabled"] and not car["charge_now"]:
@@ -502,7 +512,7 @@ class EvController:
             car["charge_now"] = False  # full or unplugged: the manual charge is over
             await self.store.async_save()
             rt["status"] = "done" if soc >= 100 else "not_plugged"
-        elif soc >= target:
+        elif soc >= target or full:
             rt["status"] = "done"
         elif plugged is False:
             rt["status"] = "not_plugged"

@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.49.1
+
+- En elbil på 98 % eller derover regnes nu som fuld: der planlægges og vises ingen opladning, og bilen startes ikke fra plan, sol-overskud eller prisgrænse, uanset mål-SoC. En opladning, der allerede er i gang, kører færdig til målet, og "Lad nu" virker stadig op til 100 %.
+
 ## 0.49.0
 
 - Nyt kort på forsiden: "Egenforbrug" viser, hvor stor en del af dagens solproduktion du selv har brugt (hus, husbatteri og elbiler) i stedet for at sælge den: (solproduktion − eksport) / solproduktion. Kræver eksport-sensoren i dag under Indstillinger på Solceller-fanen.
