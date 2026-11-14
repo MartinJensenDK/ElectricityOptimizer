@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.48.0";
+const PANEL_JS_VERSION = "0.48.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -922,7 +922,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const K = ElectricityOptimizerPanel;
     const lower = `
       <div class="card">
-        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes planlagte ladetimer (også når Smart opladning er slået fra). Morgendagens priser kommer ca. kl. 13.")}</h2>
+        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes og husbatteriets planlagte ladetimer fra nettet (også når Smart opladning/styring er slået fra). Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d, fit ? K.HOME_CHART : null)}</div>
         <div class="legend">
           <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
@@ -1646,7 +1646,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return out;
   }
 
-  /** Planned (chosen) charging slots per enabled car, for the price chart. */
+  /** Planned charging slots per car and for the house battery (grid charging), for the price chart. */
   _evPlanSeries() {
     const out = [];
     const colors = this._carColors();
@@ -1666,6 +1666,21 @@ class ElectricityOptimizerPanel extends HTMLElement {
       }
       if (!slots.length) continue;
       out.push({ name: car.name || "Elbil", color: colors.get(car.id), slots });
+    }
+    // the house battery's planned grid charging, in its own colour
+    const bplan = this._battery && this._batteryRuntime && this._batteryRuntime.plan;
+    if (bplan && Array.isArray(bplan.plan)) {
+      const slots = [];
+      for (const s of bplan.plan) {
+        if (s.mode !== "charge") continue;
+        const start = new Date(s.start).getTime();
+        const end = new Date(s.end).getTime();
+        if (Number.isNaN(start) || Number.isNaN(end)) continue;
+        const last = slots[slots.length - 1];
+        if (last && last.end === start) last.end = end;
+        else slots.push({ start, end });
+      }
+      if (slots.length) out.push({ name: "Husbatteri", color: ElectricityOptimizerPanel.BATTERY_COLOR, slots });
     }
     return out;
   }

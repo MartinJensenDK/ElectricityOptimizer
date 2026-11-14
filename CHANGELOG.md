@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.48.1
+
+- Elpris-grafen på forsiden viser nu også husbatteriets planlagte opladning fra nettet som lilla bjælker i bunden, ligesom elbilernes ladeplan, med "Ladeplan: Husbatteri" i forklaringen under grafen.
+
 ## 0.48.0
 
 - "Regler for opladning" er gjort meget enklere. Kortet viser nu kun de daglige valg: hvem der får solstrømmen først (to knapper: Elbil eller Husbatteri) og indtil hvilken ladestand, en kort forklaring i almindeligt sprog, hovedsikringen og de to kontakter for hold af husbatteriet og notifikationer.
