@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.52.0
+
+- Forsiden: Status viser nu også solprognosen – forventet produktion i dag (og hvor meget der er tilbage af dagens prognose) samt i morgen. Tallene kommer fra prognose-sensorerne valgt på fanen Solceller, fx Solcast eller Forecast.Solar.
+
 ## 0.51.0
 
 - Husbatteriet aflader nu som udgangspunkt altid, når huset har brug for strømmen: planen sætter det ikke længere på hold i billige timer. Netopladning i de billigste timer virker som før. Ændringen gælder også eksisterende opsætninger.

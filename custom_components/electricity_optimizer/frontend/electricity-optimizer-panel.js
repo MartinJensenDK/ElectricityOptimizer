@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.51.0";
+const PANEL_JS_VERSION = "0.52.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1029,9 +1029,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderStatusCard(d) {
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, elnet, husbatteri og elbiler lige nu. Detaljer findes på de enkelte faner.")}</h2>
+        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, solprognose, husbatteri og elbiler lige nu. Solprognosen kommer fra prognose-sensorerne valgt på fanen Solceller. Detaljer findes på de enkelte faner.")}</h2>
         <div class="status-list">
           ${this._renderSolarStatusRow()}
+          ${this._renderSolarForecastRow()}
           ${this._renderBatteryStatusRow()}
           ${this._renderEvStatusRow()}
         </div>
@@ -1419,6 +1420,23 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const producing = s.powerKw !== null && s.powerKw > 0.05;
     const badge = producing ? `<span class="badge low">Producerer</span>` : `<span class="badge wait">Venter på sol</span>`;
     return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div>${badge}</div>`;
+  }
+
+  _renderSolarForecastRow() {
+    const s = this._readSolar();
+    const c = this._config || {};
+    const icon = `<ha-icon icon="mdi:weather-partly-cloudy"></ha-icon>`;
+    if (!c.solar_forecast_today_entity && !c.solar_forecast_tomorrow_entity) {
+      return `<div class="status-row">${icon}<div class="t"><div class="n">Solprognose</div><div class="d">Vælg prognose-sensorer på fanen Solceller</div></div><span class="badge neutral">Ikke sat op</span></div>`;
+    }
+    const kwh = (v) => (v !== null && v !== undefined && !Number.isNaN(v) ? `${fmtNum(v, 1)} kWh` : "–");
+    const parts = [];
+    if (c.solar_forecast_today_entity) {
+      const left = s.fcTodayKwh !== null && s.todayKwh !== null ? Math.max(0, s.fcTodayKwh - s.todayKwh) : null;
+      parts.push(`I dag: ${kwh(s.fcTodayKwh)}${left !== null ? ` (${fmtNum(left, 1)} kWh tilbage)` : ""}`);
+    }
+    if (c.solar_forecast_tomorrow_entity) parts.push(`I morgen: ${kwh(s.fcTomorrowKwh)}`);
+    return `<div class="status-row">${icon}<div class="t"><div class="n">Solprognose</div><div class="d">${parts.map(esc).join("<br>")}</div></div></div>`;
   }
 
   _renderChart(d, size = null) {
