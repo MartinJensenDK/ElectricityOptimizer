@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.52.0";
+const PANEL_JS_VERSION = "0.53.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -122,6 +122,11 @@ const STYLE = `
   .gauges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .gauges .card.kpi { aspect-ratio: 1 / 1; box-sizing: border-box; justify-content: space-evenly; }
   .gauges .card.kpi .label { align-self: stretch; }
+  .status-row .fc-val { font-size: 16px; font-weight: 500; white-space: nowrap; }
+  .status-row[data-more] { cursor: pointer; border-radius: 6px; }
+  .status-row[data-more]:hover, .status-row[data-more]:focus-visible { background: var(--secondary-background-color); outline: none; }
+  .card[data-more] { cursor: pointer; transition: box-shadow 0.15s; }
+  .card[data-more]:hover, .card[data-more]:focus-visible { box-shadow: 0 0 0 2px var(--primary-color, #03a9f4); outline: none; }
   .gauges .gauge { max-width: 260px; }
   @media (max-width: 1100px) {
     .top { grid-template-columns: 1fr; }
@@ -721,6 +726,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._contentEl = root.querySelector(".content");
     this._dialogEl = root.querySelector("dialog.settings");
     this._contentEl.addEventListener("change", (ev) => this._onContentChange(ev));
+    this._contentEl.addEventListener("keydown", (ev) => {
+      if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-more]")) {
+        ev.preventDefault();
+        this._openMoreInfo(ev.target.dataset.more);
+      }
+    });
     // the settings dialog has the same entity pickers, Test buttons and info tips as the page
     for (const el of [this._contentEl, this._dialogEl]) {
       el.addEventListener("click", (ev) => this._onContentClick(ev));
@@ -911,7 +922,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const expensive = [...hourly].sort((a, b) => b.price - a.price).slice(0, 5).sort((a, b) => a.time - b.time);
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
-    const side = `<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}</div>`;
+    const side = `<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}${this._renderSolarForecastCard()}</div>`;
     const K = ElectricityOptimizerPanel;
     const lower = `
       <div class="card">
@@ -1029,10 +1040,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderStatusCard(d) {
     return `
       <div class="card">
-        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, solprognose, husbatteri og elbiler lige nu. Solprognosen kommer fra prognose-sensorerne valgt på fanen Solceller. Detaljer findes på de enkelte faner.")}</h2>
+        <h2><ha-icon icon="mdi:home-lightning-bolt-outline"></ha-icon>Status${I("Kort overblik over solceller, husbatteri og elbiler lige nu. Detaljer findes på de enkelte faner.")}</h2>
         <div class="status-list">
           ${this._renderSolarStatusRow()}
-          ${this._renderSolarForecastRow()}
           ${this._renderBatteryStatusRow()}
           ${this._renderEvStatusRow()}
         </div>
@@ -1342,7 +1352,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   /** The self-sufficiency card, identical on the home tab and the solar tab. */
   _renderSelfSufficiencyCard(solar) {
-    return `<div class="card kpi live">
+    return `<div class="card kpi live"${this._more((this._rules || {}).grid_import_energy_entity)}>
           <div class="label"><ha-icon icon="mdi:leaf"></ha-icon>Selvforsyning${I("Hvor stor en del af husets forbrug i dag, der er dækket af egen strøm (solceller og husbatteri) i stedet for køb fra nettet: (forbrug − import) / forbrug, hvor forbrug = solproduktion + import − eksport. Kræver solcelle-energi i dag (Konfigurer) og import-sensoren i dag fra Solceller-fanen; eksport-sensoren gør tallet præcist. Teksten under viser andelen lige nu, hvis der er husforbrugs- og net-sensor.")}</div>
           ${this._renderSelfSufficiencyPie(solar)}
         </div>`;
@@ -1362,7 +1372,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
   _renderOwnUseCard(solar) {
     const { pct, sub } = this._ownUse(solar);
-    return `<div class="card kpi live">
+    return `<div class="card kpi live"${this._more((this._rules || {}).grid_export_energy_entity)}>
           <div class="label"><ha-icon icon="mdi:home-import-outline"></ha-icon>Egenforbrug${I("Hvor stor en del af dagens solproduktion, du selv har brugt (hus, husbatteri og elbiler) i stedet for at sælge den til nettet: (solproduktion − eksport) / solproduktion. Kræver solcelle-energi i dag og eksport-sensoren i dag under Indstillinger på Solceller-fanen.")}</div>
           ${this._renderPie(pct, sub, "Egenforbrug", ["Brugt selv", ElectricityOptimizerPanel.COLOR_OUT], ["Solgt", "var(--warning-color, #ffa600)"])}
         </div>`;
@@ -1381,26 +1391,37 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return null;
   }
 
+  /** Attributes that make a card open Home Assistant's history dialog for `entityId` on click. */
+  _more(entityId) {
+    if (!entityId || !this._hass || !this._hass.states[entityId]) return "";
+    return ` data-more="${esc(entityId)}" role="button" tabindex="0" title="Klik for at se historik"`;
+  }
+
+  _openMoreInfo(entityId) {
+    this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
+  }
+
   _renderGauges() {
     const solar = this._readSolar();
     const bat = this._battery ? this._readBatteryLive() : { soc: null, batW: null, gridW: null, houseW: null };
     const gridW = this._gridLiveW();
     const solarW = solar.powerKw === null ? null : Math.round(solar.powerKw * 1000);
+    const b = this._battery || {}, r = this._rules || {};
     return `
       <div class="gauges">
-        <div class="card kpi live">
+        <div class="card kpi live"${this._more(solar.powerEntity)}>
           <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu${I("Solcellernes produktion lige nu fra effekt-sensoren under Indstillinger på Solceller-fanen. Skalaen går til anlæggets installerede effekt, eller 10 kW hvis den ikke er angivet.")}</div>
           ${this._renderSolarGauge(solar, solarW)}
         </div>
-        <div class="card kpi live">
+        <div class="card kpi live"${this._more(b.house_power_entity || r.house_power_entity)}>
           <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Forbrug${I("Det samlede forbrug lige nu fra husforbrugs-sensoren, inkl. elbil-ladning. Blå = husforbrug, lilla = elbilernes ladning (målt med ladeeffekt-sensor, ellers den satte ladestrøm). Skala 0 til 5 kW.")}</div>
           ${this._renderHouseGauge(this._houseLiveW())}
         </div>
-        <div class="card kpi live">
+        <div class="card kpi live"${this._more(b.grid_power_entity || r.grid_power_entity)}>
           <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet${I("Effekt til og fra elnettet lige nu. Rød mod venstre = køber, grøn mod højre = sælger (minus foran tallet). Skala ±10 kW.")}</div>
           ${this._renderGridGauge(gridW)}
         </div>
-        <div class="card kpi live">
+        <div class="card kpi live"${this._more((this._battery || {}).power_entity || (this._battery || {}).charge_power_entity || (this._battery || {}).discharge_power_entity)}>
           <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
           ${this._renderBatteryGauge(bat.batW)}
         </div>
@@ -1422,21 +1443,27 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div>${badge}</div>`;
   }
 
-  _renderSolarForecastRow() {
+  /** Own card under Status: expected solar production today and tomorrow from the forecast sensors. */
+  _renderSolarForecastCard() {
     const s = this._readSolar();
     const c = this._config || {};
-    const icon = `<ha-icon icon="mdi:weather-partly-cloudy"></ha-icon>`;
-    if (!c.solar_forecast_today_entity && !c.solar_forecast_tomorrow_entity) {
-      return `<div class="status-row">${icon}<div class="t"><div class="n">Solprognose</div><div class="d">Vælg prognose-sensorer på fanen Solceller</div></div><span class="badge neutral">Ikke sat op</span></div>`;
-    }
     const kwh = (v) => (v !== null && v !== undefined && !Number.isNaN(v) ? `${fmtNum(v, 1)} kWh` : "–");
-    const parts = [];
-    if (c.solar_forecast_today_entity) {
+    const row = (icon, name, detail, value, entity) =>
+      `<div class="status-row"${this._more(entity)}><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div>${detail ? `<div class="d">${esc(detail)}</div>` : ""}</div><span class="fc-val">${esc(value)}</span></div>`;
+    let rows;
+    if (!c.solar_forecast_today_entity && !c.solar_forecast_tomorrow_entity) {
+      rows = `<div class="status-row"><ha-icon icon="mdi:weather-partly-cloudy"></ha-icon><div class="t"><div class="d">Vælg prognose-sensorer på fanen Solceller</div></div><span class="badge neutral">Ikke sat op</span></div>`;
+    } else {
       const left = s.fcTodayKwh !== null && s.todayKwh !== null ? Math.max(0, s.fcTodayKwh - s.todayKwh) : null;
-      parts.push(`I dag: ${kwh(s.fcTodayKwh)}${left !== null ? ` (${fmtNum(left, 1)} kWh tilbage)` : ""}`);
+      rows =
+        (c.solar_forecast_today_entity ? row("mdi:weather-sunny", "I dag", left !== null ? `${fmtNum(left, 1)} kWh tilbage` : "", kwh(s.fcTodayKwh), c.solar_forecast_today_entity) : "") +
+        (c.solar_forecast_tomorrow_entity ? row("mdi:weather-partly-cloudy", "I morgen", "", kwh(s.fcTomorrowKwh), c.solar_forecast_tomorrow_entity) : "");
     }
-    if (c.solar_forecast_tomorrow_entity) parts.push(`I morgen: ${kwh(s.fcTomorrowKwh)}`);
-    return `<div class="status-row">${icon}<div class="t"><div class="n">Solprognose</div><div class="d">${parts.map(esc).join("<br>")}</div></div></div>`;
+    return `
+      <div class="card">
+        <h2><ha-icon icon="mdi:weather-sunny"></ha-icon>Solprognose${I("Forventet solproduktion i dag og i morgen fra prognose-sensorerne valgt på fanen Solceller, fx Solcast eller Forecast.Solar. 'Tilbage' er dagens prognose minus det, der allerede er produceret. Klik på en række for at se historik.")}</h2>
+        <div class="status-list">${rows}</div>
+      </div>`;
   }
 
   _renderChart(d, size = null) {
@@ -2999,6 +3026,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       this._maybeRender(true);
       return;
     }
+    const more = ev.target.closest && ev.target.closest("[data-more]");
+    if (more && !ev.target.closest(".info, button, a, input, select, label")) {
+      this._openMoreInfo(more.dataset.more);
+      return;
+    }
     const sbtn = ev.target.closest && ev.target.closest("[data-saction]");
     if (sbtn) {
       await this._onSettingsClick(sbtn);
@@ -3377,11 +3409,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${this._settingsButton()}
       ${this._withRules(`
       <div class="grid">
-        <div class="card kpi live">
+        <div class="card kpi live"${this._more((this._battery || {}).soc_entity)}>
           <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand vist som et batteri, der fyldes op: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
           ${this._renderBatteryLevel(live.soc)}
         </div>
-        <div class="card kpi live">
+        <div class="card kpi live"${this._more((this._battery || {}).power_entity || (this._battery || {}).charge_power_entity || (this._battery || {}).discharge_power_entity)}>
           <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
           ${this._renderBatteryGauge(live.batW)}
         </div>

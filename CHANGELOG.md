@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.53.0
+
+- Kortene øverst på forsiden kan nu klikkes: Solceller lige nu, Forbrug, Elnet og Batteri effekt åbner Home Assistants historik-vindue for den sensor, kortet viser. Selvforsyning åbner historikken for import-sensoren og Egenforbrug for eksport-sensoren. Det samme gælder kortene Hus batteri og Batteri effekt på Hus batteri-siden.
+- Solprognosen på forsiden er flyttet til sin egen sektion under Status, med en række for i dag og en for i morgen. Rækkerne kan også klikkes for at se historik.
+- Et kort kan kun klikkes, når der er valgt en sensor til det. Kortene kan også åbnes med tastaturet (Tab og Enter).
+
 ## 0.52.0
 
 - Forsiden: Status viser nu også solprognosen – forventet produktion i dag (og hvor meget der er tilbage af dagens prognose) samt i morgen. Tallene kommer fra prognose-sensorerne valgt på fanen Solceller, fx Solcast eller Forecast.Solar.
