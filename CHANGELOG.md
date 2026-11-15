@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.51.0
+
+- Husbatteriet aflader nu som udgangspunkt altid, når huset har brug for strømmen: planen sætter det ikke længere på hold i billige timer. Netopladning i de billigste timer virker som før. Ændringen gælder også eksisterende opsætninger.
+- Ny kontakt på Hus batteri-siden: "Hold batteriet i billige timer" (standard fra) giver den tidligere opførsel tilbage, hvor strømmen gemmes til dyrere timer senere.
+- Reglen "Hold husbatteriet, mens bilen lader fra nettet" og knappen "Hold nu" er uændrede.
+
 ## 0.50.0
 
 - En genstart af Home Assistant afbryder ikke længere en opladning. Lige efter en genstart har sensorer fra andre integrationer (elpris, ladestand, elnet, solceller) endnu ingen værdi, og før blev opladningen stoppet og startet igen. Nu ventes der med at beslutte noget og sende kommandoer, til alle sensorer har en værdi – dog højst 3 minutter.

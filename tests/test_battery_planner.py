@@ -16,7 +16,7 @@ def _slots(day: datetime, prices: list[float]) -> list[Slot]:
 
 
 def _cfg(**overrides):
-    cfg = {**BATTERY_DEFAULTS, "capacity_kwh": 10.0, "max_charge_kw": 5.0, "spread_threshold": 0.5, "efficiency": 0.9}
+    cfg = {**BATTERY_DEFAULTS, "hold_cheap": True, "capacity_kwh": 10.0, "max_charge_kw": 5.0, "spread_threshold": 0.5, "efficiency": 0.9}
     cfg.update(overrides)
     return cfg
 
@@ -84,3 +84,23 @@ def test_no_charge_when_spread_too_small():
 def test_returns_none_without_future_slots():
     day = datetime(2026, 9, 25, 0, 0, tzinfo=TZ)
     assert plan_battery(day + timedelta(days=2), _slots(day, [1.0] * 24), soc=50, cfg=_cfg()) is None
+
+
+def test_battery_is_never_held_by_default():
+    """Without the hold option the battery always discharges when needed; grid charging in the cheapest slots stays."""
+    day = datetime(2026, 9, 25, 0, 0, tzinfo=TZ)
+    prices = [1.0] * 24
+    prices[3] = 0.2
+    prices[14] = 0.5
+    prices[18] = 2.5
+    slots = _slots(day, prices)
+
+    plan = plan_battery(day + timedelta(hours=14, minutes=10), slots, soc=60, cfg=_cfg(hold_cheap=False))
+    assert plan["auto_mode"] == "normal"
+    assert all(p["mode"] != "hold" for p in plan["plan"])
+
+    plan = plan_battery(day + timedelta(minutes=10), slots, soc=20, cfg=_cfg(hold_cheap=False, grid_charge_enabled=True))
+    modes = {datetime.fromisoformat(p["start"]).hour: p["mode"] for p in plan["plan"]}
+    assert modes[3] == "charge"
+    assert "hold" not in modes.values()
+    assert BATTERY_DEFAULTS["hold_cheap"] is False

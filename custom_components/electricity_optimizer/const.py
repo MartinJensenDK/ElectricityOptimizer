@@ -100,6 +100,7 @@ BATTERY_DEFAULTS = {
     "hold_stop_value": "",
     "override": "auto",  # auto | normal | hold | charge
     "contiguous": False,  # grid charging: one unbroken block of hours instead of the cheapest single hours
+    "hold_cheap": False,  # save the battery in cheap hours for dearer hours later (off: it always discharges when needed)
     "grid_charge_max_forecast_kwh": None,  # only charge from grid when the solar forecast for that day is below this
     "schedule": None,  # 7 entries Mon..Sun: {enabled, grid_charge, ready_by, target_soc|None}
 }

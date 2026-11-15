@@ -56,7 +56,9 @@ def plan_battery(
 ) -> dict[str, Any] | None:
     """Assign a mode to every known future slot.
 
-    hold:   price below the day's mean and a later slot is at least `spread_threshold` dearer.
+    hold:   only with the `hold_cheap` option: price below the day's mean and a later slot is at least
+            `spread_threshold` dearer. Without it the battery is never held by the plan, so it always
+            discharges when the house needs it.
     charge: (a) grid charging allowed that day, room in the battery, and the cheapest slots whose price
             is at least `spread_threshold` below the (efficiency-adjusted) average of the dearest later
             slots; or (b) the cheapest slots needed to reach the weekly schedule's target SoC before its
@@ -103,7 +105,7 @@ def plan_battery(
         return max(0.0, (s.end - max(s.start, now)).total_seconds() / 3600)
 
     modes: dict[datetime, str] = {}
-    for i, s in enumerate(candidates):
+    for i, s in enumerate(candidates if cfg.get("hold_cheap") else []):
         if not _day_entry(cfg, s.start)["enabled"]:
             continue
         later = candidates[i + 1 :]

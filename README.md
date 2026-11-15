@@ -142,7 +142,7 @@ stop = switch / `on`.
 
 Modus pr. tidsrum:
 
-- **Hold**: prisen er under dagens gennemsnit, og en senere time er mindst *prisforskellen* dyrere.
+- **Hold**: kun med kontakten *Hold batteriet i billige timer* (standard fra): prisen er under dagens gennemsnit, og en senere time er mindst *prisforskellen* dyrere. Uden kontakten aflader batteriet altid, når huset har brug for strømmen.
 - **Lad fra nettet**: kun hvis "Må lade fra nettet" er slået til, der er plads op til maks-SoC, og de
   dyreste timer bagefter (ganget med virkningsgraden) er mindst prisforskellen dyrere end nu.
   De billigste timer vælges, indtil batteriet kan fyldes.

@@ -215,6 +215,7 @@ def normalize_battery(raw: dict[str, Any], existing: dict[str, Any] | None = Non
     cfg["enabled"] = bool(cfg["enabled"])
     cfg["grid_charge_enabled"] = bool(cfg["grid_charge_enabled"])
     cfg["contiguous"] = bool(cfg["contiguous"])
+    cfg["hold_cheap"] = bool(cfg["hold_cheap"])
     cfg["min_soc"] = max(0, min(100, cfg["min_soc"]))
     cfg["max_soc"] = max(cfg["min_soc"], min(100, cfg["max_soc"]))
     cfg["efficiency"] = max(0.5, min(1.0, cfg["efficiency"]))

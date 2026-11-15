@@ -55,6 +55,7 @@ async def test_battery_select_commands(hass: HomeAssistant, hass_ws_client) -> N
             "type": f"{DOMAIN}/battery/save",
             "battery": {
                 "soc_entity": "sensor.bat_soc",
+                "hold_cheap": True,
                 "capacity_kwh": "10",
                 "max_charge_kw": "5",
                 "max_discharge_kw": "5",
@@ -98,7 +99,7 @@ async def test_battery_readonly_without_commands(hass: HomeAssistant, hass_ws_cl
     hass.states.async_set("sensor.bat_soc", "60", {"unit_of_measurement": "%"})
     await _setup(hass)
     client = await hass_ws_client(hass)
-    await client.send_json({"id": 1, "type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc"}})
+    await client.send_json({"id": 1, "type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc", "hold_cheap": True}})
     msg = await client.receive_json()
     assert msg["success"]
     assert msg["result"]["runtime"]["mode"] == "hold"
@@ -152,7 +153,7 @@ async def test_forecast_entities_reach_the_battery_plan(hass: HomeAssistant, has
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     client = await hass_ws_client(hass)
-    await client.send_json({"id": 1, "type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc", "grid_charge_enabled": True, "grid_charge_max_forecast_kwh": "20"}})
+    await client.send_json({"id": 1, "type": f"{DOMAIN}/battery/save", "battery": {"soc_entity": "sensor.bat_soc", "hold_cheap": True, "grid_charge_enabled": True, "grid_charge_max_forecast_kwh": "20"}})
     msg = await client.receive_json()
     assert msg["success"], msg
     fc = msg["result"]["runtime"]["plan"]["forecast"]

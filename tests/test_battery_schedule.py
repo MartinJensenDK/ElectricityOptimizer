@@ -24,7 +24,7 @@ def _week(**overrides):
 
 
 def _cfg(schedule, **kw):
-    return normalize_battery({"soc_entity": "sensor.s", "capacity_kwh": 10, "max_charge_kw": 5, "spread_threshold": 0.5, "schedule": schedule, **kw})
+    return normalize_battery({"soc_entity": "sensor.s", "capacity_kwh": 10, "max_charge_kw": 5, "spread_threshold": 0.5, "hold_cheap": True, "schedule": schedule, **kw})
 
 
 def test_schedule_defaults_from_grid_flag():

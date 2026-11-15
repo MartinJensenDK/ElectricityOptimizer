@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.50.0";
+const PANEL_JS_VERSION = "0.51.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -3368,7 +3368,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${this._renderBatteryGauge(live.batW)}
         </div>
         <div class="card kpi">
-          <div class="label"><ha-icon icon="mdi:state-machine"></ha-icon>Modus lige nu${I("Normal: batteriet styres af sin egen inverter. Hold: batteriet spares til dyrere timer senere. Lad fra nettet: batteriet lades i billige timer. Teksten under forklarer hvorfor.")}</div>
+          <div class="label"><ha-icon icon="mdi:state-machine"></ha-icon>Modus lige nu${I("Normal: batteriet styres af sin egen inverter. Hold: batteriet aflader ikke (mens en elbil lader fra nettet, med Hold nu, eller i billige timer hvis det er slået til). Lad fra nettet: batteriet lades i billige timer. Teksten under forklarer hvorfor.")}</div>
           <div class="value"><span class="badge ${modeCls}" style="font-size:16px;padding:4px 14px">${modeText}</span></div>
           <div class="sub">${esc(statusNote)}</div>
           <div class="sub">${esc(why)}</div>
@@ -3409,6 +3409,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <label class="field"><span class="fl">Maks-SoC ved netopladning (%)${I("Netopladning stopper, når batteriet når denne ladestand.")}</span><input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>
           <label class="field"><span class="fl">Virkningsgrad (0–1)${I("Andel af den indkøbte strøm, der kommer ud af batteriet igen. 0,9 = 10 % tab ved op- og afladning. Indgår i prisforskel-reglen for netopladning.")}</span><input type="number" step="0.01" min="0.5" max="1" data-bfield="efficiency" value="${b.efficiency}"></label>
           <label class="field"><span class="fl">Lad kun fra net hvis solprognose &lt; (kWh)${I("Netopladning springes over på dage, hvor solprognosen er over denne grænse, fordi solen forventes at fylde batteriet. Tom = altid tilladt. Kræver prognose-sensorer under Indstillinger på Solceller-fanen.")}</span><input type="number" step="0.5" min="0" data-bfield="grid_charge_max_forecast_kwh" value="${b.grid_charge_max_forecast_kwh === null || b.grid_charge_max_forecast_kwh === undefined ? "" : b.grid_charge_max_forecast_kwh}" placeholder="fra"></label>
+          <label class="toggle"><input type="checkbox" data-bfield="hold_cheap" ${b.hold_cheap ? "checked" : ""}> Hold batteriet i billige timer${I("Fra (standard): batteriet aflader altid, når huset har brug for strømmen, og planen sætter det aldrig på hold. Netopladning i de billigste timer virker som før. Til: i timer, hvor prisen er under dagens gennemsnit og en senere time er mindst prisforskellen dyrere, sættes batteriet på hold, så strømmen gemmes til de dyre timer. Reglen 'Hold husbatteriet, mens bilen lader fra nettet' og knappen Hold nu er uafhængige af denne kontakt.")}</label>
           <label class="toggle"><input type="checkbox" data-bfield="contiguous" ${b.contiguous ? "checked" : ""}> Sammenhængende netopladning${I("Til: netopladningen lægges i én sammenhængende blok af timer – den billigste blok, der er lang nok – så batteriet ikke skifter mellem lad og normal flere gange. Fra: batteriet lader i de billigste enkelttimer, også når de ligger spredt. Er der ikke en lang nok blok af timer, hvor netopladning kan betale sig, bruges den længste. Kan ugeplanens mål-SoC ikke nås i én blok inden klokkeslættet, bruges de billigste enkelttimer alligevel.")}</label>
         </div>
         ${this._renderForecastRuleHint(plan)}
