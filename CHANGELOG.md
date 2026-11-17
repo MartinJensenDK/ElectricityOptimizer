@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.54.2
+
+- Tallet på kortene Forbrug og Batteri vises nu i temaets almindelige tekstfarve (hvid i mørkt tema) i stedet for blå, grøn eller rød. Viseren beholder sine farver.
+- Prikken for enden af viseren er fjernet på kortene Solceller, Forbrug, Elnet og Batteri.
+
 ## 0.54.1
 
 - Skillelinjen mellem "Samlet kapacitet" og "Hus batteri" på forsiden er flyttet op under overskriften "Kapaciteter". Alle øvrige sektions-overskrifter har fået samme linje under sig.

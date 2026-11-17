@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.54.1";
+const PANEL_JS_VERSION = "0.54.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -160,7 +160,6 @@ const STYLE = `
   .gauge { display: block; width: 100%; max-width: 230px; margin: 0 auto; overflow: visible; }
   .gauge .track { fill: none; stroke: var(--secondary-background-color, #eee); stroke-width: 13; stroke-linecap: round; }
   .gauge .arc { fill: none; stroke-width: 13; stroke-linecap: round; transition: d 300ms; }
-  .gauge .dot { stroke: var(--card-background-color, #fff); stroke-width: 2.5; }
   .gauge .zero { stroke: var(--secondary-text-color); stroke-width: 1.5; opacity: 0.6; }
   .gauge .gv { font-size: 26px; font-weight: 500; fill: var(--primary-text-color); }
   .gauge .gu { font-size: 12px; font-weight: 400; fill: var(--secondary-text-color); }
@@ -1088,15 +1087,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
           if (from - to > 0.3) parts.push(`<path class="arc" style="stroke:${seg.color}" d="M ${P(from)} A ${r} ${r} 0 0 1 ${P(to)}"/>`);
           from = to;
         }
-        if (parts.length) {
-          const [ex, ey] = pt(from);
-          const last = o.segments[o.segments.length - 1];
-          arc = `${parts.join("")}<circle class="dot" style="fill:${last.color}" cx="${ex.toFixed(2)}" cy="${ey.toFixed(2)}" r="${sw / 2 + 2}"/>`;
-        }
+        arc = parts.join("");
       } else if (Math.abs(endDeg - startDeg) > 0.3) {
-        const [ex, ey] = pt(endDeg);
-        arc = `<path class="arc" style="stroke:${o.color}" d="M ${P(startDeg)} A ${r} ${r} 0 0 ${sweep} ${P(endDeg)}"/>
-           <circle class="dot" style="fill:${o.color}" cx="${ex.toFixed(2)}" cy="${ey.toFixed(2)}" r="${sw / 2 + 2}"/>`;
+        arc = `<path class="arc" style="stroke:${o.color}" d="M ${P(startDeg)} A ${r} ${r} 0 0 ${sweep} ${P(endDeg)}"/>`;
       }
     }
     const zero = bipolar ? `<line class="zero" x1="${cx}" x2="${cx}" y1="${cy - r - sw / 2 - 2}" y2="${cy - r + sw / 2 + 2}"/>` : "";
@@ -1106,7 +1099,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${arc}
       <text class="gt" x="${cx - r - sw / 2}" y="${cy + 12}" text-anchor="start">${esc(o.leftLabel || "")}</text>
       <text class="gt" x="${cx + r + sw / 2}" y="${cy + 12}" text-anchor="end">${esc(o.rightLabel || "")}</text>
-      <text class="gv" style="fill:${o.color || "var(--primary-text-color)"}" x="${cx}" y="${cy - 2}" text-anchor="middle">${esc(o.valueText)}<tspan class="gu"> ${esc(o.unit || "")}</tspan></text>
+      <text class="gv" style="fill:${o.valueColor || o.color || "var(--primary-text-color)"}" x="${cx}" y="${cy - 2}" text-anchor="middle">${esc(o.valueText)}<tspan class="gu"> ${esc(o.unit || "")}</tspan></text>
       ${ElectricityOptimizerPanel._subLines(o.sub, cx, cy + 28, cy + 20)}
     </svg>`;
   }
@@ -1165,6 +1158,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       sub,
       leftLabel: `−${K._kwLabel(maxDischarge)}`,
       rightLabel: `+${K._kwLabel(maxCharge)}`,
+      valueColor: "var(--primary-text-color)",
       aria: `Batteri ${batW === null ? "ukendt" : `${fmtNum(batW, 0)} W`} ${sub}`,
     });
   }
@@ -1274,6 +1268,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             : `heraf ${fmtNum(houseW, 0)} W husforbrug${evW > 0 ? ` · ${fmtNum(evW, 0)} W elbil` : ""}`,
       leftLabel: "0",
       rightLabel: K._kwLabel(limit),
+      valueColor: "var(--primary-text-color)",
       aria: `Forbrug ${total === null ? "ukendt" : `${fmtNum(total, 0)} W, heraf ${fmtNum(houseW, 0)} W husforbrug`}`,
     });
   }
