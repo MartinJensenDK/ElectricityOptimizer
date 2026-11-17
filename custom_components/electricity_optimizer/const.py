@@ -82,6 +82,8 @@ BATTERY_DEFAULTS = {
     "grid_power_entity": "",  # signed grid power, W
     "grid_sign": "import_positive",  # or export_positive
     "house_power_entity": "",
+    "charge_energy_entity": "",  # kWh charged into the battery today (display only)
+    "discharge_energy_entity": "",  # kWh discharged from the battery today (display only)
     "capacity_kwh": 10.0,
     "max_charge_kw": 5.0,
     "max_discharge_kw": 5.0,

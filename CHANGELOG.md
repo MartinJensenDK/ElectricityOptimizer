@@ -2,6 +2,14 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.54.0
+
+- Forsiden: kortet "Solceller lige nu" hedder nu "Solceller", og "Batteri effekt" hedder "Batteri" (også på Hus batteri-siden).
+- Forbrug viser nu kWh i dag: solproduktion + køb − salg, korrigeret for husbatteriet, når dets energi-sensorer er valgt. Kræver import-sensoren i dag fra Solceller-fanen.
+- Elnet viser kWh købt og solgt i dag fra import- og eksport-sensorerne på Solceller-fanen.
+- Batteri viser kWh ladet og afladet i dag. Vælg de to nye sensorer "Ladet i dag (kWh)" og "Afladet i dag (kWh)" under Indstillinger på Hus batteri-siden.
+- Mangler sensorerne, viser kortene samme tekst som før.
+
 ## 0.53.0
 
 - Kortene øverst på forsiden kan nu klikkes: Solceller lige nu, Forbrug, Elnet og Batteri effekt åbner Home Assistants historik-vindue for den sensor, kortet viser. Selvforsyning åbner historikken for import-sensoren og Egenforbrug for eksport-sensoren. Det samme gælder kortene Hus batteri og Batteri effekt på Hus batteri-siden.

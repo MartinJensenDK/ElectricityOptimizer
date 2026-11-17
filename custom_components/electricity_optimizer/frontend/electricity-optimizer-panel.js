@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.53.0";
+const PANEL_JS_VERSION = "0.54.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -557,7 +557,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (this._rules && this._rules.grid_power_entity) ids.push(this._rules.grid_power_entity);
     const b = this._battery;
     if (b) {
-      for (const k of ["soc_entity", "power_entity", "charge_power_entity", "discharge_power_entity", "grid_power_entity", "house_power_entity"]) {
+      for (const k of ["soc_entity", "power_entity", "charge_power_entity", "discharge_power_entity", "grid_power_entity", "house_power_entity", "charge_energy_entity", "discharge_energy_entity"]) {
         if (b[k]) ids.push(b[k]);
       }
     }
@@ -1132,12 +1132,28 @@ class ElectricityOptimizerPanel extends HTMLElement {
   }
 
   /** Battery power: discharge (negative, red) sweeps left, charge (positive, green) sweeps right. */
+  /** Value of an energy sensor in kWh, or null when it is not chosen or has no value. */
+  _kwhState(entityId) {
+    if (!entityId) return null;
+    const st = this._numState(entityId);
+    return ElectricityOptimizerPanel._toKwh(st.value, st.unit);
+  }
+
   _renderBatteryGauge(batW) {
     const b = this._battery || {};
     const maxCharge = Math.max(100, (Number(b.max_charge_kw) || 5) * 1000);
     const maxDischarge = Math.max(100, (Number(b.max_discharge_kw) || 5) * 1000);
     const K = ElectricityOptimizerPanel;
-    const sub = batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : batW > 0 ? "lader" : batW < 0 ? "aflader" : "hviler";
+    const state = batW === null ? (this._battery ? "Ingen effekt-sensor" : "Ikke sat op") : batW > 0 ? "lader" : batW < 0 ? "aflader" : "hviler";
+    const inKwh = this._kwhState(b.charge_energy_entity), outKwh = this._kwhState(b.discharge_energy_entity);
+    const sub =
+      inKwh !== null && outKwh !== null
+        ? `${fmtNum(inKwh, 1)} kWh ladet i dag · ${fmtNum(outKwh, 1)} kWh afladet`
+        : inKwh !== null
+          ? `${fmtNum(inKwh, 1)} kWh ladet i dag · ${state}`
+          : outKwh !== null
+            ? `${fmtNum(outKwh, 1)} kWh afladet i dag · ${state}`
+            : state;
     return this._renderGauge({
       value: batW,
       min: -maxDischarge,
@@ -1148,7 +1164,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       sub,
       leftLabel: `−${K._kwLabel(maxDischarge)}`,
       rightLabel: `+${K._kwLabel(maxCharge)}`,
-      aria: `Batteri effekt ${batW === null ? "ukendt" : `${fmtNum(batW, 0)} W`} ${sub}`,
+      aria: `Batteri ${batW === null ? "ukendt" : `${fmtNum(batW, 0)} W`} ${sub}`,
     });
   }
 
@@ -1156,7 +1172,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _renderGridGauge(gridW) {
     const K = ElectricityOptimizerPanel;
     const limit = 10000;
-    const sub = gridW === null ? "Ingen net-sensor" : gridW > 0 ? "køber fra nettet" : gridW < 0 ? "sælger til nettet" : "i balance";
+    const state = gridW === null ? "Ingen net-sensor" : gridW > 0 ? "køber fra nettet" : gridW < 0 ? "sælger til nettet" : "i balance";
+    const r = this._rules || {};
+    const imp = this._kwhState(r.grid_import_energy_entity), exp = this._kwhState(r.grid_export_energy_entity);
+    const sub =
+      imp !== null && exp !== null
+        ? `${fmtNum(imp, 1)} kWh købt i dag · ${fmtNum(exp, 1)} kWh solgt`
+        : imp !== null
+          ? `${fmtNum(imp, 1)} kWh købt i dag · ${state}`
+          : exp !== null
+            ? `${fmtNum(exp, 1)} kWh solgt i dag · ${state}`
+            : state;
     return this._renderGauge({
       value: gridW === null ? null : -gridW,
       min: -limit,
@@ -1208,6 +1234,18 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return Math.round(total);
   }
 
+  /** Consumption so far today from the energy sensors: solar + bought − sold + battery discharged − battery charged. */
+  _consumptionTodayKwh() {
+    const s = this._readSolar();
+    if (s.importKwh === null) return null;
+    const b = this._battery || {};
+    const solarKwh = s.todayKwh !== null ? s.todayKwh : this._config && this._config.solar_energy_today_entity ? null : 0;
+    if (solarKwh === null) return null;
+    const exp = s.exportKwh !== null ? s.exportKwh : 0;
+    const batOut = this._kwhState(b.discharge_energy_entity) || 0, batIn = this._kwhState(b.charge_energy_entity) || 0;
+    return Math.max(0, solarKwh + s.importKwh - exp + batOut - batIn);
+  }
+
   /** Consumption 0 → 5 kW: house load in blue, EV charging stacked on top in purple. */
   _renderHouseGauge(totalW) {
     const K = ElectricityOptimizerPanel;
@@ -1216,6 +1254,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const total = totalW === null ? null : Math.abs(totalW);
     const evW = total === null ? 0 : Math.min(total, this._evChargingW());
     const houseW = total === null ? null : total - evW;
+    const todayKwh = this._consumptionTodayKwh();
     return this._renderGauge({
       value: total,
       min: 0,
@@ -1224,7 +1263,14 @@ class ElectricityOptimizerPanel extends HTMLElement {
       segments: total === null ? null : [{ value: houseW, color: "var(--primary-color, #03a9f4)" }, { value: evW, color: K.COLOR_EV }],
       valueText: total === null ? "–" : fmtNum(total, 0),
       unit: "W",
-      sub: total === null ? (hasSensor ? "Ingen værdi" : "Ingen sensor – vælg under Hus batteri") : `heraf ${fmtNum(houseW, 0)} W husforbrug${evW > 0 ? ` · ${fmtNum(evW, 0)} W elbil` : ""}`,
+      sub:
+        total === null
+          ? hasSensor
+            ? "Ingen værdi"
+            : "Ingen sensor – vælg under Hus batteri"
+          : todayKwh !== null
+            ? `${fmtNum(todayKwh, 1)} kWh i dag${evW > 0 ? ` · heraf ${fmtNum(evW, 0)} W elbil nu` : ""}`
+            : `heraf ${fmtNum(houseW, 0)} W husforbrug${evW > 0 ? ` · ${fmtNum(evW, 0)} W elbil` : ""}`,
       leftLabel: "0",
       rightLabel: K._kwLabel(limit),
       aria: `Forbrug ${total === null ? "ukendt" : `${fmtNum(total, 0)} W, heraf ${fmtNum(houseW, 0)} W husforbrug`}`,
@@ -1410,19 +1456,19 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `
       <div class="gauges">
         <div class="card kpi live"${this._more(solar.powerEntity)}>
-          <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller lige nu${I("Solcellernes produktion lige nu fra effekt-sensoren under Indstillinger på Solceller-fanen. Skalaen går til anlæggets installerede effekt, eller 10 kW hvis den ikke er angivet.")}</div>
+          <div class="label"><ha-icon icon="mdi:solar-power-variant"></ha-icon>Solceller${I("Solcellernes produktion lige nu fra effekt-sensoren under Indstillinger på Solceller-fanen. Skalaen går til anlæggets installerede effekt, eller 10 kW hvis den ikke er angivet.")}</div>
           ${this._renderSolarGauge(solar, solarW)}
         </div>
         <div class="card kpi live"${this._more(b.house_power_entity || r.house_power_entity)}>
-          <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Forbrug${I("Det samlede forbrug lige nu fra husforbrugs-sensoren, inkl. elbil-ladning. Blå = husforbrug, lilla = elbilernes ladning (målt med ladeeffekt-sensor, ellers den satte ladestrøm). Skala 0 til 5 kW.")}</div>
+          <div class="label"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon>Forbrug${I("Det samlede forbrug lige nu fra husforbrugs-sensoren, inkl. elbil-ladning. Blå = husforbrug, lilla = elbilernes ladning (målt med ladeeffekt-sensor, ellers den satte ladestrøm). Skala 0 til 5 kW. Underteksten viser forbruget i dag: solproduktion + køb − salg (+ afladet − ladet for husbatteriet, når de sensorer er valgt). Kræver import-sensoren i dag fra Solceller-fanen.")}</div>
           ${this._renderHouseGauge(this._houseLiveW())}
         </div>
         <div class="card kpi live"${this._more(b.grid_power_entity || r.grid_power_entity)}>
-          <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet${I("Effekt til og fra elnettet lige nu. Rød mod venstre = køber, grøn mod højre = sælger (minus foran tallet). Skala ±10 kW.")}</div>
+          <div class="label"><ha-icon icon="mdi:transmission-tower"></ha-icon>Elnet${I("Effekt til og fra elnettet lige nu. Rød mod venstre = køber, grøn mod højre = sælger (minus foran tallet). Skala ±10 kW. Underteksten viser kWh købt og solgt i dag fra import- og eksport-sensorerne på Solceller-fanen.")}</div>
           ${this._renderGridGauge(gridW)}
         </div>
         <div class="card kpi live"${this._more((this._battery || {}).power_entity || (this._battery || {}).charge_power_entity || (this._battery || {}).discharge_power_entity)}>
-          <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
+          <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Underteksten viser kWh ladet og afladet i dag, når energi-sensorerne er valgt under Indstillinger på Hus batteri-siden. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
           ${this._renderBatteryGauge(bat.batW)}
         </div>
         ${this._renderSelfSufficiencyCard(solar)}
@@ -3414,7 +3460,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ${this._renderBatteryLevel(live.soc)}
         </div>
         <div class="card kpi live"${this._more((this._battery || {}).power_entity || (this._battery || {}).charge_power_entity || (this._battery || {}).discharge_power_entity)}>
-          <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri effekt${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
+          <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Underteksten viser kWh ladet og afladet i dag, når energi-sensorerne er valgt under Indstillinger på Hus batteri-siden. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
           ${this._renderBatteryGauge(live.batW)}
         </div>
         <div class="card kpi">
@@ -3541,6 +3587,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
             <label class="field"><span class="fl">Fortegn for batteri-effekt${I("Om sensoren viser positive tal, når batteriet lader, eller når det aflader.")}</span>${sel("power_sign", [["charge_positive", "Positiv = lader"], ["discharge_positive", "Positiv = aflader"]], "charge_positive")}</label>
             ${this._pickerField("…eller ladeeffekt (W)", "Sensor med effekten ind i batteriet, hvis batteriet har separate sensorer for op- og afladning.", "charge_power_entity", "sensor", b.charge_power_entity, "sensor.… (valgfri)")}
             ${this._pickerField("…og afladeeffekt (W)", "Sensor med effekten ud af batteriet, hvis batteriet har separate sensorer for op- og afladning.", "discharge_power_entity", "sensor", b.discharge_power_entity, "sensor.… (valgfri)")}
+            ${this._pickerField("Ladet i dag (kWh)", "Sensor med energien ladet ind i batteriet i dag. Vises på kortet Batteri og bruges til Forbrug i dag på forsiden.", "charge_energy_entity", "sensor", b.charge_energy_entity, "sensor.… (valgfri)")}
+            ${this._pickerField("Afladet i dag (kWh)", "Sensor med energien afladet fra batteriet i dag. Vises på kortet Batteri og bruges til Forbrug i dag på forsiden.", "discharge_energy_entity", "sensor", b.discharge_energy_entity, "sensor.… (valgfri)")}
             ${this._pickerField("Net import/eksport (W)", "Sensor med effekt til og fra nettet. Vises på Forsiden og bruges til sol-overskud for elbiler.", "grid_power_entity", "sensor", b.grid_power_entity, "sensor.… (valgfri)")}
             <label class="field"><span class="fl">Fortegn for net${I("Om sensoren viser positive tal, når huset køber fra nettet, eller når huset sælger til nettet.")}</span>${sel("grid_sign", [["import_positive", "Positiv = køber"], ["export_positive", "Positiv = sælger"]], "import_positive")}</label>
             ${this._pickerField("Husforbrug (W)", "Sensor med husets samlede forbrug. Vises på Forsiden og i Energiflow.", "house_power_entity", "sensor", b.house_power_entity, "sensor.… (valgfri)")}
