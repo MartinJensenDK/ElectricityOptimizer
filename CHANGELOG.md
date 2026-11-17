@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.54.1
+
+- Skillelinjen mellem "Samlet kapacitet" og "Hus batteri" på forsiden er flyttet op under overskriften "Kapaciteter". Alle øvrige sektions-overskrifter har fået samme linje under sig.
+
 ## 0.54.0
 
 - Forsiden: kortet "Solceller lige nu" hedder nu "Solceller", og "Batteri effekt" hedder "Batteri" (også på Hus batteri-siden).

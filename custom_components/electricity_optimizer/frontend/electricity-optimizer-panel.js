@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.54.0";
+const PANEL_JS_VERSION = "0.54.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -137,7 +137,9 @@ const STYLE = `
     .side { grid-template-columns: 1fr; }
   }
   .card h2 {
-    margin: 0 0 12px;
+    margin: 0 0 6px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--divider-color);
     font-size: 16px;
     font-weight: 500;
     display: flex;
@@ -242,7 +244,6 @@ const STYLE = `
   .status-row .t .n { font-weight: 500; }
   .status-row .t .d { font-size: 13px; color: var(--secondary-text-color); }
   .status-row .t .d .reason { font-size: 12px; opacity: 0.85; }
-  .status-row.total-top { border-bottom: 1px solid var(--divider-color); padding-bottom: 8px; }
   .cap-batt { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .cap-batt svg { width: 56px; height: 22px; display: block; }
   .cap-batt .mb-body { fill: none; stroke: var(--secondary-text-color); stroke-width: 1.25; opacity: 0.55; }
