@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.56.0";
+const PANEL_JS_VERSION = "0.57.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -126,6 +126,9 @@ const STYLE = `
   .status-row .fc-val { font-size: 16px; font-weight: 500; white-space: nowrap; }
   .status-row[data-more] { cursor: pointer; border-radius: 6px; }
   .status-row[data-more]:hover, .status-row[data-more]:focus-visible { background: var(--secondary-background-color); outline: none; }
+  tr[data-more] { cursor: pointer; }
+  tr[data-more]:hover td, tr[data-more]:focus-visible td { background: var(--secondary-background-color); }
+  tr[data-more]:focus-visible { outline: none; }
   .card[data-more] { cursor: pointer; transition: box-shadow 0.15s; }
   .card[data-more]:hover, .card[data-more]:focus-visible { box-shadow: 0 0 0 2px var(--primary-color, #03a9f4); outline: none; }
   .gauges .gauge { max-width: 260px; }
@@ -1875,13 +1878,15 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const set = s.nextSetting ? fmtTime(s.nextSetting) : "–";
     const sunTimes = s.sunUp ? `Solnedgang kl. ${set} · Solopgang i morgen kl. ${rise}` : `Solopgang kl. ${rise} · Solnedgang kl. ${set}`;
 
+    const c = this._config || {};
+    const r = this._rules || {};
     const producedKwh = s.history ? s.history.buckets.reduce((acc, b) => acc + b.v * (10 / 60), 0) : null;
 
     return `
       ${this._settingsButton()}
       ${this._withRules(`
       <div class="grid">
-        <div class="card kpi">
+        <div class="card kpi"${this._more(c.solar_power_entity)}>
           <div class="label"><ha-icon icon="mdi:solar-power"></ha-icon>Produktion lige nu${I("Aktuel effekt fra solcelle-sensoren under Indstillinger. Procenten er udnyttelsen af den installerede effekt (kWp).")}</div>
           <div class="value">${fmtNum(s.powerKw === null ? null : Math.round(s.powerKw * 1000), 0)}<small>W</small></div>
           ${
@@ -1890,7 +1895,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
               : `<div class="sub">${s.peakKw ? "" : "Angiv installeret effekt for at se udnyttelse"}</div>`
           }
         </div>
-        <div class="card kpi">
+        <div class="card kpi"${this._more(c.solar_energy_today_entity || c.solar_power_entity)}>
           <div class="label"><ha-icon icon="mdi:counter"></ha-icon>Produceret i dag${I("Energi produceret i dag fra energi-sensoren. Uden sensor anslås den ud fra effektkurven. Procenten er i forhold til dagens prognose.")}</div>
           <div class="value">${fmtNum(s.todayKwh, 1)}<small>kWh</small></div>
           ${
@@ -1899,12 +1904,12 @@ class ElectricityOptimizerPanel extends HTMLElement {
               : `<div class="sub">${producedKwh !== null && s.todayKwh === null ? `ca. ${fmtNum(producedKwh, 1)} kWh ud fra effektkurven` : ""}</div>`
           }
         </div>
-        <div class="card kpi">
+        <div class="card kpi"${this._more(c.solar_forecast_today_entity || c.solar_forecast_tomorrow_entity)}>
           <div class="label"><ha-icon icon="mdi:weather-sunny"></ha-icon>Prognose${I("Forventet produktion i dag og i morgen fra prognose-sensorerne, fx Solcast eller Forecast.Solar. Bruges til husbatteriets regel om kun at lade fra nettet, når prognosen er lav.")}</div>
           <div class="value">${fmtNum(s.fcTodayKwh, 1)}<small>kWh i dag</small></div>
           <div class="sub">${s.fcTomorrowKwh !== null ? `I morgen: ${fmtNum(s.fcTomorrowKwh, 1)} kWh` : "Ingen prognose-sensor valgt"}</div>
         </div>
-        <div class="card kpi">
+        <div class="card kpi"${this._more("sun.sun")}>
           <div class="label"><ha-icon icon="mdi:white-balance-sunny"></ha-icon>Solen${I("Solens højde over horisonten lige nu samt tidspunkt for solopgang og solnedgang fra Home Assistants sol-entitet.")}</div>
           <div class="value">${s.elevation !== null ? `${fmtNum(s.elevation, 0)}°` : "–"}<small>over horisonten</small></div>
           <div class="sub">${sunBadge} ${esc(sunTimes)}</div>
@@ -1912,7 +1917,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         ${this._renderSelfSufficiencyCard(s)}
       </div>
 
-      <div class="card">
+      <div class="card"${this._more(c.solar_power_entity)}>
         <h2><ha-icon icon="mdi:chart-areaspline"></ha-icon>Produktion i dag${I("Effektkurve for i dag ud fra solcelle-sensorens historik i Home Assistant. Lodret streg = nu.")}</h2>
         <div class="chart-wrap">${this._renderSolarChart(s)}</div>
         <div class="legend">
@@ -1927,13 +1932,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <table>
             <tbody>
               <tr class="tsec"><td colspan="2">I dag</td></tr>
-              <tr><td>Produceret i dag</td><td class="num">${s.todayKwh !== null ? `${fmtNum(s.todayKwh, 1)} kWh` : "–"}</td></tr>
-              <tr><td>Importeret i dag</td><td class="num">${s.importKwh !== null ? `${fmtNum(s.importKwh, 1)} kWh` : "–"}</td></tr>
-              <tr><td>Eksporteret i dag</td><td class="num">${s.exportKwh !== null ? `${fmtNum(s.exportKwh, 1)} kWh` : "–"}</td></tr>
+              <tr${this._more(c.solar_energy_today_entity)}><td>Produceret i dag</td><td class="num">${s.todayKwh !== null ? `${fmtNum(s.todayKwh, 1)} kWh` : "–"}</td></tr>
+              <tr${this._more(r.grid_import_energy_entity)}><td>Importeret i dag</td><td class="num">${s.importKwh !== null ? `${fmtNum(s.importKwh, 1)} kWh` : "–"}</td></tr>
+              <tr${this._more(r.grid_export_energy_entity)}><td>Eksporteret i dag</td><td class="num">${s.exportKwh !== null ? `${fmtNum(s.exportKwh, 1)} kWh` : "–"}</td></tr>
               <tr class="tsec"><td colspan="2">Denne måned</td></tr>
-              <tr><td>Produceret denne måned</td><td class="num">${s.monthKwh !== null ? `${fmtNum(s.monthKwh, 0)} kWh` : "–"}</td></tr>
-              <tr><td>Importeret denne måned</td><td class="num">${s.importMonthKwh !== null ? `${fmtNum(s.importMonthKwh, 0)} kWh` : "–"}</td></tr>
-              <tr><td>Eksporteret denne måned</td><td class="num">${s.exportMonthKwh !== null ? `${fmtNum(s.exportMonthKwh, 0)} kWh` : "–"}</td></tr>
+              <tr${this._more(c.solar_energy_month_entity)}><td>Produceret denne måned</td><td class="num">${s.monthKwh !== null ? `${fmtNum(s.monthKwh, 0)} kWh` : "–"}</td></tr>
+              <tr${this._more(r.grid_import_energy_month_entity)}><td>Importeret denne måned</td><td class="num">${s.importMonthKwh !== null ? `${fmtNum(s.importMonthKwh, 0)} kWh` : "–"}</td></tr>
+              <tr${this._more(r.grid_export_energy_month_entity)}><td>Eksporteret denne måned</td><td class="num">${s.exportMonthKwh !== null ? `${fmtNum(s.exportMonthKwh, 0)} kWh` : "–"}</td></tr>
             </tbody>
           </table>
           ${this._renderGridEnergyHint()}

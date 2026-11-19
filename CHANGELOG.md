@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.57.0
+
+- Solceller-siden: kortene Produktion lige nu, Produceret i dag, Prognose, Solen og Produktion i dag kan nu klikkes, så Home Assistants historik for den bagvedliggende sensor åbner. Det samme gælder rækkerne i Anlæg-tabellen (produceret, importeret og eksporteret i dag og denne måned).
+
 ## 0.56.0
 
 - Elbiler: tilsluttet-sensoren kan nu også være en status-sensor fra laderen eller bilen (fx `disconnected` / `awaiting_start` / `charging`) og ikke kun en `binary_sensor`. Når bilen ikke er tilsluttet, sendes der ingen start-kommando, så fejlen "Start fejlede … prøver igen om et minut" ikke gentages hvert minut.
