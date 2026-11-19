@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.55.1";
+const PANEL_JS_VERSION = "0.55.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -3503,7 +3503,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <h2><ha-icon icon="mdi:tune"></ha-icon>Indstillinger${I("Regler for hvornår batteriet holdes tilbage eller lades fra nettet. Hvert felt gemmes med det samme.")}</h2>
         <label class="switch"><input type="checkbox" data-bfield="enabled" ${b.enabled ? "checked" : ""}><span class="slider"></span>Smart styring${I("Til: Electricity Optimizer sender hold- og lad-kommandoer efter planen. Fra: planen vises, men der sendes ingen kommandoer.")}</label>
         <div class="controls" style="margin-top:0">
-          <label class="field"><span class="fl">Prisforskel (kr/kWh)${I("Hold: prisen nu skal være under dagens gennemsnit, og en senere time mindst så meget dyrere. Lad fra nettet: en senere time skal være mindst så meget dyrere end nu, efter der er regnet med virkningsgraden.")}</span><input type="number" step="0.05" min="0" data-bfield="spread_threshold" value="${b.spread_threshold}"></label>
+          <label class="field"><span class="fl">Min. prisforskel ved netopladning (kr/kWh)${I("Styrer indkøb af strøm – afladning styres af feltet Min. prisforskel ved afladning. Hold: prisen nu skal være under dagens gennemsnit, og en senere time mindst så meget dyrere. Lad fra nettet: en senere time skal være mindst så meget dyrere end nu, efter der er regnet med virkningsgraden.")}</span><input type="number" step="0.05" min="0" data-bfield="spread_threshold" value="${b.spread_threshold}"></label>
           <label class="field"><span class="fl">Reserve-SoC (%)${I("Batteriet aflades ikke under denne ladestand. Vises som streg på ladestands-bjælken.")}</span><input type="number" min="0" max="100" data-bfield="min_soc" value="${b.min_soc}"></label>
           <label class="field"><span class="fl">Maks-SoC ved netopladning (%)${I("Netopladning stopper, når batteriet når denne ladestand.")}</span><input type="number" min="0" max="100" data-bfield="max_soc" value="${b.max_soc}"></label>
           <label class="field"><span class="fl">Virkningsgrad (0–1)${I("Andel af den indkøbte strøm, der kommer ud af batteriet igen. 0,9 = 10 % tab ved op- og afladning. Indgår i prisforskel-reglen for netopladning.")}</span><input type="number" step="0.01" min="0.5" max="1" data-bfield="efficiency" value="${b.efficiency}"></label>

@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.55.2
+
+- Hus batteri-siden: feltet "Prisforskel" hedder nu "Min. prisforskel ved netopladning", så det er tydeligt, at det styrer indkøb af strøm, mens "Min. prisforskel ved afladning" styrer afladning. Selve reglen er uændret.
+
 ## 0.55.1
 
 - Hus batteri-siden: kortene øverst står nu i rækkefølgen Batteri, Batteri procent (før "Hus batteri"), Effektivitet og Modus lige nu. Effektivitet er blevet et lille kort i rækken i stedet for et stort kort nedenunder.
