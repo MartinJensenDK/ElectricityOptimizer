@@ -22,11 +22,11 @@ class RuntimeStateStore:
 
     def __init__(self, hass: HomeAssistant, suffix: str = "") -> None:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY_RUNTIME + suffix)
-        self.data: dict[str, Any] = {"ev": {}, "battery": {}}
+        self.data: dict[str, Any] = {"ev": {}, "battery": {}, "cost": {}}
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
-        self.data = {"ev": dict(data.get("ev") or {}), "battery": dict(data.get("battery") or {})}
+        self.data = {"ev": dict(data.get("ev") or {}), "battery": dict(data.get("battery") or {}), "cost": dict(data.get("cost") or {})}
 
     def save(self) -> None:
         """Debounced write (called after every command)."""

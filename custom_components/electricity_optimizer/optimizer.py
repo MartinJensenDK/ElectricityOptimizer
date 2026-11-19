@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 from .battery_controller import BatteryController
 from .const import STARTUP_HOLD_SECONDS
+from .cost import CostTracker
 from .ev_controller import Context, EvController, read_price_slots
 from .storage import RulesStore
 
@@ -35,6 +36,9 @@ class Optimizer:
         self.rules_store = rules
         self.last_context: Context | None = None
         self.history = None  # HistoryTracker, set by __init__
+        self.cost = CostTracker()  # replaced by __init__ with the persisted one
+        self.state = None  # RuntimeStateStore, set by __init__
+        self._cost_saved_at: datetime | None = None
         self._startup_hold_until: datetime | None = None
 
     def hold_for_startup(self) -> None:
@@ -166,6 +170,7 @@ class Optimizer:
             battery_cfg=self.battery.store.battery,
             battery_soc=live["soc"],
             battery_w=live["battery_w"],
+            battery_avg_price=self.cost.average("battery"),
             grid_w=grid_w,
             surplus_w=surplus,
             surplus_from=surplus_from,
@@ -184,11 +189,44 @@ class Optimizer:
         await self.ev.async_evaluate(ctx)
         await self.battery.async_apply(ctx, battery_mode)
         self.last_context = ctx
+        try:
+            self._update_cost(ctx)
+        except Exception:  # noqa: BLE001 - the price bookkeeping must never break control
+            _LOGGER.exception("Average price update failed")
         if self.history is not None:
             try:
                 await self.history.async_update(ctx, self.ev.store.cars, self.ev.runtime, self.battery.store.battery, self.battery.runtime)
             except Exception:  # noqa: BLE001 - history must never break control
                 _LOGGER.exception("History update failed")
+
+    COST_SAVE_INTERVAL_S = 300
+
+    def _update_cost(self, ctx: Context) -> None:
+        bat = self.battery.store.battery
+        self.cost.update(
+            ctx,
+            self.ev.store.cars,
+            self.ev.runtime,
+            bat,
+            self.battery.runtime,
+            charged_kwh=self._kwh(bat.get("charge_energy_entity")) if bat else None,
+            discharged_kwh=self._kwh(bat.get("discharge_energy_entity")) if bat else None,
+        )
+        self.publish_cost()
+        if self.cost.dirty and self.state is not None and (self._cost_saved_at is None or (ctx.now - self._cost_saved_at).total_seconds() >= self.COST_SAVE_INTERVAL_S):
+            self.cost.dirty = False
+            self._cost_saved_at = ctx.now
+            self.state.save()
+
+    def publish_cost(self) -> None:
+        """Put the average prices and the efficiency in the runtime the panel reads."""
+        if self.battery.store.battery is not None:
+            self.battery.runtime["cost"] = self.cost.snapshot("battery")
+            self.battery.runtime["efficiency"] = self.cost.efficiency_snapshot()
+        for car in self.ev.store.cars:
+            rt = self.ev.runtime.get(car["id"])
+            if rt is not None:
+                rt["cost"] = self.cost.snapshot(f"ev:{car['id']}")
 
     def watched_entities(self) -> set[str]:
         ids = {self.price_entity}

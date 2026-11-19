@@ -33,6 +33,7 @@ from .const import (
     EVALUATE_INTERVAL_SECONDS,
 )
 from .battery_controller import BatteryController
+from .cost import CostTracker
 from .demo import DemoSimulator, async_seed
 from .ev_controller import EvController
 from .history import HistoryStore, HistoryTracker
@@ -142,6 +143,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     controller.restore()
     battery_controller.state = runtime_state
     battery_controller.restore()
+    optimizer.state = runtime_state
+    optimizer.cost = CostTracker(runtime_state.data["cost"])
     domain_data["runtime_state"] = runtime_state
 
     if not domain_data.get("_ws_registered"):

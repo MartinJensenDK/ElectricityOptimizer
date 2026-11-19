@@ -265,8 +265,24 @@ async def ws_battery_delete(hass: HomeAssistant, connection: websocket_api.Activ
     connection.send_result(msg["id"], _battery_payload(hass))
 
 
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/battery/reset_measurement", vol.Required("what"): vol.In(["efficiency", "cost"])})
+@websocket_api.async_response
+async def ws_battery_reset_measurement(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    """Start the efficiency measurement or the battery's average price over."""
+    optimizer = _optimizer(hass)
+    if msg["what"] == "efficiency":
+        optimizer.cost.reset_efficiency()
+    else:
+        optimizer.cost.reset("battery")
+    optimizer.publish_cost()
+    if optimizer.state is not None:
+        optimizer.state.save()
+    connection.send_result(msg["id"], _battery_payload(hass))
+
+
 @callback
 def async_register_battery(hass: HomeAssistant) -> None:
+    websocket_api.async_register_command(hass, ws_battery_reset_measurement)
     websocket_api.async_register_command(hass, ws_battery_get)
     websocket_api.async_register_command(hass, ws_battery_save)
     websocket_api.async_register_command(hass, ws_battery_delete)

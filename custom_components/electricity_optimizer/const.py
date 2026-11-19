@@ -103,6 +103,7 @@ BATTERY_DEFAULTS = {
     "override": "auto",  # auto | normal | hold | charge
     "contiguous": False,  # grid charging: one unbroken block of hours instead of the cheapest single hours
     "hold_cheap": False,  # save the battery in cheap hours for dearer hours later (off: it always discharges when needed)
+    "discharge_min_margin": None,  # only discharge when the price is at least this much above the battery's average price (None = off)
     "grid_charge_max_forecast_kwh": None,  # only charge from grid when the solar forecast for that day is below this
     "schedule": None,  # 7 entries Mon..Sun: {enabled, grid_charge, ready_by, target_soc|None}
 }
@@ -127,6 +128,7 @@ RULES_DEFAULTS = {
     "amps_interval_seconds": 30,  # solar mode: the current limit is adjusted at most this often (and first after this delay)
     "notify_enabled": True,  # persistent notifications (events are always fired)
     "surplus_source": "grid",  # grid: export from the grid sensor | solar_house: solar production - house load
+    "solar_value_per_kwh": 0.0,  # what a kWh of own solar power counts as in the batteries' average price
     "house_includes_ev": True,  # the house load sensor includes the EV charger's draw
     "grid_power_entity": "",  # used when the battery has none
     "house_power_entity": "",  # used when the battery has none (solar_house mode)

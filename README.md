@@ -170,6 +170,12 @@ lader batteriet kun fra nettet efter prisforskel-reglen. Rækken "Alle dage" sæ
 Alle tal i panelet er live fra Home Assistants states; plan og status hentes hvert 3. sekund, og
 planen genberegnes hvert minut samt straks efter ændringer i pris- og SoC-sensorer.
 
+### Gennemsnitspris og effektivitet
+
+Integrationen holder styr på, hvad strømmen på husbatteriet og i bilerne har kostet. Hver gang ladestanden stiger, blandes den nye strøm ind i gennemsnittet: netstrøm til timens pris, solstrøm til "Værdi af egen solstrøm" (0 kr som standard) og strøm fra husbatteriet til bilen til husbatteriets gennemsnitspris. Solcellerne regnes for at dække husets forbrug først. Afladning ændrer ikke gennemsnitsprisen. Prisen vises under Kapaciteter på forsiden.
+
+"Min. prisforskel ved afladning" holder batteriet, så længe strømprisen er under gennemsnitsprisen plus den valgte forskel. Kortet "Effektivitet" viser den målte virkningsgrad ved op- og afladning ud fra ændringen i ladestand og de kWh, der er sendt ind og ud.
+
 ## Udvikling
 
 ```bash

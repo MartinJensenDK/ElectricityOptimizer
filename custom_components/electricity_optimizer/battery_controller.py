@@ -16,6 +16,7 @@ from .runtime_state import RuntimeStateStore
 
 MODE_LABEL = {"normal": "normal", "hold": "hold", "charge": "lad fra net"}
 from .const import BATTERY_MODES, GRID_VOLTAGE
+from .cost import price_now
 from .ev_controller import Context, Slot, cheapest_window, longest_run, remember_slot
 from .storage import BatteryStore
 
@@ -348,6 +349,16 @@ class BatteryController:
         if mode == "charge" and soc >= cfg["max_soc"]:
             mode = "normal"
             rt["status"] = "full"
+        rt["price_hold"] = None
+        margin = cfg.get("discharge_min_margin")
+        if mode == "normal" and cfg["override"] == "auto" and margin is not None and ctx.battery_avg_price is not None:
+            price = price_now(ctx)
+            limit = ctx.battery_avg_price + margin
+            if price is not None and price < limit:
+                # discharging now would give the energy away for (about) what it cost to store
+                mode = "hold"
+                rt["status"] = "price_hold"
+                rt["price_hold"] = {"price": round(price, 4), "avg": round(ctx.battery_avg_price, 4), "limit": round(limit, 4)}
         rt["mode"] = mode
         rt["session"] = self._session(ctx.now, plan, mode)
         self._remember_mode(ctx, mode)
@@ -413,6 +424,8 @@ class BatteryController:
             reason = "Lad nu: husbatteriet er over øvre grænse og må lade bilen (regel)"
         elif rt.get("status") == "fuse_wait":
             reason = "Hovedsikringen er optaget af elbil"
+        elif rt.get("status") == "price_hold":
+            reason = "Strømprisen er under batteriets gennemsnitspris plus den valgte prisforskel"
         else:
             reason = {
                 "hold": "Prisen er under dagens gennemsnit, og senere timer er dyrere",

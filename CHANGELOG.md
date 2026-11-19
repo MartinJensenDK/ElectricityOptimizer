@@ -2,6 +2,15 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.55.0
+
+- Gennemsnitspris for strømmen på batterierne: under Kapaciteter på forsiden vises nu "Gns. pris" pr. kWh for husbatteriet, hver elbil og samlet, og hvor stor en del der kom fra solen. Strøm fra nettet tæller med prisen i den time, den blev ladet. Solstrøm tæller som 0 kr, eller den værdi du skriver i "Værdi af egen solstrøm" under Indstillinger på Solceller-fanen. Lader bilen fra husbatteriet, tæller den strøm med husbatteriets gennemsnitspris. Prisen kendes først efter næste opladning, og opladning andre steder end hjemme ændrer den ikke.
+- Ny regel på Hus batteri-siden: "Min. prisforskel ved afladning". Batteriet aflader kun, når strømprisen lige nu er mindst så meget over batteriets gennemsnitspris; ellers holdes det. Tom = slået fra (standard). Kræver hold-kommandoer.
+- Nyt kort "Effektivitet" på Hus batteri-siden: målt virkningsgrad og tab ved opladning, ved afladning og samlet. Bygger på sensorerne "Ladet i dag" og "Afladet i dag", ellers på effekt-sensoren, og på batteristørrelsen. Tallene vises, når der er målt mindst 3 kWh i hver retning, og kan nulstilles.
+- Under elbilernes batterier står der ikke længere "mål x %". Målet vises som en rød streg i batteriet.
+- Teksten nederst i kortene øverst på forsiden er rykket lidt ned, så den ikke står helt op ad viseren og skalaen.
+- Elnet-kortets skala hedder nu kun "Køb" og "Salg", så teksten ikke rammer kWh-tallene nedenunder.
+
 ## 0.54.2
 
 - Tallet på kortene Forbrug og Batteri vises nu i temaets almindelige tekstfarve (hvid i mørkt tema) i stedet for blå, grøn eller rød. Viseren beholder sine farver.

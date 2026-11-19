@@ -226,6 +226,13 @@ def normalize_battery(raw: dict[str, Any], existing: dict[str, Any] | None = Non
             cfg["grid_charge_max_forecast_kwh"] = float(str(cfg["grid_charge_max_forecast_kwh"]).replace(",", "."))
         except (TypeError, ValueError):
             cfg["grid_charge_max_forecast_kwh"] = None
+    if cfg["discharge_min_margin"] in ("", None):
+        cfg["discharge_min_margin"] = None
+    else:
+        try:
+            cfg["discharge_min_margin"] = float(str(cfg["discharge_min_margin"]).replace(",", "."))
+        except (TypeError, ValueError):
+            cfg["discharge_min_margin"] = None
     if cfg["power_sign"] not in ("charge_positive", "discharge_positive"):
         cfg["power_sign"] = "charge_positive"
     if cfg["grid_sign"] not in ("import_positive", "export_positive"):
@@ -381,6 +388,10 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     if rules["surplus_source"] not in ("grid", "solar_house"):
         rules["surplus_source"] = "grid"
     rules["house_includes_ev"] = bool(rules["house_includes_ev"])
+    try:
+        rules["solar_value_per_kwh"] = float(str(rules.get("solar_value_per_kwh") or 0).replace(",", "."))
+    except (TypeError, ValueError):
+        rules["solar_value_per_kwh"] = 0.0
     return rules
 
 

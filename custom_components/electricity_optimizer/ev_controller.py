@@ -30,6 +30,7 @@ class Context:
     battery_cfg: dict[str, Any] | None = None
     battery_soc: float | None = None
     battery_w: float | None = None  # + = charging
+    battery_avg_price: float | None = None  # average price of the energy stored in the house battery
     grid_w: float | None = None  # + = import
     battery_grid_charging: bool = False  # battery intends to charge from grid this slot
     solar_w: float | None = None  # current solar production
