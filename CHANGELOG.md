@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.55.1
+
+- Hus batteri-siden: kortene øverst står nu i rækkefølgen Batteri, Batteri procent (før "Hus batteri"), Effektivitet og Modus lige nu. Effektivitet er blevet et lille kort i rækken i stedet for et stort kort nedenunder.
+- Kortet Energiflow er fjernet; de samme tal ses på forsiden.
+
 ## 0.55.0
 
 - Gennemsnitspris for strømmen på batterierne: under Kapaciteter på forsiden vises nu "Gns. pris" pr. kWh for husbatteriet, hver elbil og samlet, og hvor stor en del der kom fra solen. Strøm fra nettet tæller med prisen i den time, den blev ladet. Solstrøm tæller som 0 kr, eller den værdi du skriver i "Værdi af egen solstrøm" under Indstillinger på Solceller-fanen. Lader bilen fra husbatteriet, tæller den strøm med husbatteriets gennemsnitspris. Prisen kendes først efter næste opladning, og opladning andre steder end hjemme ændrer den ikke.

@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.55.0";
+const PANEL_JS_VERSION = "0.55.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -116,6 +116,7 @@ const STYLE = `
     margin-bottom: 12px;
   }
   .grid .card { margin-bottom: 0; }
+  .btn.small { padding: 3px 9px; font-size: 12px; min-height: 0; }
   .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 12px; margin-bottom: 12px; align-items: start; }
   .top .card { margin-bottom: 0; }
   .side { display: grid; grid-template-columns: 1fr; gap: 12px; align-content: start; }
@@ -125,13 +126,6 @@ const STYLE = `
   .status-row .fc-val { font-size: 16px; font-weight: 500; white-space: nowrap; }
   .status-row[data-more] { cursor: pointer; border-radius: 6px; }
   .status-row[data-more]:hover, .status-row[data-more]:focus-visible { background: var(--secondary-background-color); outline: none; }
-  .eff-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .eff-tile { background: var(--secondary-background-color); border-radius: 10px; padding: 10px 12px; }
-  .eff-tile .l { font-size: 13px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 6px; }
-  .eff-tile .l ha-icon { --mdc-icon-size: 18px; }
-  .eff-tile .v { font-size: 26px; font-weight: 500; margin: 4px 0 2px; }
-  .eff-tile .s { font-size: 12px; color: var(--secondary-text-color); }
-  @media (max-width: 700px) { .eff-grid { grid-template-columns: 1fr; } }
   .card[data-more] { cursor: pointer; transition: box-shadow 0.15s; }
   .card[data-more]:hover, .card[data-more]:focus-visible { box-shadow: 0 0 0 2px var(--primary-color, #03a9f4); outline: none; }
   .gauges .gauge { max-width: 260px; }
@@ -358,13 +352,6 @@ const STYLE = `
   .cmd-result:empty { display: none; }
   .cmd-result.ok { color: var(--success-color, #43a047); }
   .cmd-result.fail { color: var(--error-color, #db4437); }
-  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-  .flow .item { display: flex; gap: 10px; align-items: center; }
-  .flow .item ha-icon { --mdc-icon-size: 28px; color: var(--secondary-text-color); }
-  .flow .item .v { font-size: 20px; font-weight: 500; line-height: 1.1; }
-  .flow .item .l { font-size: 12px; color: var(--secondary-text-color); }
-  .flow .item.in .v { color: var(--error-color, #db4437); }
-  .flow .item.out .v { color: var(--success-color, #43a047); }
   h3 { font-size: 14px; font-weight: 500; margin: 14px 0 6px; color: var(--secondary-text-color); }
   table.sched { margin-top: 8px; }
   table.sched td, table.sched th { padding: 4px 4px; }
@@ -3478,31 +3465,22 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${this._settingsButton()}
       ${this._withRules(`
       <div class="grid">
-        <div class="card kpi live"${this._more((this._battery || {}).soc_entity)}>
-          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Hus batteri${I("Husbatteriets ladestand vist som et batteri, der fyldes op: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
-          ${this._renderBatteryLevel(live.soc)}
-        </div>
         <div class="card kpi live"${this._more((this._battery || {}).power_entity || (this._battery || {}).charge_power_entity || (this._battery || {}).discharge_power_entity)}>
           <div class="label"><ha-icon icon="mdi:battery-charging"></ha-icon>Batteri${I("Husbatteriets effekt lige nu. Rød mod venstre = aflader (minus foran tallet), grøn mod højre = lader. Underteksten viser kWh ladet og afladet i dag, når energi-sensorerne er valgt under Indstillinger på Hus batteri-siden. Skalaen følger batteriets maks. lade- og afladeeffekt.")}</div>
           ${this._renderBatteryGauge(live.batW)}
         </div>
+        <div class="card kpi live"${this._more((this._battery || {}).soc_entity)}>
+          <div class="label"><ha-icon icon="mdi:home-battery"></ha-icon>Batteri procent${I("Husbatteriets ladestand vist som et batteri, der fyldes op: rød ved eller under reserven, orange tæt på reserven, ellers grøn. Den stiplede streg er reserven, og teksten viser de kWh, der cirka er tilbage.")}</div>
+          ${this._renderBatteryLevel(live.soc)}
+        </div>
+        ${this._renderEfficiencyCard(b, rt)}
         <div class="card kpi">
           <div class="label"><ha-icon icon="mdi:state-machine"></ha-icon>Modus lige nu${I("Normal: batteriet styres af sin egen inverter. Hold: batteriet aflader ikke (mens en elbil lader fra nettet, med Hold nu, eller i billige timer hvis det er slået til). Lad fra nettet: batteriet lades i billige timer. Teksten under forklarer hvorfor.")}</div>
           <div class="value"><span class="badge ${modeCls}" style="font-size:16px;padding:4px 14px">${modeText}</span></div>
           <div class="sub">${esc(statusNote)}</div>
           <div class="sub">${esc(why)}</div>
         </div>
-        <div class="card">
-          <h2><ha-icon icon="mdi:swap-vertical"></ha-icon>Energiflow${I("Effekt lige nu for elnet (køb/salg), husforbrug og batteri (lader/aflader) fra sensorerne under Indstillinger.")}</h2>
-          <div class="flow">
-            <div class="item ${live.gridW > 0 ? "in" : "out"}"><ha-icon icon="mdi:transmission-tower"></ha-icon><div><div class="v">${live.gridW === null ? "–" : fmtNum(Math.abs(live.gridW), 0) + " W"}</div><div class="l">${live.gridW === null ? "Elnet" : live.gridW > 0 ? "Køber fra nettet" : "Sælger til nettet"}</div></div></div>
-            <div class="item"><ha-icon icon="mdi:home-lightning-bolt"></ha-icon><div><div class="v">${live.houseW === null ? "–" : fmtNum(live.houseW, 0) + " W"}</div><div class="l">Husforbrug</div></div></div>
-            <div class="item ${live.batW > 0 ? "out" : live.batW < 0 ? "in" : ""}"><ha-icon icon="mdi:battery-charging"></ha-icon><div><div class="v">${live.batW === null ? "–" : fmtNum(Math.abs(live.batW), 0) + " W"}</div><div class="l">${live.batW === null ? "Batteri" : live.batW >= 0 ? "Batteri lader" : "Batteri aflader"}</div></div></div>
-          </div>
-        </div>
       </div>
-
-      ${this._renderEfficiencyCard(b, rt)}
 
       <div class="card">
         <h2><ha-icon icon="mdi:chart-timeline"></ha-icon>Plan${I("Modus time for time i 24 felter: den forgangne time, den aktuelle time (med kant) og de næste 22 timer. Manuel-knapperne overstyrer planen, indtil Auto vælges igen. Knapper uden kommandoer er slået fra.")}</h2>
@@ -3545,38 +3523,31 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>`)}`;
   }
 
-  /** Measured charging and discharging efficiency of the house battery, plus the average price of what is stored. */
+  /** Measured efficiency of the house battery as a KPI card: what comes out of every kWh sent in, and the losses each way. */
   _renderEfficiencyCard(b, rt) {
     const e = rt.efficiency || null;
-    const pct = (v) => (v === null || v === undefined ? "–" : `${fmtNum(v * 100, 0)} %`);
-    const loss = (v) => (v === null || v === undefined ? "" : `${fmtNum(Math.max(0, 1 - v) * 100, 0)} % tab`);
+    const pct = (v) => `${fmtNum(v * 100, 0)} %`;
     const need = e ? e.min_kwh : 3;
-    const tile = (icon, label, value, sub) =>
-      `<div class="eff-tile"><div class="l"><ha-icon icon="${icon}"></ha-icon>${label}</div><div class="v">${value}</div><div class="s">${esc(sub)}</div></div>`;
-    let body;
+    let value = "–";
+    const subs = [];
     if (!e || !e.measurable) {
-      body = `<div class="hint">Kræver batteriets effekt-sensor eller sensorerne "Ladet i dag" og "Afladet i dag" under Indstillinger. Målingen starter, så snart de har værdier.</div>`;
+      subs.push("Kræver effekt-sensor eller sensorerne Ladet/Afladet i dag");
     } else {
-      const chargeSub = e.charge !== null ? `${loss(e.charge)} · ${fmtNum(e.stored_kwh, 1)} af ${fmtNum(e.in_kwh, 1)} kWh lagret` : `måler – ${fmtNum(e.in_kwh, 1)} af ${fmtNum(need, 0)} kWh ladet`;
-      const dischargeSub = e.discharge !== null ? `${loss(e.discharge)} · ${fmtNum(e.out_kwh, 1)} af ${fmtNum(e.drawn_kwh, 1)} kWh ud` : `måler – ${fmtNum(e.drawn_kwh, 1)} af ${fmtNum(need, 0)} kWh afladet`;
-      const roundSub = e.round_trip !== null ? `${loss(e.round_trip)} · planen regner med ${fmtNum(Number(b.efficiency) * 100, 0)} %` : "vises, når både op- og afladning er målt";
-      body = `<div class="eff-grid">
-          ${tile("mdi:battery-arrow-up", "Opladning", pct(e.charge), chargeSub)}
-          ${tile("mdi:battery-arrow-down", "Afladning", pct(e.discharge), dischargeSub)}
-          ${tile("mdi:sync", "Samlet (ud af det, der er ladet ind)", pct(e.round_trip), roundSub)}
-        </div>`;
+      if (e.round_trip !== null) value = `${fmtNum(e.round_trip * 100, 0)}<small>%</small>`;
+      subs.push(e.charge !== null ? `Opladning ${pct(e.charge)} (${fmtNum(Math.max(0, 1 - e.charge) * 100, 0)} % tab)` : `Opladning: måler – ${fmtNum(e.in_kwh, 1)} af ${fmtNum(need, 0)} kWh`);
+      subs.push(e.discharge !== null ? `Afladning ${pct(e.discharge)} (${fmtNum(Math.max(0, 1 - e.discharge) * 100, 0)} % tab)` : `Afladning: måler – ${fmtNum(e.drawn_kwh, 1)} af ${fmtNum(need, 0)} kWh`);
     }
-    const since = e && e.since ? `Målt siden ${new Date(e.since).toLocaleDateString("da-DK")}. ` : "";
-    return `
-      <div class="card">
-        <h2><ha-icon icon="mdi:battery-heart-variant"></ha-icon>Effektivitet${I("Hvor meget af strømmen der går tabt i husbatteriet. Opladning: hvor meget af den strøm, der sendes til batteriet, som ender som ladestand (stigning i SoC × batteristørrelse / kWh ladet). Afladning: hvor meget af den ladestand, der bruges, som kommer ud som strøm. Samlet: de to ganget sammen – det, du får ud af hver kWh, du lader ind. Tallene bygger på energi-sensorerne Ladet/Afladet i dag, ellers på effekt-sensoren, og på batteristørrelsen i indstillingerne; en forkert batteristørrelse giver forkerte tal. Målingen bliver mere præcis over tid.")}</h2>
-        ${body}
-        <div class="hint" style="margin-top:10px">${esc(since)}${esc(ElectricityOptimizerPanel._avgPriceText(rt.cost))} for den strøm, der ligger på batteriet nu.</div>
-        <div class="row" style="margin-top:10px">
-          <button class="btn" data-baction="reset_measurement" data-value="efficiency">Nulstil måling</button>
-          <button class="btn" data-baction="reset_measurement" data-value="cost">Nulstil gns. pris</button>
-        </div>
-      </div>`;
+    subs.push(ElectricityOptimizerPanel._avgPriceText(rt.cost));
+    const since = e && e.since ? ` Målt siden ${new Date(e.since).toLocaleDateString("da-DK")}: ${fmtNum(e.in_kwh, 1)} kWh ladet, ${fmtNum(e.out_kwh, 1)} kWh afladet.` : "";
+    return `<div class="card kpi">
+          <div class="label"><ha-icon icon="mdi:battery-heart-variant"></ha-icon>Effektivitet${I(`Det store tal er, hvor meget du får ud af hver kWh, du lader ind (opladning × afladning); planen regner med ${fmtNum(Number(b.efficiency) * 100, 0)} %. Opladning: hvor meget af den strøm, der sendes til batteriet, som ender som ladestand. Afladning: hvor meget af den brugte ladestand, der kommer ud som strøm. Tallene bygger på sensorerne Ladet/Afladet i dag, ellers på effekt-sensoren, og på batteristørrelsen i indstillingerne; en forkert batteristørrelse giver forkerte tal. De vises, når der er målt mindst ${fmtNum(need, 0)} kWh i hver retning. Gns. pris er prisen for den strøm, der ligger på batteriet nu.${since}`)}</div>
+          <div class="value">${value}</div>
+          ${subs.map((t) => `<div class="sub">${esc(t)}</div>`).join("")}
+          <div class="row" style="margin-top:8px;gap:6px">
+            <button class="btn small" data-baction="reset_measurement" data-value="efficiency" title="Start målingen af effektivitet forfra">Nulstil måling</button>
+            <button class="btn small" data-baction="reset_measurement" data-value="cost" title="Glem gennemsnitsprisen; den beregnes igen ved næste opladning">Nulstil pris</button>
+          </div>
+        </div>`;
   }
 
   _renderForecastRuleHint(plan) {
@@ -3651,7 +3622,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${this._pickerField("Afladet i dag (kWh)", "Sensor med energien afladet fra batteriet i dag. Vises på kortet Batteri og bruges til Forbrug i dag på forsiden.", "discharge_energy_entity", "sensor", b.discharge_energy_entity, "sensor.… (valgfri)")}
             ${this._pickerField("Net import/eksport (W)", "Sensor med effekt til og fra nettet. Vises på Forsiden og bruges til sol-overskud for elbiler.", "grid_power_entity", "sensor", b.grid_power_entity, "sensor.… (valgfri)")}
             <label class="field"><span class="fl">Fortegn for net${I("Om sensoren viser positive tal, når huset køber fra nettet, eller når huset sælger til nettet.")}</span>${sel("grid_sign", [["import_positive", "Positiv = køber"], ["export_positive", "Positiv = sælger"]], "import_positive")}</label>
-            ${this._pickerField("Husforbrug (W)", "Sensor med husets samlede forbrug. Vises på Forsiden og i Energiflow.", "house_power_entity", "sensor", b.house_power_entity, "sensor.… (valgfri)")}
+            ${this._pickerField("Husforbrug (W)", "Sensor med husets samlede forbrug. Vises på Forsiden.", "house_power_entity", "sensor", b.house_power_entity, "sensor.… (valgfri)")}
           </div>
           <div class="form-section">Kommandoer: lad fra nettet (valgfri)${I("Kommandoer der tvinger batteriet til at lade fra nettet, fx en switch som force charge eller en select med værdien Charge. Uden dem vises planen kun.")}</div>
           <div class="form-grid">
