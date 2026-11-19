@@ -1025,3 +1025,30 @@ async def test_enabling_smart_control_resends_commands(hass: HomeAssistant, hass
     await _ws(hass, client, 2, {"type": f"{DOMAIN}/battery/save", "battery": {"enabled": False}})
     await _ws(hass, client, 3, {"type": f"{DOMAIN}/battery/save", "battery": {"enabled": True}})
     assert [c.data["option"] for c in select] == ["Self-use", "Self-use"]
+
+
+async def test_status_sensor_as_plug_sensor(hass: HomeAssistant, hass_ws_client) -> None:
+    """A charger's status sensor (text) works as the connected sensor: no start command while disconnected."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.charger_status", "disconnected")
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "plugged_entity": "sensor.charger_status"}})
+    car_id = res["car"]["id"]
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "not_plugged" and res["car"]["runtime"]["plugged"] is False
+    assert not turn_on
+
+    hass.states.async_set("sensor.charger_status", "awaiting_start")
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "charge_now" and res["car"]["runtime"]["plugged"] is True
+    assert len(turn_on) == 1
+
+    # own words for "not connected" replace the built-in list
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "unplugged_states": "Awaiting-Start, ledig"}})
+    assert res["car"]["unplugged_states"] == "Awaiting-Start, ledig"
+    assert res["car"]["runtime"]["plugged"] is False

@@ -71,7 +71,7 @@ def normalize_car(raw: dict[str, Any], existing: dict[str, Any] | None = None) -
     car["charge_now"] = bool(car["charge_now"])
     car["contiguous"] = bool(car["contiguous"])
     car["target_soc"] = max(1, min(100, car["target_soc"]))
-    for key in ("name", "soc_entity", "start_entity", "start_value", "stop_entity", "stop_value", "plugged_entity", "current_entity", "power_entity", "source", "ready_by"):
+    for key in ("name", "soc_entity", "start_entity", "start_value", "stop_entity", "stop_value", "plugged_entity", "unplugged_states", "current_entity", "power_entity", "source", "ready_by"):
         car[key] = str(car[key] or "").strip()
     if len(car["ready_by"]) == 8:  # HH:MM:SS -> HH:MM
         car["ready_by"] = car["ready_by"][:5]

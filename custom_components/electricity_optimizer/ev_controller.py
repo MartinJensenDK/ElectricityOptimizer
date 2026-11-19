@@ -13,11 +13,16 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .commands import async_run_command
-from .const import AMPS_CHANGE_MIN_SECONDS, EV_FULL_SOC, GRID_VOLTAGE
+from .const import AMPS_CHANGE_MIN_SECONDS, EV_FULL_SOC, GRID_VOLTAGE, UNPLUGGED_STATES
 from .runtime_state import RuntimeStateStore
 from .storage import CarStore
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _plug_state(value: str) -> str:
+    """A state as it is compared: lower-case, with "_" and "-" read as spaces."""
+    return " ".join(str(value).lower().replace("_", " ").replace("-", " ").split())
 
 
 @dataclass
@@ -440,7 +445,14 @@ class EvController:
         st = self.hass.states.get(car["plugged_entity"])
         if st is None or st.state in ("unknown", "unavailable"):
             return None  # e.g. the charger integration has not loaded yet after a restart: not "unplugged"
-        return st.state == "on"
+        state = _plug_state(st.state)
+        own = {_plug_state(v) for v in (car.get("unplugged_states") or "").split(",") if v.strip()}
+        if own:
+            return state not in own
+        if car["plugged_entity"].startswith("binary_sensor."):
+            return state == "on"
+        # a status sensor (e.g. "disconnected" / "awaiting_start" / "charging"): everything but the known "not connected" words is connected
+        return state not in UNPLUGGED_STATES
 
     # ---- evaluation
 

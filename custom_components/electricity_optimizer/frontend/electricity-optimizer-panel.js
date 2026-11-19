@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.55.2";
+const PANEL_JS_VERSION = "0.56.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -2676,7 +2676,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
   _carSensorFields(car) {
     return (
       this._pickerField("SoC-sensor (%)", "Sensor med bilens ladestand i procent, typisk fra bilens egen integration. Uden den kan der ikke planlægges.", "soc_entity", "sensor", car.soc_entity) +
-      this._pickerField("Tilsluttet-sensor (valgfri)", "binary_sensor der er tændt, når bilen sidder i laderen. Uden den antages bilen altid tilsluttet.", "plugged_entity", "binary_sensor", car.plugged_entity, "binary_sensor.…") +
+      this._pickerField("Tilsluttet-sensor (valgfri)", "Sensor fra laderen eller bilen, som viser om bilen sidder i laderen. Er bilen ikke tilsluttet, sendes der ingen start-kommando. Kan være en binary_sensor (tændt = tilsluttet) eller en status-sensor med tekst, fx disconnected / awaiting_start / charging. Uden den antages bilen altid tilsluttet.", "plugged_entity", "binary_sensor,sensor", car.plugged_entity, "binary_sensor.… / sensor.…") +
+      `<label class="field"><span class="fl">Værdier for ikke tilsluttet (valgfri)${I("Kun nødvendigt, hvis din sensor bruger andre ord end de kendte. Skriv de værdier fra tilsluttet-sensoren, som betyder at bilen IKKE er tilsluttet, adskilt af komma. Tomt felt: off, disconnected, unplugged, not_connected, available m.fl. regnes som ikke tilsluttet.")}</span><input name="unplugged_states" value="${esc(car.unplugged_states || "")}" placeholder="fx disconnected, unknown" autocomplete="off"></label>` +
       this._pickerField("Ladeeffekt-sensor (W, valgfri)", "Bilens eller laderens faktiske effekt. Vises live og bruges i sol-regnestykket, så bilens eget træk ikke tæller som husforbrug.", "power_entity", "sensor", car.power_entity, "sensor.… bilens/laderens effekt")
     );
   }

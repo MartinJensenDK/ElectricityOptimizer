@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.56.0
+
+- Elbiler: tilsluttet-sensoren kan nu også være en status-sensor fra laderen eller bilen (fx `disconnected` / `awaiting_start` / `charging`) og ikke kun en `binary_sensor`. Når bilen ikke er tilsluttet, sendes der ingen start-kommando, så fejlen "Start fejlede … prøver igen om et minut" ikke gentages hvert minut.
+- Nyt valgfrit felt "Værdier for ikke tilsluttet", hvis din sensor bruger andre ord end de kendte (`off`, `disconnected`, `unplugged`, `not_connected`, `available` m.fl.).
+- Felterne findes under bilens indstillinger (tandhjulet) på Elbiler-siden.
+
 ## 0.55.2
 
 - Hus batteri-siden: feltet "Prisforskel" hedder nu "Min. prisforskel ved netopladning", så det er tydeligt, at det styrer indkøb af strøm, mens "Min. prisforskel ved afladning" styrer afladning. Selve reglen er uændret.

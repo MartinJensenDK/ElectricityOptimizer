@@ -43,6 +43,10 @@ EVALUATE_INTERVAL_SECONDS = 60
 # after a Home Assistant restart: how long to wait for sensors that have no value yet before deciding without them
 STARTUP_HOLD_SECONDS = 180
 ACTIVATE_DOMAINS = ("switch", "input_boolean", "button", "script", "automation")
+# states of a "connected" sensor that mean the car is not in the charger (compared lower-case, "_"/"-" as spaces)
+UNPLUGGED_STATES = frozenset(
+    {"off", "false", "0", "no", "disconnected", "unplugged", "not connected", "not plugged", "not plugged in", "unconnected", "no vehicle", "no car", "available"}
+)
 CAR_DEFAULTS = {
     "name": "",
     "soc_entity": "",
@@ -50,7 +54,8 @@ CAR_DEFAULTS = {
     "start_value": "",
     "stop_entity": "",
     "stop_value": "",
-    "plugged_entity": "",
+    "plugged_entity": "",  # optional binary_sensor or sensor telling whether the car is in the charger
+    "unplugged_states": "",  # optional: the sensor's states that mean "not connected", comma separated
     "capacity_kwh": 60.0,
     "min_amps": 6,
     "max_amps": 16,

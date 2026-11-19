@@ -61,7 +61,8 @@ Under fanen **Elbiler** tilføjer du en bil med:
 | SoC-sensor | Bilens batteriniveau i % |
 | Start opladning | `switch`, `button`, `script`, `input_boolean` eller `automation`. Tændes/trykkes når der skal lades |
 | Stop opladning | Samme domæner. Er det **samme switch** som start, slukkes den – ellers tændes/trykkes stop-entiteten. Har laderen kun én switch, vælges den begge steder |
-| Tilsluttet-sensor | Valgfri `binary_sensor`; er den `off`, startes der ikke |
+| Tilsluttet-sensor | Valgfri `binary_sensor` (tændt = tilsluttet) eller status-`sensor` fra laderen/bilen (fx `disconnected` / `awaiting_start` / `charging`). Er bilen ikke tilsluttet, sendes der ingen start-kommando |
+| Værdier for ikke tilsluttet | Valgfri, kommasepareret. Kun nødvendigt, hvis sensoren bruger andre ord end de kendte (`off`, `disconnected`, `unplugged`, `not_connected`, `available` m.fl.) |
 | Kapacitet | kWh, bruges sammen med ladestrømmen til at beregne hvor mange timer der skal lades |
 | Min./maks. ladestrøm / faser | A og 1–3 faser; planen regner med maks. × 230 V × faser. Ved solopladning justeres strømmen mellem min. og maks. Begge kan ændres direkte på bilens kort |
 | Strømgrænse-entitet | Valgfri `number`/`input_number`. Ved netopladning sættes den før start; ved solopladning sendes kun start-kommandoen, og strømmen sendes første gang efter det valgte interval og justeres derefter løbende |
