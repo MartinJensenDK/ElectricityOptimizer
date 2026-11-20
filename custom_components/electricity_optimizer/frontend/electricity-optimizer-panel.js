@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.57.0";
+const PANEL_JS_VERSION = "0.57.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -126,6 +126,8 @@ const STYLE = `
   .status-row .fc-val { font-size: 16px; font-weight: 500; white-space: nowrap; }
   .status-row[data-more] { cursor: pointer; border-radius: 6px; }
   .status-row[data-more]:hover, .status-row[data-more]:focus-visible { background: var(--secondary-background-color); outline: none; }
+  .car-live > div[data-more] { cursor: pointer; border-radius: 8px; transition: box-shadow 0.15s; }
+  .car-live > div[data-more]:hover, .car-live > div[data-more]:focus-visible { box-shadow: 0 0 0 2px var(--primary-color, #03a9f4); outline: none; }
   tr[data-more] { cursor: pointer; }
   tr[data-more]:hover td, tr[data-more]:focus-visible td { background: var(--secondary-background-color); }
   tr[data-more]:focus-visible { outline: none; }
@@ -2521,7 +2523,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="card" data-car="${car.id}">
         <h2 class="car-head"><ha-icon icon="mdi:car-electric"></ha-icon>${esc(car.name)} <span class="hint" style="font-weight:400">#${index + 1}</span>${I("Nummeret er bilens prioritet: ved sol-overskud og ved hovedsikringen får bil #1 strøm først. Flyt rækkefølgen med pilene nederst på kortet. Mærkatet viser bilens status lige nu.")} <span class="badge ${statusCls}" style="margin-left:auto">${statusText}</span><button class="btn ${car.charge_now ? "active" : ""}" data-action="charge-now" title="Starter opladning med det samme uanset plan, mål-SoC og Smart opladning. Kører til bilen er fuld, tages ud af laderen, eller du trykker Stop.">${car.charge_now ? "Stop 'Lad nu'" : "Lad nu"}</button></h2>
         <div class="car-live">
-          <div>
+          <div${this._more(car.soc_entity)}>
             <div class="label"><ha-icon icon="mdi:battery-medium"></ha-icon>Batteri${I("Bilens ladestand: rød under 20 %, orange under 40 %, ellers grøn. Den stiplede streg er dagens mål-SoC, og lynet viser, at bilen lader lige nu.")}</div>
             ${this._renderBigBattery({
               soc,
@@ -2532,7 +2534,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
               charging: !!rt.charging,
             })}
           </div>
-          <div>
+          <div${this._more(car.power_entity)}>
             <div class="label"><ha-icon icon="mdi:ev-station"></ha-icon>Ladeeffekt${I("Bilens faktiske ladeeffekt lige nu fra ladeeffekt-sensoren (vælges under Indstillinger). Skalaen går til maks. ladestrøm × 230 V × antal faser.")}</div>
             ${this._renderCarPowerGauge(car, liveW)}
           </div>

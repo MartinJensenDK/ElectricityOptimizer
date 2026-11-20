@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.57.1
+
+- Elbiler-siden: Batteri og Ladeeffekt på hver bils kort kan nu klikkes, så Home Assistants historik for bilens SoC-sensor og ladeeffekt-sensor åbner.
+
 ## 0.57.0
 
 - Solceller-siden: kortene Produktion lige nu, Produceret i dag, Prognose, Solen og Produktion i dag kan nu klikkes, så Home Assistants historik for den bagvedliggende sensor åbner. Det samme gælder rækkerne i Anlæg-tabellen (produceret, importeret og eksporteret i dag og denne måned).
