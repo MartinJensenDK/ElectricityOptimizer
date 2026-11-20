@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.58.0";
+const PANEL_JS_VERSION = "0.58.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -308,7 +308,6 @@ const STYLE = `
   .picker-list div small { display: block; color: var(--secondary-text-color); font-size: 11px; }
   .picker-list div:hover { background: var(--secondary-background-color); }
   .car-live { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 12px; align-items: start; margin: 4px 0 6px; }
-  .car-eff { gap: 6px; font-size: 13px; margin: 2px 0 8px; align-items: center; }
   .car-live .label { font-size: 13px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 6px; justify-content: center; }
   .car-live .label ha-icon { --mdc-icon-size: 18px; }
   .soc-bar { position: relative; height: 10px; border-radius: 5px; background: var(--secondary-background-color); margin: 8px 0 4px; overflow: visible; }
@@ -2467,7 +2466,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div>Ingen elbiler er tilføjet endnu.</div>
         <div style="margin-top:12px"><button class="btn primary" data-action="add-car">Tilføj bil</button></div></div></div>`;
     } else {
-      body = `<div class="car-grid">${cars.map((c, i) => this._renderCarCard(c, i, cars.length)).join("")}</div>`;
+      body = `<div class="car-grid">${cars.map((c) => this._renderCarEfficiencyCard(c, cars.length > 1)).join("")}</div>
+        <div class="car-grid">${cars.map((c, i) => this._renderCarCard(c, i, cars.length)).join("")}</div>`;
     }
     return `
       ${this._settingsButton(
@@ -2543,7 +2543,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
             ${this._renderCarPowerGauge(car, liveW)}
           </div>
         </div>
-        ${this._renderCarEfficiency(car, rt)}
         <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
         ${plan ? this._renderPlanStrip(plan, rt.recent) : ""}
         <label class="switch"><input type="checkbox" data-field="enabled" ${car.enabled ? "checked" : ""}><span class="slider"></span>Smart opladning${I("Til: Electricity Optimizer starter og stopper bilens opladning efter ugeplan og regler. Fra: der sendes ingen kommandoer til bilen, bortset fra når du trykker Lad nu.")}</label>
@@ -2561,22 +2560,35 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>`;
   }
 
-  /** One line on the car's card: how much of the energy from the charger ends up in the car's battery. */
-  _renderCarEfficiency(car, rt) {
+  /** "Effektivitet" for one car, like the card on the Hus batteri page: charger energy against the rise in SoC. */
+  _renderCarEfficiencyCard(car, many) {
+    const rt = car.runtime || {};
     const e = rt.efficiency || null;
-    let text;
+    const need = e ? e.min_kwh : 10;
+    let value = "–";
+    const subs = [];
     if (!car.power_entity || !e || !e.measurable) {
-      text = "kræver en ladeeffekt-sensor (vælges under bilens indstillinger)";
+      subs.push("Kræver en ladeeffekt-sensor (vælges under bilens indstillinger)");
     } else if (e.charge === null) {
-      text = `måler – ${fmtNum(e.in_kwh, 1)} af ${fmtNum(e.min_kwh, 0)} kWh`;
+      subs.push(`Opladning: måler – ${fmtNum(e.in_kwh, 1)} af ${fmtNum(need, 0)} kWh`);
     } else {
-      text = `<strong>${fmtNum(e.charge * 100, 0)} %</strong> (${fmtNum(Math.max(0, 1 - e.charge) * 100, 0)} % tab) · ${fmtNum(e.in_kwh, 1)} kWh fra laderen → ${fmtNum(e.stored_kwh, 1)} kWh i batteriet`;
+      value = `${fmtNum(e.charge * 100, 0)}<small>%</small>`;
+      subs.push(`Opladning ${fmtNum(e.charge * 100, 0)} % (${fmtNum(Math.max(0, 1 - e.charge) * 100, 0)} % tab)`);
+      subs.push(`${fmtNum(e.in_kwh, 1)} kWh fra laderen → ${fmtNum(e.stored_kwh, 1)} kWh i batteriet`);
     }
+    subs.push(ElectricityOptimizerPanel._avgPriceText(rt.cost));
     const since = e && e.since ? ` Målt siden ${new Date(e.since).toLocaleDateString("da-DK")}.` : "";
-    const reset = e && (e.in_kwh > 0 || e.pending_kwh > 0) ? '<button class="btn small" data-action="reset-efficiency" title="Start målingen af ladeeffektivitet forfra" style="margin-left:auto">Nulstil</button>' : "";
-    return `<div class="row car-eff"><ha-icon icon="mdi:battery-heart-variant" style="--mdc-icon-size:18px;color:var(--secondary-text-color)"></ha-icon><span>Ladeeffektivitet${I(
-      `Hvor meget af den strøm, laderen leverer, der ender i bilens batteri. Resten er tab i laderen, kablet og bilens egen lader. Måles som energien fra ladeeffekt-sensoren holdt op mod stigningen i ladestand × batterikapaciteten, så kapaciteten skal passe. Bilens ladestand flytter sig i hele procent, så tallet vises først efter ${e ? fmtNum(e.min_kwh, 0) : 10} kWh og bliver mere præcist med tiden. Opladning andre steder end hjemme tælles ikke med.${since}`
-    )}: ${text}</span>${reset}</div>`;
+    return `<div class="card kpi" data-car="${car.id}">
+          <div class="label"><ha-icon icon="mdi:battery-heart-variant"></ha-icon>Effektivitet${many ? ` – ${esc(car.name)}` : ""}${I(
+            `Hvor meget af den strøm, laderen leverer, der ender i bilens batteri. Resten er tab i laderen, kablet og bilens egen lader. Måles som energien fra ladeeffekt-sensoren holdt op mod stigningen i ladestand × batterikapaciteten, så kapaciteten skal passe. Bilens ladestand flytter sig i hele procent, så tallet vises først efter ${fmtNum(need, 0)} kWh og bliver mere præcist med tiden. Opladning andre steder end hjemme tælles ikke med. Gns. pris er gennemsnitsprisen for den strøm, der står på bilens batteri.${since}`
+          )}</div>
+          <div class="value">${value}</div>
+          ${subs.map((t) => `<div class="sub">${esc(t)}</div>`).join("")}
+          <div class="row" style="margin-top:8px;gap:6px">
+            <button class="btn small" data-action="reset-efficiency" data-value="efficiency" title="Start målingen af effektivitet forfra">Nulstil måling</button>
+            <button class="btn small" data-action="reset-efficiency" data-value="cost" title="Glem gennemsnitsprisen; den beregnes igen ved næste opladning">Nulstil pris</button>
+          </div>
+        </div>`;
   }
 
   _renderSchedule(car) {
@@ -3184,7 +3196,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         await this._saveCar({ id: car.id, charge_now: !car.charge_now });
         this._maybeRender(true);
       } else if (action === "reset-efficiency" && car) {
-        await this._hass.callWS({ type: "electricity_optimizer/cars/reset_efficiency", car_id: car.id });
+        await this._hass.callWS({ type: "electricity_optimizer/cars/reset_efficiency", car_id: car.id, what: btn.dataset.value || "efficiency" });
         await this._loadCars(true);
         this._maybeRender(true);
       } else if ((action === "move-up" || action === "move-down") && car) {

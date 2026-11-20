@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.58.1
+
+- Elbiler-siden: ladeeffektiviteten vises nu i sit eget kort "Effektivitet" øverst på siden – ét pr. bil – ligesom på Hus batteri-siden, med bilens gennemsnitspris og knapperne Nulstil måling og Nulstil pris. Linjen på bilens kort er fjernet.
+
 ## 0.58.0
 
 - Elbiler: hver bils kort viser nu ladeeffektiviteten – hvor meget af strømmen fra laderen, der ender i bilens batteri, og hvor meget der er tab. Kræver en ladeeffekt-sensor på bilen. Tallet vises efter 10 kWh målt opladning og kan nulstilles på kortet. Opladning andre steder end hjemme tælles ikke med.

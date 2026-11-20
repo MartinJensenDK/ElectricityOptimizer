@@ -79,6 +79,13 @@ class CostTracker:
                 pool.pop(k)
             self.dirty = True
 
+    def reset_car_cost(self, key: str) -> None:
+        """Forget a car's average price but keep its efficiency measurement."""
+        pool = self.data.get("pools", {}).get(key)
+        if pool:
+            pool.update(avg=None, solar_share=None, pend_kwh=0.0, pend_cost=0.0, pend_solar=0.0)
+            self.dirty = True
+
     def car_efficiency_snapshot(self, key: str) -> dict[str, Any]:
         pool = self.data.get("pools", {}).get(key) or {}
         in_kwh, stored = pool.get("eff_in", 0.0), pool.get("eff_stored", 0.0)

@@ -92,12 +92,15 @@ async def ws_cars_delete(hass: HomeAssistant, connection: websocket_api.ActiveCo
     connection.send_result(msg["id"], {"deleted": ok})
 
 
-@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/cars/reset_efficiency", vol.Required("car_id"): str})
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/cars/reset_efficiency", vol.Required("car_id"): str, vol.Optional("what", default="efficiency"): vol.In(["efficiency", "cost"])})
 @websocket_api.async_response
 async def ws_cars_reset_efficiency(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
-    """Start the measurement of a car's charging efficiency over."""
+    """Start the measurement of a car's charging efficiency, or its average price, over."""
     optimizer = _optimizer(hass)
-    optimizer.cost.reset_car_efficiency(f"ev:{msg['car_id']}")
+    if msg["what"] == "cost":
+        optimizer.cost.reset_car_cost(f"ev:{msg['car_id']}")
+    else:
+        optimizer.cost.reset_car_efficiency(f"ev:{msg['car_id']}")
     optimizer.publish_cost()
     if optimizer.state is not None:
         optimizer.state.save()
