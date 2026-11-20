@@ -227,6 +227,7 @@ class Optimizer:
             rt = self.ev.runtime.get(car["id"])
             if rt is not None:
                 rt["cost"] = self.cost.snapshot(f"ev:{car['id']}")
+                rt["efficiency"] = self.cost.car_efficiency_snapshot(f"ev:{car['id']}")
 
     def watched_entities(self) -> set[str]:
         ids = {self.price_entity}

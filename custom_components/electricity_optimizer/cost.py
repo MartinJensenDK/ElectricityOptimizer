@@ -22,6 +22,8 @@ MAX_STEP_SECONDS = 180  # ignore gaps longer than this (restart, HA paused)
 MAX_SENSOR_STEP_KWH = 10.0  # an energy sensor jumping more than this in one step is a reset or a glitch
 CHARGING_W = 30  # below this a battery is not really charging or discharging
 EFFICIENCY_MIN_KWH = 3.0  # measured energy needed in a direction before its efficiency is shown
+CAR_EFFICIENCY_MIN_KWH = 10.0  # a car's SoC moves in whole per cent, so it needs more energy to be accurate
+CAR_EFFICIENCY_SLACK = 1.15  # more stored than this times what the charger delivered = charged somewhere else
 
 
 def _dt(value: Any) -> datetime | None:
@@ -67,6 +69,49 @@ class CostTracker:
     def reset(self, key: str) -> None:
         self.data.get("pools", {}).pop(key, None)
         self.dirty = True
+
+    # ---- a car's charging efficiency: energy the charger delivered against the rise in SoC ---------
+
+    def reset_car_efficiency(self, key: str) -> None:
+        pool = self.data.get("pools", {}).get(key)
+        if pool:
+            for k in [k for k in pool if k.startswith("eff_")]:
+                pool.pop(k)
+            self.dirty = True
+
+    def car_efficiency_snapshot(self, key: str) -> dict[str, Any]:
+        pool = self.data.get("pools", {}).get(key) or {}
+        in_kwh, stored = pool.get("eff_in", 0.0), pool.get("eff_stored", 0.0)
+        ratio = stored / in_kwh if in_kwh >= CAR_EFFICIENCY_MIN_KWH and stored > 0 else None
+        return {
+            "in_kwh": round(in_kwh, 2),
+            "stored_kwh": round(stored, 2),
+            "pending_kwh": round(pool.get("eff_pend", 0.0), 2),
+            "charge": None if ratio is None else round(min(1.0, ratio), 3),
+            "min_kwh": CAR_EFFICIENCY_MIN_KWH,
+            "since": pool.get("eff_since"),
+            "measurable": bool(pool.get("eff_measurable")),
+        }
+
+    def _car_efficiency(self, pool: dict[str, Any], now: datetime, power_w: float | None, hours: float, soc_change_kwh: float) -> None:
+        """Energy from the charger waits in eff_pend until the SoC rises; then both are counted.
+
+        A rise with nothing delivered here, or far more than was delivered, is a charge somewhere
+        else and is left out together with what was pending.
+        """
+        pool["eff_measurable"] = power_w is not None
+        if power_w is not None and power_w > CHARGING_W and hours:
+            pool["eff_pend"] = pool.get("eff_pend", 0.0) + power_w * hours / 1000
+            self.dirty = True
+        pend = pool.get("eff_pend", 0.0)
+        if soc_change_kwh < 0:
+            pool["eff_pend"] = 0.0  # the car has been driven: what was pending can no longer be matched
+        elif soc_change_kwh > 0 and pend > 0:
+            pool["eff_pend"] = 0.0
+            if soc_change_kwh <= pend * CAR_EFFICIENCY_SLACK:
+                pool.setdefault("eff_since", now.isoformat())
+                pool["eff_in"] = pool.get("eff_in", 0.0) + pend
+                pool["eff_stored"] = pool.get("eff_stored", 0.0) + soc_change_kwh
 
     def _feed(self, pool: dict[str, Any], kwh: float, unit_price: float, solar_kwh: float) -> None:
         pool["pend_kwh"] += kwh
@@ -222,7 +267,8 @@ class CostTracker:
                 if hours and mix is not None:
                     kwh = w * hours / 1000
                     self._feed(pool, kwh, mix[0], kwh * mix[1])
-            self._soc_step(pool, rt.get("soc"), float(car["capacity_kwh"]), mix)
+            change = self._soc_step(pool, rt.get("soc"), float(car["capacity_kwh"]), mix)
+            self._car_efficiency(pool, now, rt.get("car_w") if car.get("power_entity") else None, hours, change)
 
     def _update_efficiency(self, now: datetime, battery_w: float | None, hours: float, soc_change_kwh: float, charged_kwh: float | None, discharged_kwh: float | None) -> None:
         eff = self._eff()

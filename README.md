@@ -177,6 +177,8 @@ Integrationen holder styr på, hvad strømmen på husbatteriet og i bilerne har 
 
 "Min. prisforskel ved afladning" holder batteriet, så længe strømprisen er under gennemsnitsprisen plus den valgte forskel. Kortet "Effektivitet" viser den målte virkningsgrad ved op- og afladning ud fra ændringen i ladestand og de kWh, der er sendt ind og ud.
 
+På Elbiler-siden vises bilens **ladeeffektivitet**: energien fra ladeeffekt-sensoren holdt op mod stigningen i ladestand × batterikapaciteten. Tallet vises efter 10 kWh, og opladning andre steder end hjemme tælles ikke med.
+
 ## Udvikling
 
 ```bash

@@ -213,3 +213,27 @@ def test_battery_why_text() -> None:
     plan = plan_battery(now, slots, 50, cfg)
     assert plan["auto_mode"] == "normal"
     assert "er under 5,00" in BatteryController._why(ctx, cfg, plan, "normal")
+
+
+def test_car_charging_efficiency() -> None:
+    """Energy from the charger against the rise in SoC; a charge somewhere else is left out."""
+    from datetime import datetime, timezone
+
+    from custom_components.electricity_optimizer.cost import CostTracker
+
+    tracker = CostTracker({})
+    pool = tracker._pool("ev:a")
+    now = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+    for _ in range(12):  # 12 hours at 1 kW delivered, 0.9 kWh stored per hour
+        tracker._car_efficiency(pool, now, 1000.0, 1.0, 0.0)
+        tracker._car_efficiency(pool, now, 1000.0, 0.0, 0.9)
+    snap = tracker.car_efficiency_snapshot("ev:a")
+    assert snap["measurable"] and snap["in_kwh"] == 12.0 and snap["charge"] == 0.9
+    tracker._car_efficiency(pool, now, 1000.0, 0.5, 0.0)  # 0.5 kWh pending, then 20 kWh from a public charger
+    tracker._car_efficiency(pool, now, 0.0, 0.0, 20.0)
+    tracker._car_efficiency(pool, now, 0.0, 0.0, 5.0)  # and a rise with nothing delivered at all
+    assert tracker.car_efficiency_snapshot("ev:a")["charge"] == 0.9
+    tracker._car_efficiency(pool, now, None, 0.0, 0.0)
+    assert not tracker.car_efficiency_snapshot("ev:a")["measurable"]
+    tracker.reset_car_efficiency("ev:a")
+    assert tracker.car_efficiency_snapshot("ev:a")["in_kwh"] == 0.0 and "avg" in pool

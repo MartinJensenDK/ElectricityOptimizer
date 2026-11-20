@@ -92,6 +92,18 @@ async def ws_cars_delete(hass: HomeAssistant, connection: websocket_api.ActiveCo
     connection.send_result(msg["id"], {"deleted": ok})
 
 
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/cars/reset_efficiency", vol.Required("car_id"): str})
+@websocket_api.async_response
+async def ws_cars_reset_efficiency(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict) -> None:
+    """Start the measurement of a car's charging efficiency over."""
+    optimizer = _optimizer(hass)
+    optimizer.cost.reset_car_efficiency(f"ev:{msg['car_id']}")
+    optimizer.publish_cost()
+    if optimizer.state is not None:
+        optimizer.state.save()
+    connection.send_result(msg["id"], _serialize(hass))
+
+
 @websocket_api.websocket_command(
     {vol.Required("type"): f"{DOMAIN}/cars/move", vol.Required("car_id"): str, vol.Required("direction"): vol.In(["up", "down"])}
 )
@@ -214,6 +226,7 @@ def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_cars_list)
     websocket_api.async_register_command(hass, ws_cars_save)
     websocket_api.async_register_command(hass, ws_cars_delete)
+    websocket_api.async_register_command(hass, ws_cars_reset_efficiency)
     websocket_api.async_register_command(hass, ws_evaluate)
     websocket_api.async_register_command(hass, ws_cars_move)
     websocket_api.async_register_command(hass, ws_rules_get)

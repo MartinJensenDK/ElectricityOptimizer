@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.58.0
+
+- Elbiler: hver bils kort viser nu ladeeffektiviteten – hvor meget af strømmen fra laderen, der ender i bilens batteri, og hvor meget der er tab. Kræver en ladeeffekt-sensor på bilen. Tallet vises efter 10 kWh målt opladning og kan nulstilles på kortet. Opladning andre steder end hjemme tælles ikke med.
+
 ## 0.57.2
 
 - Husbatteri: når netopladning starter eller stopper, står tallene bag beslutningen nu i årsagen under Sendte kommandoer: hvilken regel der valgte timen (prisforskel eller mål-SoC), prisforskellen, ladestand, pris, solprognose og hvor langt priserne er kendt. Samme tekst vises, når musen holdes over en husbatteri-ladeperiode under Ladeperioder.
