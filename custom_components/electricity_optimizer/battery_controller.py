@@ -106,6 +106,8 @@ def plan_battery(
         return max(0.0, (s.end - max(s.start, now)).total_seconds() / 3600)
 
     modes: dict[datetime, str] = {}
+    why: dict[datetime, str] = {}  # which rule chose a charge slot: "spread" (a) or "target" (b)
+    gains: dict[datetime, tuple[float, float]] = {}  # slot -> (average of the dearest later slots, gain per kWh)
     for i, s in enumerate(candidates if cfg.get("hold_cheap") else []):
         if not _day_entry(cfg, s.start)["enabled"]:
             continue
@@ -128,18 +130,22 @@ def plan_battery(
             if not later or not grid_allowed(s.start):
                 continue
             dearest = sorted((x.price for x in later), reverse=True)[:n_expensive]
-            if (sum(dearest) / len(dearest)) * eff - s.price >= thr:
+            dear = sum(dearest) / len(dearest)
+            gains[s.start] = (dear, dear * eff - s.price)
+            if dear * eff - s.price >= thr:
                 profitable.append(s)
         if contiguous:
             block = cheapest_window(profitable, charge_hours, usable, anchor) or longest_run(profitable, usable, anchor)
             for s in block:
                 modes[s.start] = "charge"
+                why[s.start] = "spread"
         else:
             remaining = charge_hours
             for s in sorted(profitable, key=lambda s: (s.price, s.start)):
                 if remaining <= 0:
                     break
                 modes[s.start] = "charge"
+                why[s.start] = "spread"
                 remaining -= usable(s)
 
     # (b) weekly schedule target: reach target_soc before the deadline in the cheapest slots.
@@ -170,6 +176,7 @@ def plan_battery(
                 remaining = 0.0
                 for s in block:
                     modes[s.start] = "charge"
+                    why.setdefault(s.start, "target")
         for s in sorted(pool, key=lambda s: (s.price, s.start)):
             if remaining <= 0:
                 break
@@ -179,6 +186,7 @@ def plan_battery(
             if avail <= 0:
                 continue
             modes[s.start] = "charge"
+            why.setdefault(s.start, "target")
             remaining -= avail
 
     today = _day_entry(cfg, now)
@@ -188,7 +196,20 @@ def plan_battery(
     later_max = max((s.price for s in candidates if current and s.start > current.start), default=None)
     fc_today = forecast.get(now.date())
     fc_tomorrow = forecast.get((now + timedelta(days=1)).date())
+    gain = gains.get(current.start) if current else None
     return {
+        # the numbers behind the decision for the slot we are in, for the command log
+        "now": {
+            "rule": why.get(current.start) if current and auto_mode == "charge" else None,
+            "grid_allowed": grid_allowed(now),
+            "dearest_later": gain[0] if gain else None,
+            "gain": gain[1] if gain else None,
+            "threshold": thr,
+            "efficiency": eff,
+            "contiguous": contiguous,
+            "prices_until": candidates[-1].end.isoformat(),
+            "slots": len(candidates),
+        },
         "auto_mode": auto_mode,
         "day_enabled": bool(today["enabled"]),
         "grid_charge_today": bool(today["grid_charge"]),
@@ -432,6 +453,15 @@ class BatteryController:
                 "charge": "Billig time – dyrere senere eller mål-SoC skal nås",
                 "normal": "Ingen grund til hold eller netopladning",
             }.get(mode, mode)
+        if cfg["override"] == "auto" and (mode == "charge" or self._active == "charge"):
+            # going into or out of grid charging: keep the numbers the decision was made on
+            detail = self._why(ctx, cfg, rt.get("plan"), mode)
+            if detail:
+                reason = f"{reason} – {detail}"
+                if mode == "charge":
+                    rt["charge_why"] = detail
+        elif mode == "charge":
+            rt["charge_why"] = reason
         try:
             await self._apply(cfg, mode, reason)
             await self._verify_inverter(ctx, cfg, mode)
@@ -442,6 +472,43 @@ class BatteryController:
             _LOGGER.warning("Battery: could not switch to %s: %s", mode, err)
             if self.notifier is not None:
                 self.notifier.notify("cmd:battery", "Husbatteri-kommando fejlede", f"Kunne ikke skifte husbatteriet til {mode}: {err}")
+
+    @staticmethod
+    def _why(ctx: Context, cfg: dict[str, Any], plan: dict[str, Any] | None, mode: str) -> str:
+        """The numbers a grid-charging decision was made on, as one line for the command log."""
+        if plan is None:
+            return ""
+
+        def kr(v: float | None) -> str:
+            return "?" if v is None else f"{v:.2f}".replace(".", ",")
+
+        info, fc = plan["now"], plan["forecast"]
+        parts: list[str] = []
+        if mode == "charge" and info["rule"] == "target":
+            parts.append(f"mål-SoC {plan['target_soc']} % inden {plan['deadline'][11:16]} kræver {str(plan['target_hours']).replace('.', ',')} t, og denne time er blandt de billigste")
+        elif mode == "charge" and info["rule"] == "spread":
+            parts.append(f"prisforskel {kr(info['gain'])} kr (dyreste senere timer {kr(info['dearest_later'])} × {round(info['efficiency'] * 100)} % − nu {kr(plan['current_price'])}) er mindst {kr(info['threshold'])}")
+        elif not plan["day_enabled"]:
+            parts.append("dagen er slået fra i ugeplanen")
+        elif not info["grid_allowed"]:
+            parts.append("netopladning er ikke tilladt i dag" + (" (solprognosen er over grænsen)" if fc["blocked_today"] else ""))
+        elif info["gain"] is None:
+            parts.append("batteriet er fuldt, eller der er ingen senere priser at sammenligne med")
+        elif info["gain"] < info["threshold"]:
+            parts.append(f"prisforskel {kr(info['gain'])} kr er under {kr(info['threshold'])}")
+        else:
+            parts.append(f"prisforskel {kr(info['gain'])} kr er nok, men billigere timer er valgt i stedet")
+        soc = "?" if ctx.battery_soc is None else f"{ctx.battery_soc:g}".replace(".", ",")
+        parts.append(f"SoC {soc} % (maks. {cfg['max_soc']} %)")
+        parts.append(f"pris nu {kr(plan['current_price'])} kr")
+        if fc["limit"] is not None:
+            today = "ukendt" if fc["today"] is None else f"{fc['today']:.1f}".replace(".", ",") + " kWh"
+            parts.append(f"solprognose i dag {today} (grænse {fc['limit']:g} kWh)")
+        until = datetime.fromisoformat(info["prices_until"])
+        parts.append(f"priser kendt til {until.day}.{until.month}. kl. {until:%H:%M} ({info['slots']} tidsrum)")
+        if info["contiguous"]:
+            parts.append("sammenhængende opladning")
+        return " · ".join(parts)
 
     MISMATCH_W = 250  # discharging (hold) or importing (normal) more than this = the inverter is not doing what we asked
     MISMATCH_GRACE_S = 120  # give the inverter this long to obey a command

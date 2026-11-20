@@ -188,3 +188,28 @@ async def test_battery_is_held_while_the_price_is_too_close_to_its_average(hass,
     assert msg["success"] and msg["result"]["runtime"]["cost"] is None
     rt = await save(5, {"discharge_min_margin": "5"})
     assert rt["mode"] == "normal"
+
+
+def test_battery_why_text() -> None:
+    """The command log gets the numbers a grid-charging decision was made on."""
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+
+    from custom_components.electricity_optimizer.battery_controller import BatteryController, plan_battery
+    from custom_components.electricity_optimizer.const import BATTERY_DEFAULTS
+    from custom_components.electricity_optimizer.ev_controller import Slot
+
+    now = datetime(2026, 11, 20, 0, 5, tzinfo=timezone.utc)
+    start = now.replace(minute=0)
+    prices = [0.5, 0.6, 3.0, 3.2]
+    slots = [Slot(start + timedelta(hours=i), start + timedelta(hours=i + 1), p) for i, p in enumerate(prices)]
+    cfg = {**BATTERY_DEFAULTS, "capacity_kwh": 10.0, "max_charge_kw": 5.0, "max_soc": 100, "spread_threshold": 0.5, "efficiency": 0.9, "schedule": None, "grid_charge_enabled": True}
+    plan = plan_battery(now, slots, 50, cfg)
+    assert plan["auto_mode"] == "charge" and plan["now"]["rule"] == "spread"
+    ctx = SimpleNamespace(battery_soc=50.0)
+    text = BatteryController._why(ctx, cfg, plan, "charge")
+    assert "prisforskel 2,38 kr" in text and "SoC 50 %" in text and "priser kendt til 20.11. kl. 04:00" in text
+    cfg["spread_threshold"] = 5.0
+    plan = plan_battery(now, slots, 50, cfg)
+    assert plan["auto_mode"] == "normal"
+    assert "er under 5,00" in BatteryController._why(ctx, cfg, plan, "normal")

@@ -344,6 +344,7 @@ class EvController:
         self._last_amps: dict[str, float] = {}
         self._last_amps_at: dict[str, datetime] = {}
         self._last_soc: dict[str, tuple[str, float]] = {}  # car id -> (SoC entity, last value it reported)
+        self._last_plug: dict[str, tuple[str, bool]] = {}  # car id -> (connected sensor, last real value it reported)
         self._recent: dict[str, list[dict[str, Any]]] = {}  # car id -> did it charge in the slots that just passed
 
     # ---- persisted state (survives a Home Assistant restart)
@@ -358,6 +359,8 @@ class EvController:
                     self._last_soc[cid] = (str(st["last_soc_entity"]), float(st["last_soc"]))
                 except (TypeError, ValueError):
                     pass
+            if isinstance(st.get("plugged"), bool) and st.get("plugged_entity"):
+                self._last_plug[cid] = (str(st["plugged_entity"]), st["plugged"])
             if isinstance(st.get("recent"), list):
                 self._recent[cid] = [e for e in st["recent"] if isinstance(e, dict) and "start" in e and "end" in e and "chosen" in e]
             if not st.get("charging"):
@@ -384,9 +387,12 @@ class EvController:
         since = self._charging_since.get(cid)
         amps_at = self._last_amps_at.get(cid)
         last_soc = self._last_soc.get(cid)
+        last_plug = self._last_plug.get(cid)
         self.state.data.setdefault("ev", {})[cid] = {
             "last_soc_entity": last_soc[0] if last_soc else None,
             "last_soc": last_soc[1] if last_soc else None,
+            "plugged_entity": last_plug[0] if last_plug else None,
+            "plugged": last_plug[1] if last_plug else None,
             "charging": bool(self._last_cmd.get(cid, False)),
             "mode": (self.runtime.get(cid) or {}).get("mode"),
             "status": (self.runtime.get(cid) or {}).get("status"),
@@ -454,6 +460,23 @@ class EvController:
         # a status sensor (e.g. "disconnected" / "awaiting_start" / "charging"): everything but the known "not connected" words is connected
         return state not in UNPLUGGED_STATES
 
+    def _remember_plug(self, car: dict[str, Any], plugged: bool | None) -> bool | None:
+        """Keep the last real value of the connected sensor (also across restarts) and return it.
+
+        Used while the sensor has no value, e.g. after a restart or while the car sleeps: a car that
+        was not connected when the sensor last answered is not sent a start command.
+        """
+        cid, entity = car["id"], car.get("plugged_entity") or ""
+        last = self._last_plug.get(cid)
+        if last is not None and last[0] != entity:
+            last = None
+            self._last_plug.pop(cid, None)
+            self._persist(cid)
+        if entity and plugged is not None and (last is None or last[1] != plugged):
+            last = self._last_plug[cid] = (entity, plugged)
+            self._persist(cid)
+        return last[1] if last else None
+
     # ---- evaluation
 
     async def async_evaluate(self, ctx: Context) -> None:
@@ -491,6 +514,16 @@ class EvController:
         soc = self._read_soc(car)
         plugged = self._is_plugged(car)
         car_w = self._read_power_w(car)
+        plug_seen = plugged  # what the sensor says right now; None = no value
+        plug_wait = False  # connected sensor chosen but silent, and it did not last say "connected"
+        if car.get("plugged_entity"):
+            remembered = self._remember_plug(car, plugged)
+            if plugged is None and remembered is not True and not self._last_cmd.get(car["id"]):
+                plug_wait = True
+                if remembered is False:
+                    plugged = False
+        elif car["id"] in self._last_plug:
+            self._remember_plug(car, None)
         rt.update(soc=soc, plugged=plugged, car_w=car_w, amps=self._last_amps.get(car["id"]))
         rt["charging"] = self._last_cmd.get(car["id"], False)
         rt["last_soc"] = self._remember_soc(car, soc)
@@ -526,7 +559,9 @@ class EvController:
         target = plan["target_soc"] if plan else car["target_soc"]
         rt["target_soc"] = target
         self._notify_plan_problems(car, rt, plan, soc, plugged, target)
-        if car["charge_now"] and soc < 100 and plugged is not False:
+        if car["charge_now"] and plug_wait and soc < 100:
+            rt["status"] = "plug_unknown"  # "Lad nu" is kept and starts when the sensor says connected
+        elif car["charge_now"] and soc < 100 and plug_seen is not False:
             # manual: charge regardless of plan, target and "Smart opladning" until full, unplugged or stopped
             desired, mode, rt["status"] = True, "grid", "charge_now"
         elif car["charge_now"]:
@@ -537,6 +572,8 @@ class EvController:
             rt["status"] = "done"
         elif plugged is False:
             rt["status"] = "not_plugged"
+        elif plug_wait:
+            rt["status"] = "plug_unknown"
         elif uses_grid and plan and car["price_limit"] is not None and plan["current_price"] is not None and plan["current_price"] <= car["price_limit"]:
             desired, mode, rt["status"] = True, "grid", "below_limit"
         elif uses_grid and plan and plan["in_plan_now"]:
@@ -810,6 +847,7 @@ class EvController:
         "fuse_wait": "Hovedsikringen er optaget",
         "done": "Mål-SoC nået",
         "not_plugged": "Bilen er ikke tilsluttet",
+        "plug_unknown": "Tilsluttet-sensoren har ingen værdi",
         "disabled": "Smart opladning slået fra",
         "no_power": "Start gensendes – bilen trækker 0 W",
         "no_soc": "SoC ukendt",

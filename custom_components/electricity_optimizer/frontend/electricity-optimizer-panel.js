@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.57.1";
+const PANEL_JS_VERSION = "0.57.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -2104,6 +2104,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     disabled: ["Smart opladning fra", "neutral"],
     done: ["Klar", "low"],
     not_plugged: ["Ikke tilsluttet", "neutral"],
+    plug_unknown: ["Tilslutning ukendt", "neutral"],
     charge_now: ["Lader nu (manuelt)", "mid"],
     below_limit: ["Lader – under prisgrænse", "low"],
     charging: ["Lader – planlagt", "low"],
@@ -2382,6 +2383,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
         return rt.last_action && rt.last_action.error ? `${rt.last_action.error} – prøver igen om et minut` : "Kommandoen blev afvist – prøver igen om et minut";
       case "not_plugged":
         return "Sæt bilen i laderen";
+      case "plug_unknown":
+        return "Tilsluttet-sensoren har ingen værdi endnu – der startes ikke, før den viser, at bilen er tilsluttet";
       default:
         return "";
     }
@@ -3261,10 +3264,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
         const total = (e.kwh || 0) + (e.solar_kwh || 0);
         const avg = e.kwh > 0 && e.price_kwh !== undefined ? e.price_kwh / e.kwh : e.kwh > 0 ? e.cost / e.kwh : null;
         const soc = e.soc_start !== null && e.soc_start !== undefined && e.soc_end !== null && e.soc_end !== undefined ? `${fmtNum(e.soc_start, 0)} → ${fmtNum(e.soc_end, 0)} %` : "–";
-        return `<tr class="${e.running ? "running" : ""}">
+        return `<tr class="${e.running ? "running" : ""}"${e.why ? ` title="${esc("Årsag: " + e.why)}"` : ""}>
           <td>${fmtDate(start)} ${fmtTime(start)}</td>
           <td>${end ? `${fmtDate(end) === fmtDate(start) ? "" : fmtDate(end) + " "}${fmtTime(end)}` : '<span class="badge wait">i gang</span>'}</td>
-          <td>${esc(e.name)}</td>
+          <td>${esc(e.name)}${e.why ? ' <ha-icon icon="mdi:information-outline" style="--mdc-icon-size:14px;color:var(--secondary-text-color)"></ha-icon>' : ""}</td>
           <td>${src(e)}</td>
           <td class="num">${fmtNum(total, 2)}</td>
           <td class="num">${fmtNum(e.cost || 0, 2)}</td>

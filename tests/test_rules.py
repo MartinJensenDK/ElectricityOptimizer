@@ -1052,3 +1052,37 @@ async def test_status_sensor_as_plug_sensor(hass: HomeAssistant, hass_ws_client)
     res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "unplugged_states": "Awaiting-Start, ledig"}})
     assert res["car"]["unplugged_states"] == "Awaiting-Start, ledig"
     assert res["car"]["runtime"]["plugged"] is False
+
+
+async def test_silent_plug_sensor_uses_last_known_value(hass: HomeAssistant, hass_ws_client) -> None:
+    """After a restart the connected sensor has no value: the last real value decides, and unknown means wait."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    turn_on = async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    entry = await _setup(hass)
+    client = await hass_ws_client(hass)
+    # the sensor has never had a value: nothing is started, "Lad nu" is kept
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "plugged_entity": "sensor.charger_status"}})
+    car_id = res["car"]["id"]
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "charge_now": True}})
+    assert res["car"]["runtime"]["status"] == "plug_unknown" and res["car"]["charge_now"] and not turn_on
+
+    # it says disconnected, then Home Assistant restarts and the sensor is silent
+    hass.states.async_set("sensor.charger_status", "disconnected")
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "charge_now": False}})
+    assert res["car"]["runtime"]["status"] == "not_plugged"
+    hass.states.async_set("sensor.charger_status", "unavailable")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    res = await _ws(hass, client, 4, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "charge_now": True}})
+    assert res["car"]["runtime"]["plugged"] is False and res["car"]["charge_now"] and not turn_on
+
+    # the sensor answers "connected": the kept "Lad nu" starts
+    hass.states.async_set("sensor.charger_status", "awaiting_start")
+    res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/cars/list"})
+    res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "name": "Bil"}})
+    assert res["car"]["runtime"]["status"] == "charge_now" and len(turn_on) == 1

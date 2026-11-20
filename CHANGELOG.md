@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.57.2
+
+- Husbatteri: når netopladning starter eller stopper, står tallene bag beslutningen nu i årsagen under Sendte kommandoer: hvilken regel der valgte timen (prisforskel eller mål-SoC), prisforskellen, ladestand, pris, solprognose og hvor langt priserne er kendt. Samme tekst vises, når musen holdes over en husbatteri-ladeperiode under Ladeperioder.
+- Elbiler: når tilsluttet-sensoren ikke har nogen værdi (fx lige efter en genstart af Home Assistant, eller mens bilen sover), huskes sensorens sidste rigtige værdi. Var bilen ikke tilsluttet sidst, sendes der ingen start-kommando, og fejlen "Elbil-kommando fejlede" kommer ikke længere efter en genstart.
+- Har sensoren aldrig haft en værdi, ventes der med at starte, til den viser, at bilen er tilsluttet (status "Tilslutning ukendt"). En opladning, der allerede er i gang, fortsætter som før.
+
 ## 0.57.1
 
 - Elbiler-siden: Batteri og Ladeeffekt på hver bils kort kan nu klikkes, så Home Assistants historik for bilens SoC-sensor og ladeeffekt-sensor åbner.

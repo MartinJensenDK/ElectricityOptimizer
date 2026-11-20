@@ -113,7 +113,7 @@ class HistoryTracker:
         today = [s.price for s in ctx.slots if s.start.date() == ctx.now.date() and not s.estimated]
         return sum(today) / len(today) if today else None
 
-    def _touch(self, key: str, ctx: Any, *, kind: str, name: str, source: str, power_w: float, soc: float | None, item_id: str | None = None) -> None:
+    def _touch(self, key: str, ctx: Any, *, kind: str, name: str, source: str, power_w: float, soc: float | None, item_id: str | None = None, why: str | None = None) -> None:
         now = ctx.now
         session = self.store.open.get(key)
         if session is not None and session.get("source") != source:
@@ -134,6 +134,7 @@ class HistoryTracker:
                 "cost": 0.0,
                 "saved": 0.0,
                 "price_kwh": 0.0,  # sum(price * kWh) for the average
+                "why": why,  # the numbers the decision to charge was made on (house battery)
             }
             self.store.open[key] = session
             return
@@ -173,7 +174,7 @@ class HistoryTracker:
         if battery_cfg is not None and battery_runtime.get("mode") == "charge":
             seen.add("battery")
             power_w = ctx.battery_w if ctx.battery_w and ctx.battery_w > 0 else battery_cfg["max_charge_kw"] * 1000
-            self._touch("battery", ctx, kind="battery", name="Husbatteri", source="grid", power_w=power_w, soc=ctx.battery_soc)
+            self._touch("battery", ctx, kind="battery", name="Husbatteri", source="grid", power_w=power_w, soc=ctx.battery_soc, why=battery_runtime.get("charge_why"))
         for key in list(self.store.open):
             if key not in seen:
                 self.store.close(key, now)
