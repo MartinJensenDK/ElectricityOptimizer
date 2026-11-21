@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.58.3
+
+- Forsiden: husbatteriet og hver elbil under Kapaciteter kan nu klikkes, så Home Assistants graf over batteriets ladestand åbner.
+- Forsiden: rækkerne under Status (Solceller, Elnet, Hus batteri og Elbiler) kan også klikkes og åbner historikken for den sensor, rækken viser. Elbiler-rækken åbner den bil, der lader – ellers den første.
+
 ## 0.58.2
 
 - Husbatteri: gennemsnitsprisen nulstilles, når batteriet er nede på 10 % (eller på Reserve-SoC, hvis den er sat højere). Næste opladning bestemmer så prisen alene. Indtil da vises "Gns. pris kendes efter næste opladning", og reglen Min. prisforskel ved afladning holder ikke batteriet tilbage.

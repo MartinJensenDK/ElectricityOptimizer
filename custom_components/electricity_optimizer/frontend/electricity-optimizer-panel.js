@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.58.2";
+const PANEL_JS_VERSION = "0.58.3";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -1008,24 +1008,24 @@ class ElectricityOptimizerPanel extends HTMLElement {
   /** Storage you own: total on top, then every enabled car and the house battery - "stored af capacity kWh" and the percentage. */
   _renderCapacityCard() {
     const items = [];
-    const add = (icon, name, capacity, soc, cost, target = null) => {
+    const add = (icon, name, capacity, soc, cost, target = null, entity = null) => {
       const cap = Number(capacity) || 0;
       const stored = soc === null || soc === undefined ? null : (cap * Math.max(0, Math.min(100, soc))) / 100;
-      items.push({ icon, name, cap, stored, target, cost: cost || null });
+      items.push({ icon, name, cap, stored, target, cost: cost || null, entity: entity || null });
     };
     const b = this._battery;
-    if (b) add("mdi:home-battery", "Hus batteri", b.capacity_kwh, this._readBatteryLive().soc, (this._batteryRuntime || {}).cost);
+    if (b) add("mdi:home-battery", "Hus batteri", b.capacity_kwh, this._readBatteryLive().soc, (this._batteryRuntime || {}).cost, null, b.soc_entity);
     for (const car of this._cars || []) {
       // every car counts, also with Smart opladning off - the battery is still yours
       const rt = car.runtime || {};
       const target = Number(rt.plan && rt.plan.target_soc ? rt.plan.target_soc : car.target_soc) || null;
-      add("mdi:car-electric", `${car.name || "Elbil"} batteri`, car.capacity_kwh, this._carSoc(car), rt.cost, target);
+      add("mdi:car-electric", `${car.name || "Elbil"} batteri`, car.capacity_kwh, this._carSoc(car), rt.cost, target, car.soc_entity);
     }
-    const row = (icon, name, stored, cap, cls = "", target = null, cost = undefined) => {
+    const row = (icon, name, stored, cap, cls = "", target = null, cost = undefined, entity = null) => {
       const pct = stored === null || cap <= 0 ? null : (stored / cap) * 100;
       const lines = [stored === null ? `ladestand ukendt · ${fmtNum(cap, 1)} kWh` : `${fmtNum(stored, 1)} af ${fmtNum(cap, 1)} kWh`];
       if (cost !== undefined) lines.push(ElectricityOptimizerPanel._avgPriceText(cost));
-      return `<div class="status-row ${cls}"><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div><div class="d">${lines.map(esc).join("<br>")}</div></div>${this._renderMiniBattery(pct, name, target)}</div>`;
+      return `<div class="status-row ${cls}"${this._more(entity)}><ha-icon icon="${icon}"></ha-icon><div class="t"><div class="n">${esc(name)}</div><div class="d">${lines.map(esc).join("<br>")}</div></div>${this._renderMiniBattery(pct, name, target)}</div>`;
     };
     const rows = [];
     if (items.length) {
@@ -1036,7 +1036,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       const pricedKwh = priced.reduce((a, it) => a + it.stored, 0);
       const totalCost = pricedKwh > 0 ? { avg: priced.reduce((a, it) => a + it.stored * it.cost.avg, 0) / pricedKwh, solar_share: null } : null;
       rows.push(row("mdi:sigma", "Samlet kapacitet", known ? items.reduce((a, it) => a + it.stored, 0) : null, totalCap, "total-top", null, totalCost));
-      for (const it of items) rows.push(row(it.icon, it.name, it.stored, it.cap, "", it.target, it.cost));
+      for (const it of items) rows.push(row(it.icon, it.name, it.stored, it.cap, "", it.target, it.cost, it.entity));
     } else {
       rows.push(`<div class="status-row"><ha-icon icon="mdi:battery-off-outline"></ha-icon><div class="t"><div class="n">Ingen lagring sat op</div><div class="d">Tilføj et husbatteri eller en elbil</div></div></div>`);
     }
@@ -1492,7 +1492,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (s.todayKwh !== null) parts.push(`${fmtNum(s.todayKwh, 1)} kWh i dag`);
     const producing = s.powerKw !== null && s.powerKw > 0.05;
     const badge = producing ? `<span class="badge low">Producerer</span>` : `<span class="badge wait">Venter på sol</span>`;
-    return `<div class="status-row"><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div>${badge}</div>`;
+    return `<div class="status-row"${this._more(this._config.solar_power_entity || this._config.solar_energy_today_entity)}><ha-icon icon="mdi:solar-power-variant"></ha-icon><div class="t"><div class="n">Solceller</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}</div></div>${badge}</div>`;
   }
 
   /** Own card under Status: expected solar production today and tomorrow from the forecast sensors. */
@@ -2452,7 +2452,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
         badge = `<span class="badge ${cls === "mid" ? "wait" : cls}">${esc(K.STATUS_BADGE_SHORT[active.runtime.status] || text)}</span>`;
       }
     }
-    return `<div class="status-row"><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${desc}</div></div>${badge}</div>`;
+    // one row for all cars: the history of the car that charges (else the first), its charge power or its SoC
+    const shown = cars.find((c) => c.runtime && c.runtime.charging) || cars[0];
+    return `<div class="status-row"${this._more(shown.power_entity) || this._more(shown.soc_entity)}><ha-icon icon="mdi:car-electric"></ha-icon><div class="t"><div class="n">Elbiler</div><div class="d">${desc}</div></div>${badge}</div>`;
   }
 
   _renderEv() {
@@ -3473,11 +3475,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
           ? `<span class="badge mid">Eksport deaktiveret</span>`
           : `<span class="badge ${live.gridW > 0 ? "mid" : "low"}">${live.gridW > 0 ? "Import" : "Eksport"}</span>`;
     if (live.gridW !== null) {
-      grid = `<div class="status-row"><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t"><div class="n">Elnet</div><div class="d">${
+      grid = `<div class="status-row"${this._more(b.grid_power_entity || (this._rules || {}).grid_power_entity)}><ha-icon icon="mdi:transmission-tower"></ha-icon><div class="t"><div class="n">Elnet</div><div class="d">${
         live.gridW >= 0 ? `Køber ${fmtNum(live.gridW, 0)} W` : `Sælger ${fmtNum(-live.gridW, 0)} W`
       }${live.houseW !== null ? `<br>huset bruger ${fmtNum(live.houseW, 0)} W` : ""}</div></div>${exportBadge}</div>`;
     }
-    return `${grid}<div class="status-row"><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}${note ? `<br><span class="reason">${esc(note)}</span>` : ""}</div></div>${modeBadge}</div>`;
+    return `${grid}<div class="status-row"${this._more(b.power_entity || b.charge_power_entity || b.discharge_power_entity) || this._more(b.soc_entity)}><ha-icon icon="mdi:home-battery"></ha-icon><div class="t"><div class="n">Hus batteri</div><div class="d">${parts.length ? parts.map(esc).join("<br>") : "Ingen data"}${note ? `<br><span class="reason">${esc(note)}</span>` : ""}</div></div>${modeBadge}</div>`;
   }
 
   _renderBattery() {
