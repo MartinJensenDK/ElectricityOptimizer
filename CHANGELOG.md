@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.58.5
+
+- Forsiden: Billigste timer og Dyreste timer viser nu de fire billigste og fire dyreste timer i stedet for fem.
+
 ## 0.58.4
 
 - Historik-siden: linjerne under Ladeperioder og Sendte kommandoer fremhæves, når musen holdes over dem.

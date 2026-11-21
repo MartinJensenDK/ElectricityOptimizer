@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.58.4";
+const PANEL_JS_VERSION = "0.58.5";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -941,8 +941,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
     // Cheapest hours: rest of today + tomorrow if available
     const now = new Date();
     const hourly = ElectricityOptimizerPanel._hourly(d.all).filter((h) => h.time.getTime() + 3600000 > now.getTime());
-    const cheapest = [...hourly].sort((a, b) => a.price - b.price).slice(0, 5).sort((a, b) => a.time - b.time);
-    const expensive = [...hourly].sort((a, b) => b.price - a.price).slice(0, 5).sort((a, b) => a.time - b.time);
+    const cheapest = [...hourly].sort((a, b) => a.price - b.price).slice(0, 4).sort((a, b) => a.time - b.time);
+    const expensive = [...hourly].sort((a, b) => b.price - a.price).slice(0, 4).sort((a, b) => a.time - b.time);
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
     const side = `<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}${this._renderSolarForecastCard()}</div>`;
@@ -966,7 +966,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
       <div class="grid">
         <div class="card">
-          <h2><ha-icon icon="mdi:cash-check"></ha-icon>Billigste timer${I("De fem billigste timer fra nu og frem, i dag og i morgen når morgendagens priser er kendt. Her lægges netopladning af elbiler og husbatteri.")}</h2>
+          <h2><ha-icon icon="mdi:cash-check"></ha-icon>Billigste timer${I("De fire billigste timer fra nu og frem, i dag og i morgen når morgendagens priser er kendt. Her lægges netopladning af elbiler og husbatteri.")}</h2>
           <table>
             <thead><tr><th>Dag</th><th>Tidsrum</th><th style="text-align:right">${esc(d.unit)}</th></tr></thead>
             <tbody>
@@ -980,7 +980,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           </table>
         </div>
         <div class="card">
-          <h2><ha-icon icon="mdi:cash-remove"></ha-icon>Dyreste timer${I("De fem dyreste timer fra nu og frem. Her bør husbatteriet levere strømmen i stedet for nettet.")}</h2>
+          <h2><ha-icon icon="mdi:cash-remove"></ha-icon>Dyreste timer${I("De fire dyreste timer fra nu og frem. Her bør husbatteriet levere strømmen i stedet for nettet.")}</h2>
           <table>
             <thead><tr><th>Dag</th><th>Tidsrum</th><th style="text-align:right">${esc(d.unit)}</th></tr></thead>
             <tbody>
