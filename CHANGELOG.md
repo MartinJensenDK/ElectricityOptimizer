@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.58.2
+
+- Husbatteri: gennemsnitsprisen nulstilles, når batteriet er nede på 10 % (eller på Reserve-SoC, hvis den er sat højere). Næste opladning bestemmer så prisen alene. Indtil da vises "Gns. pris kendes efter næste opladning", og reglen Min. prisforskel ved afladning holder ikke batteriet tilbage.
+
 ## 0.58.1
 
 - Elbiler-siden: ladeeffektiviteten vises nu i sit eget kort "Effektivitet" øverst på siden – ét pr. bil – ligesom på Hus batteri-siden, med bilens gennemsnitspris og knapperne Nulstil måling og Nulstil pris. Linjen på bilens kort er fjernet.

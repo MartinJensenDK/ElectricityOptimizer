@@ -237,3 +237,22 @@ def test_car_charging_efficiency() -> None:
     assert not tracker.car_efficiency_snapshot("ev:a")["measurable"]
     tracker.reset_car_efficiency("ev:a")
     assert tracker.car_efficiency_snapshot("ev:a")["in_kwh"] == 0.0 and "avg" in pool
+
+
+def test_average_starts_over_when_the_battery_is_empty():
+    t = CostTracker()
+    _run(t, [{"soc": 50}, {"soc": 50}, {"soc": 60}], battery_w=3000, grid_w=3500, price=2.0)
+    assert t.average("battery") == pytest.approx(2.0)
+    _run(t, [{"soc": 30}, {"soc": 11}], battery_w=-2000, grid_w=0, price=2.0)
+    assert t.average("battery") == pytest.approx(2.0)  # still above 10 %
+    _run(t, [{"soc": 10}], battery_w=-2000, grid_w=0, price=2.0)
+    assert t.average("battery") is None and t.snapshot("battery") is None
+    # the next charge sets the price alone: no trace of the old 2.00
+    _run(t, [{"soc": 10}, {"soc": 10}, {"soc": 20}], battery_w=3000, grid_w=3500, price=0.5)
+    assert t.average("battery") == pytest.approx(0.5)
+    # a reserve above 10 % is the empty point instead
+    t = CostTracker()
+    bat = {**BAT, "min_soc": 20}
+    _run(t, [{"soc": 50}, {"soc": 50}, {"soc": 60}], bat=bat, battery_w=3000, grid_w=3500, price=2.0)
+    _run(t, [{"soc": 20}], bat=bat, battery_w=-2000, grid_w=0, price=2.0)
+    assert t.average("battery") is None

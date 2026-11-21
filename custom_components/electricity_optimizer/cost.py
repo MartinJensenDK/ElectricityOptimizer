@@ -22,6 +22,7 @@ MAX_STEP_SECONDS = 180  # ignore gaps longer than this (restart, HA paused)
 MAX_SENSOR_STEP_KWH = 10.0  # an energy sensor jumping more than this in one step is a reset or a glitch
 CHARGING_W = 30  # below this a battery is not really charging or discharging
 EFFICIENCY_MIN_KWH = 3.0  # measured energy needed in a direction before its efficiency is shown
+BATTERY_EMPTY_SOC = 10.0  # at or below this (or the reserve, if higher) the house battery counts as empty: its average price starts over
 CAR_EFFICIENCY_MIN_KWH = 10.0  # a car's SoC moves in whole per cent, so it needs more energy to be accurate
 CAR_EFFICIENCY_SLACK = 1.15  # more stored than this times what the charger delivered = charged somewhere else
 
@@ -254,6 +255,11 @@ class CostTracker:
                 self._feed(pool, kwh, mix[0], kwh * mix[1])
             change = self._soc_step(pool, ctx.battery_soc, float(battery_cfg["capacity_kwh"]), mix if bat_charge_w > CHARGING_W or battery_w is None else None)
             self._update_efficiency(now, battery_w, hours, change, charged_kwh, discharged_kwh)
+            empty_at = max(BATTERY_EMPTY_SOC, float(battery_cfg.get("min_soc") or 0.0))
+            if ctx.battery_soc is not None and ctx.battery_soc <= empty_at and pool["avg"] is not None:
+                # nothing bought is left: the next charge sets the price alone (what is being charged right now is kept)
+                pool["avg"] = pool["solar_share"] = None
+                self.dirty = True
 
         # cars
         known = {f"ev:{car['id']}" for car in cars}
