@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.58.4
+
+- Historik-siden: linjerne under Ladeperioder og Sendte kommandoer fremhæves, når musen holdes over dem.
+- Historik-siden: et klik på en ladeperiode eller en sendt kommando åbner et vindue med alle oplysninger om linjen: tidspunkter, varighed, energi fordelt på net og sol, gennemsnitlig effekt, ladestand, pris, besparelse og årsagen punkt for punkt.
+- Elbiler-siden: Effektivitet står nu på hver bils eget kort efter Batteri og Ladeeffekt i stedet for i et særskilt kort øverst, da den måles pr. bil.
+
 ## 0.58.3
 
 - Forsiden: husbatteriet og hver elbil under Kapaciteter kan nu klikkes, så Home Assistants graf over batteriets ladestand åbner.

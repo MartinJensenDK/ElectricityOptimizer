@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.58.3";
+const PANEL_JS_VERSION = "0.58.4";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -308,6 +308,10 @@ const STYLE = `
   .picker-list div small { display: block; color: var(--secondary-text-color); font-size: 11px; }
   .picker-list div:hover { background: var(--secondary-background-color); }
   .car-live { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 12px; align-items: start; margin: 4px 0 6px; }
+  .car-eff { text-align: center; }
+  .car-eff .value { font-size: 28px; font-weight: 500; line-height: 1.1; margin: 22px 0 8px; }
+  .car-eff .value small { font-size: 13px; font-weight: 400; color: var(--secondary-text-color); margin-left: 4px; }
+  .car-eff .sub { font-size: 13px; color: var(--secondary-text-color); margin-top: 2px; }
   .car-live .label { font-size: 13px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 6px; justify-content: center; }
   .car-live .label ha-icon { --mdc-icon-size: 18px; }
   .soc-bar { position: relative; height: 10px; border-radius: 5px; background: var(--secondary-background-color); margin: 8px 0 4px; overflow: visible; }
@@ -381,6 +385,23 @@ const STYLE = `
   table.history tr.running td { background: var(--secondary-background-color); }
   table.cmdlog tr.failed td { background: rgba(219, 68, 55, 0.08); }
   table.cmdlog code { font-size: 12px; }
+  table.history tbody tr { transition: background-color 0.12s; }
+  table.history tbody tr[data-hrow] { cursor: pointer; }
+  table.history tbody tr[data-hrow]:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: -2px; }
+  .det-top { display: flex; gap: 6px; margin: 14px 0 10px; }
+  .det-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .det-tile { background: var(--secondary-background-color); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+  .det-tile.wide { grid-column: span 2; }
+  .det-l { font-size: 12px; color: var(--secondary-text-color); margin-bottom: 2px; }
+  .det-v { font-size: 16px; font-weight: 500; overflow-wrap: anywhere; }
+  .det-v code { font-size: 13px; }
+  .det-s { font-size: 12px; color: var(--secondary-text-color); margin-top: 2px; }
+  .det-why { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--divider-color); border-radius: 10px; font-size: 14px; }
+  .det-why ul { margin: 6px 0 0; padding-left: 18px; }
+  .det-why li { margin: 2px 0; }
+  .det-why.err-box { border-color: var(--error-color, #db4437); }
+  @media (max-width: 600px) { .det-tile.wide { grid-column: auto; } }
+  table.history tbody tr:hover td { background: color-mix(in srgb, var(--primary-color, #03a9f4) 12%, transparent); }
   .rules-toggles { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
   .rule-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 10px; font-size: 13px; color: var(--secondary-text-color); }
   .rule-line input, .rule-line select {
@@ -729,6 +750,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
       if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-more]")) {
         ev.preventDefault();
         this._openMoreInfo(ev.target.dataset.more);
+      } else if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-hrow]")) {
+        ev.preventDefault();
+        this._openHistoryDetail(ev.target.dataset.hrow);
       }
     });
     // the settings dialog has the same entity pickers, Test buttons and info tips as the page
@@ -2468,8 +2492,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         <div>Ingen elbiler er tilføjet endnu.</div>
         <div style="margin-top:12px"><button class="btn primary" data-action="add-car">Tilføj bil</button></div></div></div>`;
     } else {
-      body = `<div class="car-grid">${cars.map((c) => this._renderCarEfficiencyCard(c, cars.length > 1)).join("")}</div>
-        <div class="car-grid">${cars.map((c, i) => this._renderCarCard(c, i, cars.length)).join("")}</div>`;
+      body = `<div class="car-grid">${cars.map((c, i) => this._renderCarCard(c, i, cars.length)).join("")}</div>`;
     }
     return `
       ${this._settingsButton(
@@ -2544,6 +2567,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
             <div class="label"><ha-icon icon="mdi:ev-station"></ha-icon>Ladeeffekt${I("Bilens faktiske ladeeffekt lige nu fra ladeeffekt-sensoren (vælges under Indstillinger). Skalaen går til maks. ladestrøm × 230 V × antal faser.")}</div>
             ${this._renderCarPowerGauge(car, liveW)}
           </div>
+          ${this._renderCarEfficiency(car)}
         </div>
         <div class="car-meta">${meta.map((m) => `<div>${esc(m)}</div>`).join("")}</div>
         ${plan ? this._renderPlanStrip(plan, rt.recent) : ""}
@@ -2562,8 +2586,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
       </div>`;
   }
 
-  /** "Effektivitet" for one car, like the card on the Hus batteri page: charger energy against the rise in SoC. */
-  _renderCarEfficiencyCard(car, many) {
+  /** "Effektivitet" on the car's card, after Batteri and Ladeeffekt: charger energy against the rise in SoC. */
+  _renderCarEfficiency(car) {
     const rt = car.runtime || {};
     const e = rt.efficiency || null;
     const need = e ? e.min_kwh : 10;
@@ -2580,13 +2604,13 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
     subs.push(ElectricityOptimizerPanel._avgPriceText(rt.cost));
     const since = e && e.since ? ` Målt siden ${new Date(e.since).toLocaleDateString("da-DK")}.` : "";
-    return `<div class="card kpi" data-car="${car.id}">
-          <div class="label"><ha-icon icon="mdi:battery-heart-variant"></ha-icon>Effektivitet${many ? ` – ${esc(car.name)}` : ""}${I(
+    return `<div class="car-eff">
+          <div class="label"><ha-icon icon="mdi:battery-heart-variant"></ha-icon>Effektivitet${I(
             `Hvor meget af den strøm, laderen leverer, der ender i bilens batteri. Resten er tab i laderen, kablet og bilens egen lader. Måles som energien fra ladeeffekt-sensoren holdt op mod stigningen i ladestand × batterikapaciteten, så kapaciteten skal passe. Bilens ladestand flytter sig i hele procent, så tallet vises først efter ${fmtNum(need, 0)} kWh og bliver mere præcist med tiden. Opladning andre steder end hjemme tælles ikke med. Gns. pris er gennemsnitsprisen for den strøm, der står på bilens batteri.${since}`
           )}</div>
           <div class="value">${value}</div>
           ${subs.map((t) => `<div class="sub">${esc(t)}</div>`).join("")}
-          <div class="row" style="margin-top:8px;gap:6px">
+          <div class="row" style="margin-top:8px;gap:6px;justify-content:center">
             <button class="btn small" data-action="reset-efficiency" data-value="efficiency" title="Start målingen af effektivitet forfra">Nulstil måling</button>
             <button class="btn small" data-action="reset-efficiency" data-value="cost" title="Glem gennemsnitsprisen; den beregnes igen ved næste opladning">Nulstil pris</button>
           </div>
@@ -3132,6 +3156,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
       this._openMoreInfo(more.dataset.more);
       return;
     }
+    const hrow = ev.target.closest && ev.target.closest("[data-hrow]");
+    if (hrow && !ev.target.closest(".info, button, a, input, select, label")) {
+      this._openHistoryDetail(hrow.dataset.hrow);
+      return;
+    }
     const sbtn = ev.target.closest && ev.target.closest("[data-saction]");
     if (sbtn) {
       await this._onSettingsClick(sbtn);
@@ -3295,14 +3324,15 @@ class ElectricityOptimizerPanel extends HTMLElement {
       })
       .join("");
     const src = (e) => (e.source === "solar" ? '<span class="badge low">Sol</span>' : '<span class="badge mid">Net</span>');
+    this._histRows = all;
     const rows = all
-      .map((e) => {
+      .map((e, idx) => {
         const start = new Date(e.start);
         const end = e.end ? new Date(e.end) : null;
         const total = (e.kwh || 0) + (e.solar_kwh || 0);
         const avg = e.kwh > 0 && e.price_kwh !== undefined ? e.price_kwh / e.kwh : e.kwh > 0 ? e.cost / e.kwh : null;
         const soc = e.soc_start !== null && e.soc_start !== undefined && e.soc_end !== null && e.soc_end !== undefined ? `${fmtNum(e.soc_start, 0)} → ${fmtNum(e.soc_end, 0)} %` : "–";
-        return `<tr class="${e.running ? "running" : ""}"${e.why ? ` title="${esc("Årsag: " + e.why)}"` : ""}>
+        return `<tr class="${e.running ? "running" : ""}" data-hrow="p:${idx}" role="button" tabindex="0" title="Klik for at se detaljer">
           <td>${fmtDate(start)} ${fmtTime(start)}</td>
           <td>${end ? `${fmtDate(end) === fmtDate(start) ? "" : fmtDate(end) + " "}${fmtTime(end)}` : '<span class="badge wait">i gang</span>'}</td>
           <td>${esc(e.name)}${e.why ? ' <ha-icon icon="mdi:information-outline" style="--mdc-icon-size:14px;color:var(--secondary-text-color)"></ha-icon>' : ""}</td>
@@ -3333,11 +3363,79 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${this._renderCommandLog(h.commands || [])}`;
   }
 
+  /** The details of one line on the Historik page (a charge period "p:<n>" or a sent command "c:<n>") in the dialog. */
+  _openHistoryDetail(ref) {
+    const [kind, n] = String(ref).split(":");
+    const item = (kind === "p" ? this._histRows : this._histCmds || [])[Number(n)];
+    const dlg = this._dialogEl;
+    if (!item || !dlg) return;
+    const when = (d) => `${fmtDate(d)}.${d.getFullYear()} kl. ${fmtTime(d)}`;
+    const tile = (label, value, sub = "", cls = "") => `<div class="det-tile ${cls}"><div class="det-l">${esc(label)}</div><div class="det-v">${value}</div>${sub ? `<div class="det-s">${sub}</div>` : ""}</div>`;
+    let icon, title, body;
+    if (kind === "p") {
+      const e = item;
+      const start = new Date(e.start);
+      const end = e.end ? new Date(e.end) : null;
+      const mins = Math.max(0, ((end || new Date()).getTime() - start.getTime()) / 60000);
+      const dur = mins >= 60 ? `${Math.floor(mins / 60)} t ${Math.round(mins % 60)} min` : `${Math.round(mins)} min`;
+      const grid = e.kwh || 0, solar = e.solar_kwh || 0, total = grid + solar;
+      const avg = grid > 0 && e.price_kwh !== undefined ? e.price_kwh / grid : grid > 0 ? e.cost / grid : null;
+      const hasSoc = e.soc_start !== null && e.soc_start !== undefined && e.soc_end !== null && e.soc_end !== undefined;
+      const avgKw = mins > 0 ? total / (mins / 60) : null;
+      icon = e.kind === "battery" ? "mdi:home-battery" : "mdi:car-electric";
+      title = `Ladeperiode – ${e.name || ""}`;
+      body = `
+        <div class="det-top">${e.source === "solar" ? '<span class="badge low">Sol</span>' : '<span class="badge mid">Net</span>'}${e.running ? ' <span class="badge wait">i gang</span>' : ""}</div>
+        <div class="det-grid">
+          ${tile("Start", esc(when(start)))}
+          ${tile("Slut", end ? esc(when(end)) : "I gang")}
+          ${tile("Varighed", esc(dur))}
+          ${tile("Energi", `${fmtNum(total, 2)} kWh`, solar > 0 && grid > 0 ? `${fmtNum(grid, 2)} kWh fra nettet · ${fmtNum(solar, 2)} kWh fra sol` : solar > 0 ? "fra sol" : "fra nettet")}
+          ${tile("Gns. effekt", avgKw === null ? "–" : `${fmtNum(avgKw, 1)} kW`)}
+          ${tile("Ladestand", hasSoc ? `${fmtNum(e.soc_start, 0)} → ${fmtNum(e.soc_end, 0)} %` : "–", hasSoc ? `${e.soc_end - e.soc_start >= 0 ? "+" : ""}${fmtNum(e.soc_end - e.soc_start, 0)} procentpoint` : "")}
+          ${tile("Betalt", `${fmtNum(e.cost || 0, 2)} kr`)}
+          ${tile("Gns. pris", avg === null ? "–" : `${fmtNum(avg, 2)} kr/kWh`, avg === null && solar > 0 ? "solstrøm koster ikke noget" : "")}
+          ${tile("Sparet", `${fmtNum(e.saved || 0, 2)} kr`, e.source === "solar" ? "i forhold til at købe samme strøm" : "i forhold til dagens gennemsnitspris")}
+        </div>
+        ${e.why ? `<div class="det-why"><div class="det-l">Årsag</div><ul>${String(e.why).split(" · ").map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}`;
+    } else {
+      const c = item;
+      const [head, ...rest] = String(c.reason || "").split(" – ");
+      const detail = rest.join(" – ");
+      icon = "mdi:console-line";
+      title = `Kommando – ${c.who || ""}`;
+      body = `
+        <div class="det-top">${c.ok ? '<span class="badge low">OK</span>' : '<span class="badge high">Fejl</span>'}</div>
+        <div class="det-grid">
+          ${tile("Tid", esc(when(new Date(c.at))))}
+          ${tile("Hvem", esc(c.who || "–"))}
+          ${tile("Handling", esc(c.action || "–"))}
+          ${tile("Entitet", `<code>${esc(c.entity_id || "–")}</code>`, c.value ? `værdi: ${esc(c.value)}` : "", "wide")}
+          ${tile("Service", esc(c.service || "–"))}
+        </div>
+        ${c.ok ? "" : `<div class="det-why err-box"><div class="det-l">Fejl</div><div>${esc(c.error || "Ukendt fejl")}</div></div>`}
+        ${c.reason ? `<div class="det-why"><div class="det-l">Årsag</div><div>${esc(head)}</div>${detail ? `<ul>${detail.split(" · ").map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}</div>` : ""}`;
+    }
+    this.shadowRoot.appendChild(this._tipEl);
+    dlg.innerHTML = `
+      <div class="dlg-head">
+        <ha-icon icon="${icon}"></ha-icon>
+        <h2 id="dlg-title">${esc(title)}</h2>
+        <button class="dlg-close" type="button" data-saction="close" aria-label="Luk" title="Luk"><ha-icon icon="mdi:close"></ha-icon></button>
+      </div>
+      <div class="dlg-body">${body}</div>
+      <div class="dlg-foot"><button class="btn" type="button" data-saction="close">Luk</button></div>`;
+    dlg.appendChild(this._tipEl);
+    this._tipEl.hidden = true;
+    if (!dlg.open) dlg.showModal();
+  }
+
   _renderCommandLog(commands) {
+    this._histCmds = commands;
     const rows = commands
-      .map((c) => {
+      .map((c, idx) => {
         const at = new Date(c.at);
-        return `<tr class="${c.ok ? "" : "failed"}">
+        return `<tr class="${c.ok ? "" : "failed"}" data-hrow="c:${idx}" role="button" tabindex="0">
           <td>${fmtDate(at)} ${fmtTime(at)}</td>
           <td>${esc(c.who || "")}</td>
           <td>${esc(c.action || "")}</td>
