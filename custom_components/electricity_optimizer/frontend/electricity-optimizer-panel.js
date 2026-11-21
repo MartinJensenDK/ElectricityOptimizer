@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.60.1";
+const PANEL_JS_VERSION = "0.60.2";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -894,11 +894,22 @@ class ElectricityOptimizerPanel extends HTMLElement {
     this._contentEl.innerHTML = html;
     if (fit) {
       this._fitSide();
-      const wrap = this._contentEl.querySelector(".home-left .chart-wrap");
-      if (wrap && wrap.clientWidth && !this._measuring) {
-        const h = Math.max(80, Math.round((ElectricityOptimizerPanel.HOME_CHART.W * wrap.clientHeight) / wrap.clientWidth));
-        if (Math.abs(h - (this._homeChartH || ElectricityOptimizerPanel.HOME_CHART_H)) > 3) {
-          this._homeChartH = h;
+      const K = ElectricityOptimizerPanel;
+      const hs = this._homeChartHs || {};
+      const next = { ...hs };
+      let changed = false;
+      for (const [k, sel] of [["e", ".home-left .energy-card .chart-wrap"], ["p", ".home-left .price-card .chart-wrap"]]) {
+        const wrap = this._contentEl.querySelector(sel);
+        if (!wrap || !wrap.clientWidth) continue;
+        const h = Math.max(80, Math.round((K.HOME_CHART.W * wrap.clientHeight) / wrap.clientWidth));
+        if (Math.abs(h - (hs[k] || K.HOME_CHART_H)) > 3) {
+          next[k] = h;
+          changed = true;
+        }
+      }
+      if (changed && !this._measuring) {
+        {
+          this._homeChartHs = next;
           this._measuring = true;
           try {
             this._render();
@@ -1023,12 +1034,15 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const side = `<div class="side"><div class="side-inner">${this._renderCapacityCard()}${this._renderStatusCard(d)}${this._renderSolarForecastCard()}${this._renderGridMoneyCard()}</div></div>`;
     const K = ElectricityOptimizerPanel;
     this._loadEnergyHistory();
-    const chartSize = fit ? { W: K.HOME_CHART.W, H: this._homeChartH || K.HOME_CHART_H } : null;
+    // each chart is drawn to the shape of its own card, so the hours of both stand at the same place
+    const hs = this._homeChartHs || {};
+    const sizeE = fit ? { W: K.HOME_CHART.W, H: hs.e || K.HOME_CHART_H } : null;
+    const sizeP = fit ? { W: K.HOME_CHART.W, H: hs.p || K.HOME_CHART_H } : null;
     const lower = `
-      ${this._renderEnergyCard(d, chartSize, fit)}
-      <div class="card">
+      ${this._renderEnergyCard(d, sizeE, fit)}
+      <div class="card price-card">
         <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes og husbatteriets planlagte ladetimer fra nettet (også når Smart opladning/styring er slået fra). Morgendagens priser kommer ca. kl. 13.")}</h2>
-        <div class="chart-wrap">${this._renderChart(d, chartSize)}</div>
+        <div class="chart-wrap">${this._renderChart(d, sizeP)}</div>
         <div class="legend">
           ${this._legendItem("p:low", "l-low", "Billig")}${this._legendItem("p:mid", "l-mid", "Normal")}${this._legendItem("p:high", "l-high", "Dyr")}
           ${d.tomorrowValid ? this._legendItem("p:tmr", "l-tmr", "I morgen (nedtonet)") : ""}
@@ -2009,7 +2023,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       grid.push(`<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" opacity="${Math.abs(v) < 1e-9 ? 1 : 0.5}"/>`);
       grid.push(`<text class="tick" x="${padL - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmtNum(v, stepKw < 1 ? 1 : 0)}</text>`);
     }
-    grid.push(`<text class="tick" x="${padL - 6}" y="${padT - 1}" text-anchor="end">kW</text>`);
+    grid.push(`<text class="tick" x="2" y="${(y(hi) + 3).toFixed(1)}">kW</text>`);
     // hour ticks under the same hours as the price chart
     const ticks = [];
     const hours = (tEnd - t0) / 3600000;

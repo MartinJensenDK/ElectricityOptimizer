@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.60.2
+
+- Forsiden: graferne Energi i dag og Elpris er nu lige brede, så timerne står samme sted. Før blev elprisgrafen tegnet smallere, når dens forklaring fyldte to linjer.
+- Energi i dag: enheden kW står ikke længere oven i det øverste tal på aksen.
+
 ## 0.60.1
 
 - Alle sider: "i"-ikonet med forklaringen står nu i kortets øverste højre hjørne i stedet for lige efter overskriften.
