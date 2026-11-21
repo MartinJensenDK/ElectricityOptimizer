@@ -1086,3 +1086,22 @@ async def test_silent_plug_sensor_uses_last_known_value(hass: HomeAssistant, has
     res = await _ws(hass, client, 5, {"type": f"{DOMAIN}/cars/list"})
     res = await _ws(hass, client, 6, {"type": f"{DOMAIN}/cars/save", "car": {"id": car_id, "name": "Bil"}})
     assert res["car"]["runtime"]["status"] == "charge_now" and len(turn_on) == 1
+
+
+async def test_grid_money_reaches_the_panel(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """Bought and sold kWh and kr arrive in the context the front page reads."""
+    _set_prices(hass)
+    hass.states.async_set("sensor.imp_today", "10.0", {"unit_of_measurement": "kWh"})
+    hass.states.async_set("sensor.exp_today", "4.0", {"unit_of_measurement": "kWh"})
+    hass.states.async_set("sensor.sell", "60", {"unit_of_measurement": "øre/kWh"})
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    await _ws(hass, client, 1, {"type": f"{DOMAIN}/rules/save", "rules": {"grid_import_energy_entity": "sensor.imp_today", "grid_export_energy_entity": "sensor.exp_today", "export_price_entity": "sensor.sell"}})
+    hass.states.async_set("sensor.imp_today", "11.0", {"unit_of_measurement": "kWh"})
+    hass.states.async_set("sensor.exp_today", "6.0", {"unit_of_measurement": "kWh"})
+    freezer.tick(60)
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/rules/save", "rules": {"export_price_entity": "sensor.sell"}})
+    res = await _ws(hass, client, 3, {"type": f"{DOMAIN}/cars/list"})
+    today = res["context"]["grid_money"]["today"]
+    assert today["imp_kwh"] == 1.0 and today["imp_kr"] > 0
+    assert today["exp_kwh"] == 2.0 and today["exp_kr"] == 1.2  # 60 øre/kWh

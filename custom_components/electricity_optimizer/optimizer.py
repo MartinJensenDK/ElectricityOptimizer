@@ -212,11 +212,34 @@ class Optimizer:
             charged_kwh=self._kwh(bat.get("charge_energy_entity")) if bat else None,
             discharged_kwh=self._kwh(bat.get("discharge_energy_entity")) if bat else None,
         )
+        rules = self.rules_store.rules
+        self.cost.update_grid(ctx, self._kwh(rules.get("grid_import_energy_entity")), self._kwh(rules.get("grid_export_energy_entity")), self.sell_price(ctx))
         self.publish_cost()
         if self.cost.dirty and self.state is not None and (self._cost_saved_at is None or (ctx.now - self._cost_saved_at).total_seconds() >= self.COST_SAVE_INTERVAL_S):
             self.cost.dirty = False
             self._cost_saved_at = ctx.now
             self.state.save()
+
+    def sell_price(self, ctx: Context) -> float | None:
+        """What a kWh sold to the grid pays right now: the sell-price sensor, else the fixed price."""
+        rules = self.rules_store.rules
+        entity_id = rules.get("export_price_entity")
+        if entity_id:
+            st = self.hass.states.get(entity_id)
+            if st is not None and "raw_today" in st.attributes:
+                for slot in read_price_slots(self.hass, entity_id):
+                    if slot.start <= ctx.now < slot.end:
+                        return slot.price
+            elif st is not None and st.state not in ("unknown", "unavailable"):
+                try:
+                    v = float(st.state)
+                except ValueError:
+                    v = None
+                if v is not None:
+                    return v / 100 if "øre" in (st.attributes.get("unit_of_measurement") or "").lower() else v
+            return None
+        fixed = rules.get("export_price_fixed")
+        return float(fixed) if fixed is not None else None
 
     def publish_cost(self) -> None:
         """Put the average prices and the efficiency in the runtime the panel reads."""
@@ -257,4 +280,5 @@ class Optimizer:
             "ev_grid_hold": ctx.ev_grid_hold,
             "ev_amps_total": ctx.ev_amps_total,
             "evaluated_at": ctx.now.isoformat(),
+            "grid_money": self.cost.grid_snapshot(),
         }

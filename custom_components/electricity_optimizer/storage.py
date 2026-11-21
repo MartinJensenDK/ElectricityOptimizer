@@ -385,6 +385,12 @@ def normalize_rules(raw: dict[str, Any], existing: dict[str, Any] | None = None)
     rules["grid_import_energy_month_entity"] = str(rules.get("grid_import_energy_month_entity") or "").strip()
     rules["grid_export_energy_month_entity"] = str(rules.get("grid_export_energy_month_entity") or "").strip()
     rules["grid_export_enabled_entity"] = str(rules.get("grid_export_enabled_entity") or "").strip()
+    rules["export_price_entity"] = str(rules.get("export_price_entity") or "").strip()
+    fixed = rules.get("export_price_fixed")
+    try:
+        rules["export_price_fixed"] = None if fixed in (None, "") else float(str(fixed).replace(",", "."))
+    except (TypeError, ValueError):
+        rules["export_price_fixed"] = None
     if rules["surplus_source"] not in ("grid", "solar_house"):
         rules["surplus_source"] = "grid"
     rules["house_includes_ev"] = bool(rules["house_includes_ev"])

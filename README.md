@@ -179,6 +179,10 @@ Integrationen holder styr på, hvad strømmen på husbatteriet og i bilerne har 
 
 På Elbiler-siden vises bilens **ladeeffektivitet**: energien fra ladeeffekt-sensoren holdt op mod stigningen i ladestand × batterikapaciteten. Tallet vises efter 10 kWh, og opladning andre steder end hjemme tælles ikke med.
 
+### Elnet – købt og solgt
+
+Forsiden viser under Solprognose, hvad der er købt fra og solgt til elnettet i dag og denne måned, i kr og kWh, samt netto. Købt strøm ganges hvert minut med elprisen i den time; solgt strøm med salgsprisen. Salgsprisen vælges under Indstillinger på fanen Solceller, enten som en sensor (fx en ekstra EnergiDataService-sensor uden afgifter) eller som en fast pris. Uden salgspris vises solgt strøm kun i kWh. Tallene måles fra installationen af v0.59.0.
+
 ## Udvikling
 
 ```bash

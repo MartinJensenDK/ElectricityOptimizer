@@ -141,6 +141,8 @@ RULES_DEFAULTS = {
     "grid_export_energy_entity": "",  # kWh sold to the grid (shown on the solar tab)
     "grid_import_energy_month_entity": "",  # kWh bought this month
     "grid_export_energy_month_entity": "",  # kWh sold this month
+    "export_price_entity": "",  # optional: what a sold kWh pays (EnergiDataService-like sensor or a plain kr/kWh sensor)
+    "export_price_fixed": None,  # optional fixed sell price (kr/kWh) when there is no sensor
     "grid_export_enabled_entity": "",  # on/off entity: is export to the grid allowed right now
     "grid_sign": "import_positive",
 }

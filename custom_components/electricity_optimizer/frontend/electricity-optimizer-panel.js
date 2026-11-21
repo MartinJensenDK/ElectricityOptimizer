@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.58.5";
+const PANEL_JS_VERSION = "0.59.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -308,6 +308,15 @@ const STYLE = `
   .picker-list div small { display: block; color: var(--secondary-text-color); font-size: 11px; }
   .picker-list div:hover { background: var(--secondary-background-color); }
   .car-live { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 12px; align-items: start; margin: 4px 0 6px; }
+  table.gm { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.gm th { font-size: 12px; font-weight: 400; color: var(--secondary-text-color); padding: 2px 6px 6px; text-align: left; }
+  table.gm th.num, table.gm td.num { text-align: right; }
+  table.gm td { padding: 6px; border-top: 1px solid var(--divider-color); vertical-align: top; }
+  table.gm td:first-child { white-space: nowrap; }
+  table.gm td ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); margin-right: 6px; vertical-align: -3px; }
+  table.gm tr[data-more] { cursor: pointer; }
+  table.gm tr[data-more]:hover td { background: var(--secondary-background-color); }
+  .gm-kwh { font-size: 12px; color: var(--secondary-text-color); }
   .car-eff { text-align: center; }
   .car-eff .value { font-size: 28px; font-weight: 500; line-height: 1.1; margin: 22px 0 8px; }
   .car-eff .value small { font-size: 13px; font-weight: 400; color: var(--secondary-text-color); margin-left: 4px; }
@@ -945,7 +954,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const expensive = [...hourly].sort((a, b) => b.price - a.price).slice(0, 4).sort((a, b) => a.time - b.time);
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
-    const side = `<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}${this._renderSolarForecastCard()}</div>`;
+    const side = `<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}${this._renderSolarForecastCard()}${this._renderGridMoneyCard()}</div>`;
     const K = ElectricityOptimizerPanel;
     const lower = `
       <div class="card">
@@ -1539,6 +1548,50 @@ class ElectricityOptimizerPanel extends HTMLElement {
       <div class="card">
         <h2><ha-icon icon="mdi:weather-sunny"></ha-icon>Solprognose${I("Forventet solproduktion i dag og i morgen fra prognose-sensorerne valgt på fanen Solceller, fx Solcast eller Forecast.Solar. 'Tilbage' er dagens prognose minus det, der allerede er produceret. Klik på en række for at se historik.")}</h2>
         <div class="status-list">${rows}</div>
+      </div>`;
+  }
+
+  /** Under Solprognose: what has been bought from and sold to the grid, in kr, today and this month. */
+  _renderGridMoneyCard() {
+    const r = this._rules || {};
+    const g = (this._context || {}).grid_money || null;
+    const kr = (v) => `${fmtNum(v, 2)} kr`;
+    const sellKnown = !!(r.export_price_entity || (r.export_price_fixed !== null && r.export_price_fixed !== undefined && r.export_price_fixed !== ""));
+    const cell = (b, kind) => {
+      if (!b) return `<td class="num">–</td>`;
+      if (kind === "imp") return `<td class="num">${kr(b.imp_kr)}<div class="gm-kwh">${fmtNum(b.imp_kwh, 1)} kWh${b.imp_kwh > 0.05 ? ` · ${fmtNum(b.imp_kr / b.imp_kwh, 2)} kr/kWh` : ""}</div></td>`;
+      if (kind === "exp") {
+        const priced = b.exp_kwh - b.exp_unpriced_kwh;
+        const value = priced > 0.005 || b.exp_unpriced_kwh <= 0.005 ? kr(b.exp_kr) : "–";
+        return `<td class="num">${value}<div class="gm-kwh">${fmtNum(b.exp_kwh, 1)} kWh${b.exp_unpriced_kwh > 0.05 ? ` · ${fmtNum(b.exp_unpriced_kwh, 1)} kWh uden pris` : priced > 0.05 ? ` · ${fmtNum(b.exp_kr / priced, 2)} kr/kWh` : ""}</div></td>`;
+      }
+      const net = b.imp_kr - b.exp_kr;
+      return `<td class="num"><strong>${kr(net)}</strong></td>`;
+    };
+    let body;
+    if (!g) {
+      body = `<div class="status-row"><ha-icon icon="mdi:timer-sand"></ha-icon><div class="t"><div class="d">${
+        r.grid_import_energy_entity || r.grid_power_entity || (this._battery && this._battery.grid_power_entity) ? "Måles fra nu – tallene kommer efter næste opdatering" : "Vælg net-sensorer under Indstillinger på fanen Solceller"
+      }</div></div></div>`;
+    } else {
+      const since = g.month_since ? new Date(g.month_since) : null;
+      const partMonth = since && (since.getDate() > 1 || since.getHours() > 0 || since.getMinutes() > 5);
+      body = `<table class="gm">
+          <thead><tr><th></th><th class="num">I dag</th><th class="num">${partMonth ? `Siden ${fmtDate(since)}` : "Denne måned"}</th></tr></thead>
+          <tbody>
+            <tr${this._more(r.grid_import_energy_entity)}><td><ha-icon icon="mdi:transmission-tower-import"></ha-icon>Købt</td>${cell(g.today, "imp")}${cell(g.month, "imp")}</tr>
+            <tr${this._more(r.grid_export_energy_entity)}><td><ha-icon icon="mdi:transmission-tower-export"></ha-icon>Solgt</td>${cell(g.today, "exp")}${cell(g.month, "exp")}</tr>
+            <tr class="gm-net"><td><ha-icon icon="mdi:scale-balance"></ha-icon>Netto</td>${cell(g.today, "net")}${cell(g.month, "net")}</tr>
+          </tbody>
+        </table>
+        ${sellKnown ? "" : '<div class="hint" style="margin-top:6px">Vælg en salgspris under Indstillinger på fanen Solceller for at se, hvad den solgte strøm er værd.</div>'}`;
+    }
+    return `
+      <div class="card">
+        <h2><ha-icon icon="mdi:cash-multiple"></ha-icon>Elnet – købt og solgt${I(
+          "Hvad du har købt fra og solgt til elnettet, i kr. Hvert minut ganges den strøm, der er købt, med elprisen i den time, og den strøm, der er solgt, med salgsprisen. Mængderne tages fra energi-sensorerne Importeret/Eksporteret i dag, ellers fra net-sensoren. Salgsprisen er salgspris-sensoren eller den faste salgspris fra Indstillinger på fanen Solceller. Netto = købt minus solgt. Tallene måles fra det tidspunkt, opdateringen blev installeret."
+        )}</h2>
+        ${body}
       </div>`;
   }
 
@@ -2828,6 +2881,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
         ${this._pickerField("Importeret denne måned (kWh)", "Energi-sensor med den strøm, der er købt fra nettet denne måned (fx en månedlig utility meter). Vises på Anlæg-kortet.", "grid_import_energy_month_entity", "sensor", r.grid_import_energy_month_entity, "sensor.… (valgfri)")}
         ${this._pickerField("Eksporteret denne måned (kWh)", "Energi-sensor med den strøm, der er solgt til nettet denne måned (fx en månedlig utility meter). Vises på Anlæg-kortet.", "grid_export_energy_month_entity", "sensor", r.grid_export_energy_month_entity, "sensor.… (valgfri)")}
         <label class="field"><span class="fl">Værdi af egen solstrøm (kr/kWh)${I("Hvad en kWh fra dine egne solceller tæller som, når gennemsnitsprisen for strømmen på husbatteriet og i bilerne beregnes. 0 = solstrøm er gratis. Skriv fx din salgspris, hvis du vil regne med det, du kunne have fået ved at sælge strømmen i stedet.")}</span><input name="solar_value_per_kwh" type="number" step="0.01" value="${esc(r.solar_value_per_kwh === null || r.solar_value_per_kwh === undefined ? 0 : r.solar_value_per_kwh)}"></label>
+        ${this._pickerField("Salgspris (valgfri)", "Sensor med det, du får for en solgt kWh, i kr/kWh – fx en ekstra EnergiDataService-sensor uden afgifter og tariffer, eller en sensor med din aftalte salgspris. Bruges til Elnet – købt og solgt på Forsiden.", "export_price_entity", "sensor", r.export_price_entity, "sensor.… (valgfri)")}
+        <label class="field"><span class="fl">Fast salgspris (kr/kWh)${I("Bruges, når der ikke er valgt en salgspris-sensor. Tom = solgt strøm vises kun i kWh.")}</span><input name="export_price_fixed" type="number" step="0.01" value="${esc(r.export_price_fixed === null || r.export_price_fixed === undefined ? "" : r.export_price_fixed)}" placeholder="fx 0,60"></label>
         ${this._pickerField("Eksport tilladt (tænd/sluk)", "Entitet, der er tændt, når strøm må sendes til elnettet, fx inverterens 'feed-in'-kontakt eller en input_boolean. Status-kortet på Forsiden viser så 'Eksport aktiveret' eller 'Eksport deaktiveret' ved Elnet.", "grid_export_enabled_entity", "switch,binary_sensor,input_boolean,sensor", r.grid_export_enabled_entity, "switch.… (valgfri)")}
       </div>
       <div class="err" hidden></div>

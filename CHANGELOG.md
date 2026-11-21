@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.59.0
+
+- Forsiden: ny sektion "Elnet – købt og solgt" under Solprognose. Den viser, hvad der er købt fra og solgt til elnettet i dag og denne måned – i kr og kWh – samt netto. Købt strøm regnes med elprisen i den time, den blev købt.
+- Solceller-fanen, Indstillinger: nye felter "Salgspris" (sensor) og "Fast salgspris (kr/kWh)", som bruges til at regne den solgte strøm om til kr. Uden dem vises solgt strøm kun i kWh.
+- Tallene måles fra det tidspunkt, opdateringen er installeret, så den første måned er ikke komplet.
+
 ## 0.58.5
 
 - Forsiden: Billigste timer og Dyreste timer viser nu de fire billigste og fire dyreste timer i stedet for fem.

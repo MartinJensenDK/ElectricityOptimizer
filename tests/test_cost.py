@@ -256,3 +256,41 @@ def test_average_starts_over_when_the_battery_is_empty():
     _run(t, [{"soc": 50}, {"soc": 50}, {"soc": 60}], bat=bat, battery_w=3000, grid_w=3500, price=2.0)
     _run(t, [{"soc": 20}], bat=bat, battery_w=-2000, grid_w=0, price=2.0)
     assert t.average("battery") is None
+
+
+def _gctx(when, price=2.0, grid_w=None):
+    return SimpleNamespace(now=when, slots=[Slot(T0 - timedelta(days=40), T0 + timedelta(days=40), price)], grid_w=grid_w)
+
+
+def test_grid_money_from_energy_sensors_with_day_and_month_rollover():
+    t = CostTracker()
+    t.update_grid(_gctx(T0), 5.0, 1.0, 0.6)  # first reading: nothing counted
+    t.update_grid(_gctx(T0 + timedelta(minutes=1), price=2.0), 6.0, 1.0, 0.6)  # bought 1 kWh at 2,00
+    t.update_grid(_gctx(T0 + timedelta(minutes=2), price=3.0), 6.0, 3.0, 0.5)  # sold 2 kWh at 0,50
+    snap = t.grid_snapshot()
+    assert snap["today"]["imp_kwh"] == 1.0 and snap["today"]["imp_kr"] == 2.0
+    assert snap["today"]["exp_kwh"] == 2.0 and snap["today"]["exp_kr"] == 1.0
+    assert snap["month"] == snap["today"]
+    # midnight: the sensors reset and the day starts over, the month keeps counting
+    next_day = T0.replace(hour=0, minute=0) + timedelta(days=1)
+    t.update_grid(_gctx(next_day), 0.0, 0.0, 0.5)
+    t.update_grid(_gctx(next_day + timedelta(minutes=1)), 2.0, 0.0, 0.5)
+    snap = t.grid_snapshot()
+    assert snap["today"]["imp_kwh"] == 2.0 and snap["yesterday"]["imp_kwh"] == 1.0
+    assert snap["month"]["imp_kwh"] == 3.0 and snap["month"]["imp_kr"] == 6.0
+
+
+def test_grid_money_from_power_and_without_sell_price():
+    t = CostTracker()
+    t.update_grid(_gctx(T0, grid_w=-1200), None, None, None)
+    t.update_grid(_gctx(T0 + timedelta(minutes=1), grid_w=-1200), None, None, None)  # 1,2 kW sold for a minute
+    t.update_grid(_gctx(T0 + timedelta(minutes=2), price=1.5, grid_w=600), None, None, None)  # 0,6 kW bought
+    snap = t.grid_snapshot()["today"]
+    assert snap["exp_kwh"] == pytest.approx(0.02) and snap["exp_unpriced_kwh"] == pytest.approx(0.02) and snap["exp_kr"] == 0
+    assert snap["imp_kwh"] == pytest.approx(0.01) and snap["imp_kr"] == pytest.approx(0.015)
+
+
+def test_sell_price_settings_are_normalised():
+    rules = normalize_rules({"export_price_fixed": "0,62", "export_price_entity": " sensor.salg "})
+    assert rules["export_price_fixed"] == 0.62 and rules["export_price_entity"] == "sensor.salg"
+    assert normalize_rules({"export_price_fixed": ""})["export_price_fixed"] is None

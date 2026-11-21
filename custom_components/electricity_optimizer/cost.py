@@ -193,6 +193,64 @@ class CostTracker:
             "measurable": bool(eff.get("measurable")),
         }
 
+    # ---- money bought and sold on the grid -------------------------------------------------------
+
+    @staticmethod
+    def _money() -> dict[str, float]:
+        return {"imp_kwh": 0.0, "imp_kr": 0.0, "exp_kwh": 0.0, "exp_kr": 0.0, "exp_unpriced_kwh": 0.0}
+
+    def update_grid(self, ctx: Any, import_kwh: float | None, export_kwh: float | None, sell_price: float | None) -> None:
+        """Add what was bought (at the price now) and sold (at the sell price) since the last evaluation.
+
+        Energy sensors (daily kWh) are preferred; without them the grid power is integrated.
+        """
+        grid = self.data.setdefault("grid", {})
+        now = ctx.now
+        day, month = now.date().isoformat(), now.strftime("%Y-%m")
+        if grid.get("day") != day:
+            if grid.get("day"):
+                grid["yesterday"] = grid.get("today") or self._money()
+            grid["day"], grid["today"] = day, self._money()
+        if grid.get("month") != month:
+            grid["month"], grid["this_month"] = month, self._money()
+            grid["month_since"] = now.isoformat()
+        grid.setdefault("month_since", now.isoformat())
+        last = _dt(grid.get("last"))
+        grid["last"] = now.isoformat()
+        step = (now - last).total_seconds() if last is not None else 0.0
+        hours = step / 3600 if 0 < step <= MAX_STEP_SECONDS else 0.0
+        d_imp = self._sensor_delta(grid, "last_imp", import_kwh)
+        d_exp = self._sensor_delta(grid, "last_exp", export_kwh)
+        if d_imp is None or d_exp is None:
+            w = ctx.grid_w
+            if d_imp is None:
+                d_imp = max(0.0, w) * hours / 1000 if w is not None else 0.0
+            if d_exp is None:
+                d_exp = max(0.0, -w) * hours / 1000 if w is not None else 0.0
+        if not (d_imp or d_exp):
+            return
+        price = price_now(ctx)
+        for bucket in (grid["today"], grid["this_month"]):
+            bucket["imp_kwh"] += d_imp
+            if price is not None:
+                bucket["imp_kr"] += d_imp * price
+            bucket["exp_kwh"] += d_exp
+            if sell_price is not None:
+                bucket["exp_kr"] += d_exp * sell_price
+            else:
+                bucket["exp_unpriced_kwh"] += d_exp
+        self.dirty = True
+
+    def grid_snapshot(self) -> dict[str, Any] | None:
+        grid = self.data.get("grid")
+        if not grid or not grid.get("today"):
+            return None
+
+        def r(b: dict[str, float] | None) -> dict[str, float] | None:
+            return None if b is None else {k: round(v, 3) for k, v in b.items()}
+
+        return {"today": r(grid.get("today")), "yesterday": r(grid.get("yesterday")), "month": r(grid.get("this_month")), "month_since": grid.get("month_since")}
+
     # ---- one evaluation ------------------------------------------------------------------------
 
     def update(
