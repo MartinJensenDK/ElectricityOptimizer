@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.59.0";
+const PANEL_JS_VERSION = "0.59.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -119,7 +119,7 @@ const STYLE = `
   .btn.small { padding: 3px 9px; font-size: 12px; min-height: 0; }
   .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 12px; margin-bottom: 12px; align-items: start; }
   .top .card { margin-bottom: 0; }
-  .side { display: grid; grid-template-columns: 1fr; gap: 12px; align-content: start; }
+  .side-inner { display: grid; grid-template-columns: 1fr; gap: 12px; align-content: start; }
   .gauges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .gauges .card.kpi { aspect-ratio: 1 / 1; box-sizing: border-box; justify-content: space-evenly; }
   .gauges .card.kpi .label { align-self: stretch; }
@@ -136,11 +136,11 @@ const STYLE = `
   .gauges .gauge { max-width: 260px; }
   @media (max-width: 1100px) {
     .top { grid-template-columns: 1fr; }
-    .side { grid-template-columns: 1fr 1fr; }
+    .side-inner { grid-template-columns: 1fr 1fr; }
     .gauges { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
   }
   @media (max-width: 700px) {
-    .side { grid-template-columns: 1fr; }
+    .side-inner { grid-template-columns: 1fr; }
   }
   .card h2 {
     margin: 0 0 6px;
@@ -463,7 +463,9 @@ const STYLE = `
   .home-left > .card .chart-wrap { flex: 1; min-height: 0; overflow: hidden; }
   .home-left > .card svg.chart { width: 100%; height: 100%; }
   .home-left .grid { margin-bottom: 0; flex: none; }
-  .home-box .side { min-height: 0; overflow: auto; align-content: start; }
+  .home-box .side { min-height: 0; overflow: hidden; }
+  .home-box .side.scroll { overflow: auto; }
+  .home-box .side-inner { transform-origin: top left; width: calc(100% / var(--side-scale, 1)); transform: scale(var(--side-scale, 1)); }
   .page-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
   .page-actions .hint { flex: 1 1 240px; margin-right: auto; }
   .page-actions button.btn { display: inline-flex; align-items: center; gap: 6px; }
@@ -660,6 +662,32 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return zoom;
   }
 
+  /**
+   * The fitted front page: the right column (Kapaciteter … Elnet) must end where the left column ends
+   * (at the bottom of Dyreste timer). When it is taller it is scaled down until it fits; below
+   * SIDE_MIN_SCALE the text would get too small, so it scrolls instead.
+   */
+  _fitSide() {
+    const side = this._contentEl.querySelector(".home-box .side");
+    const inner = side && side.firstElementChild;
+    if (!inner) return;
+    const K = ElectricityOptimizerPanel;
+    let scale = 1;
+    side.style.setProperty("--side-scale", "1");
+    for (let i = 0; i < 5; i++) {
+      const need = inner.offsetHeight, avail = side.clientHeight;
+      if (!need || !avail) return;
+      // the scaled column is wider in its own units, so its text wraps less: repeat until it settles
+      const next = Math.min(1, (avail / need) * 0.995);
+      if (Math.abs(next - scale) < 0.002) break;
+      scale = next;
+      side.style.setProperty("--side-scale", String(Math.max(K.SIDE_MIN_SCALE, scale)));
+    }
+    side.classList.toggle("scroll", scale < K.SIDE_MIN_SCALE);
+  }
+
+  static SIDE_MIN_SCALE = 0.72;
+
   disconnectedCallback() {
     clearInterval(this._timer);
     if (this._ro) this._ro.disconnect();
@@ -842,6 +870,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
       this._loadBattery();
     }
     this._contentEl.innerHTML = html;
+    if (fit) this._fitSide();
     // the chart is drawn to a width measured from the page; when that width differs (another tab, a
     // column that appeared) it is drawn once more to fit
     if (!this._measuring && this._measureChart()) {
@@ -954,7 +983,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const expensive = [...hourly].sort((a, b) => b.price - a.price).slice(0, 4).sort((a, b) => a.time - b.time);
     const dayLabel = (t) => (t.getDate() === now.getDate() ? "I dag" : "I morgen");
 
-    const side = `<div class="side">${this._renderCapacityCard()}${this._renderStatusCard(d)}${this._renderSolarForecastCard()}${this._renderGridMoneyCard()}</div>`;
+    const side = `<div class="side"><div class="side-inner">${this._renderCapacityCard()}${this._renderStatusCard(d)}${this._renderSolarForecastCard()}${this._renderGridMoneyCard()}</div></div>`;
     const K = ElectricityOptimizerPanel;
     const lower = `
       <div class="card">

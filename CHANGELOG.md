@@ -2,6 +2,10 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.59.1
+
+- Forsiden: kolonnen til højre (Kapaciteter, Status, Solprognose og Elnet – købt og solgt) slutter nu altid i samme højde som Dyreste timer. Er der for meget indhold, gøres kolonnen en smule mindre, så den passer, i stedet for at gå længere ned.
+
 ## 0.59.0
 
 - Forsiden: ny sektion "Elnet – købt og solgt" under Solprognose. Den viser, hvad der er købt fra og solgt til elnettet i dag og denne måned – i kr og kWh – samt netto. Købt strøm regnes med elprisen i den time, den blev købt.
