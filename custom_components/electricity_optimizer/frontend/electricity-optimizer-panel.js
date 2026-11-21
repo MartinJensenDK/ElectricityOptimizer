@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.59.1";
+const PANEL_JS_VERSION = "0.60.1";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -222,6 +222,17 @@ const STYLE = `
   .session-pill { pointer-events: none; }
   .session-pill-text { font-size: 11px; font-weight: 600; fill: #fff; pointer-events: none; }
   .legend .l-session::before { background: var(--c); opacity: 0.45; }
+  .legend [data-legend] { cursor: pointer; user-select: none; border-radius: 4px; padding: 1px 4px; margin: -1px -4px; transition: opacity 0.12s; }
+  .legend [data-legend]:hover, .legend [data-legend]:focus-visible { background: var(--secondary-background-color); color: var(--primary-text-color); outline: none; }
+  .legend [data-legend].off { opacity: 0.45; text-decoration: line-through; }
+  .legend .l-line::before { background: var(--c); height: 3px; vertical-align: 3px; border-radius: 2px; }
+  .legend .l-mean::before { background: none; border-top: 1px dashed var(--secondary-text-color); height: 0; vertical-align: 4px; border-radius: 0; }
+  .legend .l-note { margin-left: auto; }
+  .legend .l-note::before { display: none; }
+  .e-line { fill: none; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+  .e-area { opacity: 0.18; pointer-events: none; }
+  .e-hit { fill: transparent; }
+  .e-hit:hover { fill: var(--secondary-text-color); fill-opacity: 0.12; }
   .form-section { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--secondary-text-color); margin: 16px 0 6px; display: flex; align-items: center; }
   .form-section:first-of-type { margin-top: 4px; }
   .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px 16px; align-items: end; }
@@ -438,6 +449,10 @@ const STYLE = `
     cursor: help; user-select: none; margin-left: 4px;
   }
   .info:hover, .info:focus { color: var(--primary-color); border-color: var(--primary-color); outline: none; }
+  /* the card's own "i" sits in the card's top right corner; the title keeps room for it */
+  .card { position: relative; }
+  .card > h2 > .info, .card > .label > .info { position: absolute; top: 12px; right: 12px; margin: 0; }
+  .card > h2, .card > .label { padding-right: 24px; }
   .tip {
     position: fixed; z-index: 50; max-width: min(300px, 80vw); white-space: pre-line;
     background: var(--primary-text-color); color: var(--card-background-color, #fff);
@@ -462,6 +477,8 @@ const STYLE = `
   .home-left > .card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .home-left > .card .chart-wrap { flex: 1; min-height: 0; overflow: hidden; }
   .home-left > .card svg.chart { width: 100%; height: 100%; }
+  .home-left > .card .legend { margin-top: 4px; }
+  .home-left > .card h2 { margin-bottom: 2px; }
   .home-left .grid { margin-bottom: 0; flex: none; }
   .home-box .side { min-height: 0; overflow: hidden; }
   .home-box .side.scroll { overflow: auto; }
@@ -717,6 +734,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
       st ? st.last_updated : "missing",
       solarKey,
       this._solarHistoryStamp || 0,
+      this._energyStamp || 0,
+      this._legendStamp || 0,
       this._carsStamp,
       this._historyStamp || 0,
       now.getHours(),
@@ -787,6 +806,9 @@ class ElectricityOptimizerPanel extends HTMLElement {
       if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-more]")) {
         ev.preventDefault();
         this._openMoreInfo(ev.target.dataset.more);
+      } else if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-legend]")) {
+        ev.preventDefault();
+        this._toggleSeries(ev.target.dataset.legend);
       } else if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-hrow]")) {
         ev.preventDefault();
         this._openHistoryDetail(ev.target.dataset.hrow);
@@ -870,7 +892,22 @@ class ElectricityOptimizerPanel extends HTMLElement {
       this._loadBattery();
     }
     this._contentEl.innerHTML = html;
-    if (fit) this._fitSide();
+    if (fit) {
+      this._fitSide();
+      const wrap = this._contentEl.querySelector(".home-left .chart-wrap");
+      if (wrap && wrap.clientWidth && !this._measuring) {
+        const h = Math.max(80, Math.round((ElectricityOptimizerPanel.HOME_CHART.W * wrap.clientHeight) / wrap.clientWidth));
+        if (Math.abs(h - (this._homeChartH || ElectricityOptimizerPanel.HOME_CHART_H)) > 3) {
+          this._homeChartH = h;
+          this._measuring = true;
+          try {
+            this._render();
+          } finally {
+            this._measuring = false;
+          }
+        }
+      }
+    }
     // the chart is drawn to a width measured from the page; when that width differs (another tab, a
     // column that appeared) it is drawn once more to fit
     if (!this._measuring && this._measureChart()) {
@@ -985,20 +1022,24 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
     const side = `<div class="side"><div class="side-inner">${this._renderCapacityCard()}${this._renderStatusCard(d)}${this._renderSolarForecastCard()}${this._renderGridMoneyCard()}</div></div>`;
     const K = ElectricityOptimizerPanel;
+    this._loadEnergyHistory();
+    const chartSize = fit ? { W: K.HOME_CHART.W, H: this._homeChartH || K.HOME_CHART_H } : null;
     const lower = `
+      ${this._renderEnergyCard(d, chartSize, fit)}
       <div class="card">
         <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes og husbatteriets planlagte ladetimer fra nettet (også når Smart opladning/styring er slået fra). Morgendagens priser kommer ca. kl. 13.")}</h2>
-        <div class="chart-wrap">${this._renderChart(d, fit ? K.HOME_CHART : null)}</div>
+        <div class="chart-wrap">${this._renderChart(d, chartSize)}</div>
         <div class="legend">
-          <span class="l-low">Billig</span><span class="l-mid">Normal</span><span class="l-high">Dyr</span>
-          ${d.tomorrowValid ? '<span class="l-tmr">I morgen (nedtonet)</span>' : ""}
+          ${this._legendItem("p:low", "l-low", "Billig")}${this._legendItem("p:mid", "l-mid", "Normal")}${this._legendItem("p:high", "l-high", "Dyr")}
+          ${d.tomorrowValid ? this._legendItem("p:tmr", "l-tmr", "I morgen (nedtonet)") : ""}
           ${this._evPlanSeries()
-            .map((c) => `<span class="l-car" style="--c:${c.color}">Ladeplan: ${esc(c.name)}</span>`)
+            .map((c) => this._legendItem(`p:plan:${c.name}`, "l-car", `Ladeplan: ${c.name}`, c.color))
             .join("")}
           ${this._chargingSessions()
-            .map((se) => `<span class="l-session" style="--c:${se.color}">Ladeperiode: ${esc(se.name)}</span>`)
+            .map((se) => this._legendItem(`p:sess:${se.name}`, "l-session", `Ladeperiode: ${se.name}`, se.color))
             .join("")}
-          <span style="margin-left:auto">Lodret streg = nu · stiplet linje = dagens gennemsnit</span>
+          ${this._legendItem("p:mean", "l-mean", "Dagens gennemsnit")}
+          <span class="l-note">Lodret streg = nu · klik på en forklaring for at skjule/vise</span>
         </div>
       </div>
 
@@ -1038,8 +1079,10 @@ class ElectricityOptimizerPanel extends HTMLElement {
     return `<div class="home-box"><div class="home-left">${this._renderGauges()}${lower}</div>${side}</div>`;
   }
 
-  /** Size the price chart is drawn in on the fitted (16:9) front page; the SVG is stretched to the card. */
+  /** Size the charts are drawn in on the fitted (16:9) front page; the SVG is stretched to the card. */
   static HOME_CHART = { W: 1194, H: 312 };
+  /** Height each of the two charts starts with on the fitted front page; measured and corrected after drawing. */
+  static HOME_CHART_H = 130;
 
   /** Small, plain battery for lists: thin outline, rounded fill in the SoC colour, percentage to the right. */
   _renderMiniBattery(pct, aria = "", marker = null) {
@@ -1644,9 +1687,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const mean = typeof d.todayMean === "number" ? d.todayMean : null;
     const allSessions = this._chargingSessions();
 
+    const hidden = this._hiddenSeries();
     const bars = points
       .map((p, i) => {
         const lvl = ElectricityOptimizerPanel._level(p.price, sortedToday);
+        if (hidden.has(`p:${lvl}`) || (p.day === "tomorrow" && hidden.has("p:tmr"))) return "";
         const isNow = d.current && p.time.getTime() === d.current.time.getTime();
         const x = padL + i * bw;
         const top = Math.min(y(p.price), zeroY);
@@ -1693,7 +1738,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     }
 
     const meanLine =
-      mean !== null ? `<line class="mean" x1="${padL}" x2="${W - padR}" y1="${y(mean).toFixed(1)}" y2="${y(mean).toFixed(1)}"/>` : "";
+      mean !== null && !hidden.has("p:mean") ? `<line class="mean" x1="${padL}" x2="${W - padR}" y1="${y(mean).toFixed(1)}" y2="${y(mean).toFixed(1)}"/>` : "";
 
     // time → x (points are equidistant in time)
     const t0 = points[0].time.getTime();
@@ -1702,7 +1747,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const xOf = (t) => padL + Math.min(innerW, Math.max(0, ((t - t0) / slotMs) * bw));
 
     // planned EV charging: a band per car below the bars
-    const series = this._evPlanSeries();
+    const series = this._evPlanSeries().filter((c) => !hidden.has(`p:plan:${c.name}`));
     const bandH = 5;
     const evPlan = series
       .map((c, si) => {
@@ -1722,7 +1767,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     // charging periods (car or battery): light blue box from start to expected end, with edge lines
     const pills = [];
     const sessions = allSessions
-      .filter((se) => se.end > t0 && se.start < tEnd)
+      .filter((se) => se.end > t0 && se.start < tEnd && !hidden.has(`p:sess:${se.name}`))
       .map((se, i) => {
         const x1 = xOf(se.start), x2 = xOf(se.end);
         const w = Math.max(2, x2 - x1);
@@ -1779,6 +1824,235 @@ class ElectricityOptimizerPanel extends HTMLElement {
       ${ticks.join("")}
       ${nowMark}
       ${pillRow}
+    </svg>`;
+  }
+
+  /** Legend entries the viewer has switched off (kept in the browser). */
+  _hiddenSeries() {
+    if (!this._hidden) {
+      let list = [];
+      try {
+        list = JSON.parse(window.localStorage.getItem("electricity-optimizer-hidden") || "[]");
+      } catch (err) {
+        list = [];
+      }
+      this._hidden = new Set(Array.isArray(list) ? list : []);
+    }
+    return this._hidden;
+  }
+
+  _toggleSeries(key) {
+    const hidden = this._hiddenSeries();
+    if (!hidden.delete(key)) hidden.add(key);
+    try {
+      window.localStorage.setItem("electricity-optimizer-hidden", JSON.stringify([...hidden]));
+    } catch (err) {
+      // private window or blocked storage: the choice just is not remembered
+    }
+    this._legendStamp = Date.now();
+    this._maybeRender(true);
+  }
+
+  /** One clickable legend entry: a click hides or shows that series in the chart. */
+  _legendItem(key, cls, text, color = null) {
+    const off = this._hiddenSeries().has(key);
+    return `<span class="${cls}${off ? " off" : ""}" data-legend="${esc(key)}" role="button" tabindex="0" aria-pressed="${!off}" title="Klik for at ${off ? "vise" : "skjule"}"${color ? ` style="--c:${color}"` : ""}>${esc(text)}</span>`;
+  }
+
+  static ENERGY_SERIES = [
+    { key: "solar", name: "Solceller", color: "var(--warning-color, #ffa600)", area: true },
+    { key: "house", name: "Forbrug", color: "var(--info-color, #039be5)" },
+    { key: "grid", name: "Elnet", color: "var(--error-color, #db4437)" },
+    { key: "battery", name: "Batteri", color: "#8e24aa" },
+  ];
+  static ENERGY_STEP_MS = 5 * 60000;
+
+  /** The power sensors behind the energy chart: entity, sign (+1/−1) - battery charging and grid import are positive. */
+  _energySources() {
+    const b = this._battery || {}, r = this._rules || {};
+    const src = { solar: [], house: [], grid: [], battery: [] };
+    if (this._config.solar_power_entity) src.solar.push([this._config.solar_power_entity, 1]);
+    if (b.house_power_entity) src.house.push([b.house_power_entity, 1]);
+    else if (r.house_power_entity) src.house.push([r.house_power_entity, 1]);
+    if (b.grid_power_entity) src.grid.push([b.grid_power_entity, b.grid_sign === "export_positive" ? -1 : 1]);
+    else if (r.grid_power_entity) src.grid.push([r.grid_power_entity, r.grid_sign === "export_positive" ? -1 : 1]);
+    if (b.power_entity) src.battery.push([b.power_entity, b.power_sign === "discharge_positive" ? -1 : 1]);
+    else {
+      if (b.charge_power_entity) src.battery.push([b.charge_power_entity, 1]);
+      if (b.discharge_power_entity) src.battery.push([b.discharge_power_entity, -1]);
+    }
+    return src;
+  }
+
+  /** Today's power for sun, consumption, grid and battery from Home Assistant's history, as 5-minute averages (kW). */
+  async _loadEnergyHistory() {
+    if (!this._hass || !this._hass.callWS || this._energyLoading) return;
+    const src = this._energySources();
+    const ids = [...new Set(Object.values(src).flat().map(([id]) => id))];
+    const sig = ids.join(",");
+    const now = Date.now();
+    if (!ids.length || (this._energyAt && now - this._energyAt < 2 * 60000 && this._energySig === sig)) return;
+    this._energyLoading = true;
+    try {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const res = await this._hass.callWS({
+        type: "history/history_during_period",
+        start_time: start.toISOString(),
+        end_time: new Date().toISOString(),
+        entity_ids: ids,
+        minimal_response: true,
+        no_attributes: true,
+        significant_changes_only: false,
+      });
+      const K = ElectricityOptimizerPanel;
+      const step = K.ENERGY_STEP_MS;
+      const t0 = start.getTime();
+      const n = Math.max(1, Math.ceil((now - t0) / step));
+      // the time-weighted average of a sensor (a step function) in every bucket
+      const averaged = (id) => {
+        const unit = (this._hass.states[id] || { attributes: {} }).attributes.unit_of_measurement;
+        const pts = ((res && res[id]) || [])
+          .map((row) => ({ t: Number(row.lu) * 1000, v: K._toKw(Number(row.s), unit) }))
+          .filter((p) => p.v !== null && !Number.isNaN(p.v))
+          .sort((a, b) => a.t - b.t);
+        const out = new Array(n).fill(null);
+        let k = 0, cur = null;
+        for (let i = 0; i < n; i++) {
+          const a = t0 + i * step, z = Math.min(now, a + step);
+          let sum = 0, covered = 0, t = a;
+          while (k < pts.length && pts[k].t <= a) cur = pts[k++].v;
+          while (k < pts.length && pts[k].t < z) {
+            if (cur !== null) { sum += cur * (pts[k].t - t); covered += pts[k].t - t; }
+            t = pts[k].t;
+            cur = pts[k++].v;
+          }
+          if (cur !== null && z > t) { sum += cur * (z - t); covered += z - t; }
+          out[i] = covered > 0 ? sum / covered : null;
+        }
+        return out;
+      };
+      const series = {};
+      for (const [key, list] of Object.entries(src)) {
+        if (!list.length) continue;
+        const parts = list.map(([id, sign]) => averaged(id).map((v) => (v === null ? null : v * sign)));
+        series[key] = parts[0].map((_, i) => (parts.some((p) => p[i] !== null) ? parts.reduce((a, p) => a + (p[i] || 0), 0) : null));
+      }
+      if (series.solar) series.solar = series.solar.map((v) => (v === null ? null : Math.max(0, v)));
+      // no consumption sensor: what the house uses = sun + grid − what goes into the battery
+      if (!series.house && series.grid) {
+        series.house = series.grid.map((g, i) => (g === null ? null : Math.max(0, g + ((series.solar && series.solar[i]) || 0) - ((series.battery && series.battery[i]) || 0))));
+        series.houseComputed = true;
+      }
+      this._energyHistory = { t0, step, n, series };
+      this._energyAt = now;
+      this._energySig = sig;
+      this._energyStamp = now;
+      this._maybeRender();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("electricity-optimizer: energy history failed", err);
+    } finally {
+      this._energyLoading = false;
+    }
+  }
+
+  /** The card above the price chart: sun, consumption, grid and battery today, on the price chart's time axis. */
+  _renderEnergyCard(d, size, fit) {
+    const K = ElectricityOptimizerPanel;
+    const src = this._energySources();
+    const avail = K.ENERGY_SERIES.filter((se) => src[se.key].length || (se.key === "house" && src.grid.length));
+    const legend = avail.map((se) => this._legendItem(`e:${se.key}`, "l-line", se.name, se.color)).join("");
+    let chart;
+    if (!avail.length) {
+      chart = `<div class="empty" style="padding:12px">Vælg effekt-sensorer for solceller, elnet eller husbatteri for at se grafen.</div>`;
+    } else if (!this._energyHistory || !d.all.length) {
+      chart = `<div class="empty" style="padding:12px"><ha-icon icon="mdi:timer-sand"></ha-icon>Henter historik…</div>`;
+    } else {
+      chart = `<div class="chart-wrap">${this._renderEnergyChart(d, size)}</div>`;
+    }
+    return `
+      <div class="card energy-card">
+        <h2><ha-icon icon="mdi:chart-line"></ha-icon>Energi i dag${I(
+          "Solcelleproduktion, forbrug, elnet og husbatteri i dag som gennemsnit pr. 5 minutter, fra sensorernes historik i Home Assistant. Elnet over nul = køb, under nul = salg. Batteri over nul = lader, under nul = aflader. Tidsaksen er den samme som i elprisgrafen nedenfor. Klik på en forklaring for at skjule eller vise kurven."
+        )}</h2>
+        ${chart}
+        ${avail.length ? `<div class="legend">${legend}${src.house.length || !src.grid.length ? "" : '<span class="l-note">Forbrug er beregnet: sol + net − batteri</span>'}</div>` : ""}
+      </div>`;
+  }
+
+  _renderEnergyChart(d, size) {
+    const K = ElectricityOptimizerPanel;
+    const eh = this._energyHistory;
+    const points = d.all;
+    const W = size ? size.W : Math.max(320, Math.floor(this._chartWidth || (this._contentEl && this._contentEl.clientWidth - 34) || 640));
+    const H = size ? size.H : 200;
+    const padL = 44, padR = 8, padT = 10, padB = 22;
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const t0 = points[0].time.getTime();
+    const slotMs = points.length > 1 ? points[1].time.getTime() - t0 : 3600000;
+    const tEnd = t0 + points.length * slotMs;
+    const xOf = (t) => padL + Math.min(innerW, Math.max(0, ((t - t0) / (tEnd - t0)) * innerW));
+    const hidden = this._hiddenSeries();
+    const shown = K.ENERGY_SERIES.filter((se) => eh.series[se.key] && !hidden.has(`e:${se.key}`));
+    let lo = 0, hi = 0;
+    for (const se of shown) for (const v of eh.series[se.key]) if (v !== null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    if (hi - lo < 0.5) hi = lo + 0.5;
+    const span = hi - lo;
+    // round the scale to whole kW steps
+    const stepKw = [0.5, 1, 2, 5, 10, 20, 50].find((st) => span / st <= 4) || 100;
+    lo = Math.floor(lo / stepKw) * stepKw;
+    hi = Math.ceil(hi / stepKw) * stepKw;
+    const y = (v) => padT + innerH - ((v - lo) / (hi - lo)) * innerH;
+    const grid = [];
+    for (let v = lo; v <= hi + 1e-9; v += stepKw) {
+      grid.push(`<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" opacity="${Math.abs(v) < 1e-9 ? 1 : 0.5}"/>`);
+      grid.push(`<text class="tick" x="${padL - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmtNum(v, stepKw < 1 ? 1 : 0)}</text>`);
+    }
+    grid.push(`<text class="tick" x="${padL - 6}" y="${padT - 1}" text-anchor="end">kW</text>`);
+    // hour ticks under the same hours as the price chart
+    const ticks = [];
+    const hours = (tEnd - t0) / 3600000;
+    const every = innerW / hours >= 13 ? 1 : innerW / hours >= 8 ? 2 : 3;
+    for (let t = t0; t < tEnd; t += 3600000) {
+      const hr = new Date(t).getHours();
+      if (hr % every === 0) ticks.push(`<text class="tick hour" x="${xOf(t + 1800000).toFixed(1)}" y="${H - 7}" text-anchor="middle">${pad2(hr)}</text>`);
+      if (hr === 0 && t > t0) ticks.push(`<line class="axis" x1="${xOf(t)}" x2="${xOf(t)}" y1="${padT}" y2="${padT + innerH}" stroke-dasharray="2 2"/>`);
+    }
+    const mid = (i) => eh.t0 + (i + 0.5) * eh.step;
+    const paths = shown
+      .map((se) => {
+        const vals = eh.series[se.key];
+        let dLine = "", dArea = "", run = [];
+        const flush = () => {
+          if (run.length) {
+            dLine += run.map(([x, yy], k) => `${k ? "L" : "M"}${x.toFixed(1)} ${yy.toFixed(1)}`).join("");
+            if (se.area) dArea += `M${run[0][0].toFixed(1)} ${y(0).toFixed(1)}` + run.map(([x, yy]) => `L${x.toFixed(1)} ${yy.toFixed(1)}`).join("") + `L${run[run.length - 1][0].toFixed(1)} ${y(0).toFixed(1)}Z`;
+          }
+          run = [];
+        };
+        vals.forEach((v, i) => (v === null ? flush() : run.push([xOf(mid(i)), y(v)])));
+        flush();
+        return `${se.area ? `<path class="e-area" d="${dArea}" style="fill:${se.color}"/>` : ""}<path class="e-line" d="${dLine}" style="stroke:${se.color}"/>`;
+      })
+      .join("");
+    // invisible columns carry the tooltip with every value at that time
+    const word = { grid: (v) => (v >= 0 ? `køb ${fmtNum(v, 2)}` : `salg ${fmtNum(-v, 2)}`), battery: (v) => (v >= 0 ? `lader ${fmtNum(v, 2)}` : `aflader ${fmtNum(-v, 2)}`) };
+    const colW = Math.max(1, xOf(eh.t0 + eh.step) - xOf(eh.t0));
+    const hover = [];
+    for (let i = 0; i < eh.n; i++) {
+      const lines = K.ENERGY_SERIES.filter((se) => eh.series[se.key] && eh.series[se.key][i] !== null).map((se) => {
+        const v = eh.series[se.key][i];
+        return `${se.name}: ${word[se.key] ? word[se.key](v) : fmtNum(v, 2)} kW`;
+      });
+      if (!lines.length) continue;
+      const a = new Date(eh.t0 + i * eh.step), z = new Date(eh.t0 + (i + 1) * eh.step);
+      hover.push(`<rect class="e-hit" x="${xOf(a.getTime()).toFixed(1)}" y="${padT}" width="${colW.toFixed(1)}" height="${innerH}" data-tip="${esc(`${fmtTime(a)} – ${fmtTime(z)}\n${lines.join("\n")}`)}" data-tip-follow></rect>`);
+    }
+    const nowT = Date.now();
+    const nowMark = nowT >= t0 && nowT <= tEnd ? `<line class="now-mark" x1="${xOf(nowT).toFixed(1)}" x2="${xOf(nowT).toFixed(1)}" y1="${padT}" y2="${padT + innerH}"/>` : "";
+    return `<svg class="chart energy" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+      ${grid.join("")}${ticks.join("")}${paths}${nowMark}${hover.join("")}
     </svg>`;
   }
 
@@ -3238,6 +3512,11 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const more = ev.target.closest && ev.target.closest("[data-more]");
     if (more && !ev.target.closest(".info, button, a, input, select, label")) {
       this._openMoreInfo(more.dataset.more);
+      return;
+    }
+    const leg = ev.target.closest && ev.target.closest("[data-legend]");
+    if (leg) {
+      this._toggleSeries(leg.dataset.legend);
       return;
     }
     const hrow = ev.target.closest && ev.target.closest("[data-hrow]");

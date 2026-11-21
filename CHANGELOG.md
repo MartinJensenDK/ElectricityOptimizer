@@ -2,6 +2,15 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.60.1
+
+- Alle sider: "i"-ikonet med forklaringen står nu i kortets øverste højre hjørne i stedet for lige efter overskriften.
+
+## 0.60.0
+
+- Forsiden: ny graf "Energi i dag" over elprisgrafen. Den viser solcelleproduktion, forbrug, elnet og husbatteri i dag som gennemsnit pr. 5 minutter fra sensorernes historik, på samme tidsakse som elprisgrafen. Elnet over nul = køb, under nul = salg; batteri over nul = lader, under nul = aflader. Hold musen over grafen for at se alle værdier på det tidspunkt. Uden husforbrugs-sensor beregnes forbruget som sol + net − batteri.
+- Forsiden: forklaringerne under begge grafer kan nu klikkes for at skjule eller vise den enkelte kurve eller farve (fx Dyr, I morgen, en bils ladeplan eller dagens gennemsnit). Valget huskes i browseren.
+
 ## 0.59.1
 
 - Forsiden: kolonnen til højre (Kapaciteter, Status, Solprognose og Elnet – købt og solgt) slutter nu altid i samme højde som Dyreste timer. Er der for meget indhold, gøres kolonnen en smule mindre, så den passer, i stedet for at gå længere ned.
