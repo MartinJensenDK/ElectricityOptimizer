@@ -2,6 +2,12 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.60.3
+
+- Elprisgrafen: aksen starter ikke længere ved 0, men følger dagens laveste og højeste pris, så udsvingene ses tydeligt. Ved negative priser er 0 stadig med på aksen.
+- Energi i dag: aksen følger kurverne tættere, så de fylder mere af højden.
+- Forsiden: graferne har fået mere lodret plads. Kortene om graferne og tabellerne Billigste/Dyreste timer er strammet op, linjen "Lodret streg = nu …" er flyttet ind i "i"-teksten, og teksten under Dyreste timer vises kun på smalle skærme (den står også i "i"-teksten).
+
 ## 0.60.2
 
 - Forsiden: graferne Energi i dag og Elpris er nu lige brede, så timerne står samme sted. Før blev elprisgrafen tegnet smallere, når dens forklaring fyldte to linjer.

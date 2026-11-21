@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.60.2";
+const PANEL_JS_VERSION = "0.60.3";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -477,8 +477,14 @@ const STYLE = `
   .home-left > .card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .home-left > .card .chart-wrap { flex: 1; min-height: 0; overflow: hidden; }
   .home-left > .card svg.chart { width: 100%; height: 100%; }
-  .home-left > .card .legend { margin-top: 4px; }
-  .home-left > .card h2 { margin-bottom: 2px; }
+  .home-left > .card { padding: 10px 14px 8px; }
+  .home-left > .card .legend { margin-top: 2px; row-gap: 4px; }
+  .home-left > .card h2 { margin-bottom: 2px; padding-bottom: 4px; }
+  .home-left .grid .card { padding: 10px 14px; }
+  .home-left .grid .card h2 { padding-bottom: 4px; }
+  .home-left .grid td { padding: 5px 4px; }
+  .home-left .grid th { padding: 4px; }
+  .home-left .grid .card > .sub { display: none; }
   .home-left .grid { margin-bottom: 0; flex: none; }
   .home-box .side { min-height: 0; overflow: hidden; }
   .home-box .side.scroll { overflow: auto; }
@@ -1041,7 +1047,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const lower = `
       ${this._renderEnergyCard(d, sizeE, fit)}
       <div class="card price-card">
-        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes og husbatteriets planlagte ladetimer fra nettet (også når Smart opladning/styring er slået fra). Morgendagens priser kommer ca. kl. 13.")}</h2>
+        <h2><ha-icon icon="mdi:chart-bar"></ha-icon>Elpris ${d.tomorrowValid ? "i dag og i morgen" : "i dag"}${I("Elprisen fra EnergiDataService. Farver efter dagens fordeling: billigste tredjedel grøn, dyreste tredjedel rød. Aksen starter ikke ved 0, men følger dagens laveste og højeste pris, så udsvingene ses tydeligt. Klik på en forklaring under grafen for at skjule eller vise den. Lodret streg = nu med prisen i toppen, stiplet linje = dagens gennemsnit, farvet felt med lodrette kanter = ladeperiode fra start til forventet slut, i bilens farve eller lilla for husbatteriet (ved solopladning flytter slutningen sig med solproduktion og husforbrug), farvede bjælker i bunden = elbilernes og husbatteriets planlagte ladetimer fra nettet (også når Smart opladning/styring er slået fra). Morgendagens priser kommer ca. kl. 13.")}</h2>
         <div class="chart-wrap">${this._renderChart(d, sizeP)}</div>
         <div class="legend">
           ${this._legendItem("p:low", "l-low", "Billig")}${this._legendItem("p:mid", "l-mid", "Normal")}${this._legendItem("p:high", "l-high", "Dyr")}
@@ -1053,7 +1059,6 @@ class ElectricityOptimizerPanel extends HTMLElement {
             .map((se) => this._legendItem(`p:sess:${se.name}`, "l-session", `Ladeperiode: ${se.name}`, se.color))
             .join("")}
           ${this._legendItem("p:mean", "l-mean", "Dagens gennemsnit")}
-          <span class="l-note">Lodret streg = nu · klik på en forklaring for at skjule/vise</span>
         </div>
       </div>
 
@@ -1686,15 +1691,20 @@ class ElectricityOptimizerPanel extends HTMLElement {
     if (!points.length) return "";
     const W = size ? size.W : Math.max(320, Math.floor(this._chartWidth || (this._contentEl && this._contentEl.clientWidth - 34) || 640));
     const H = size ? size.H : 250;
-    const padL = 44, padR = 8, padT = 24, padB = 28;
+    const padL = 44, padR = 8, padT = 24, padB = 20;
     const innerW = W - padL - padR;
     const innerH = H - padT - padB;
     const prices = points.map((p) => p.price);
-    const maxP = Math.max(...prices, 0);
-    const minP = Math.min(...prices, 0);
+    // the axis follows the prices instead of starting at 0, so the swings are easy to see;
+    // with negative prices 0 is kept on the axis
+    const hiPrice = Math.max(...prices), loPrice = Math.min(...prices);
+    const swing = Math.max(0.05, hiPrice - loPrice);
+    const niceStep = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5].find((st) => (swing * 1.15) / st <= 4) || 10;
+    const minP = loPrice < 0 ? loPrice - swing * 0.06 : Math.max(0, loPrice - swing * 0.15);
+    const maxP = Math.max(minP + niceStep, hiPrice + swing * 0.06, 0); // a little air over the dearest hour
     const range = maxP - minP || 1;
     const y = (v) => padT + innerH - ((v - minP) / range) * innerH;
-    const zeroY = y(0);
+    const zeroY = y(Math.max(0, minP)); // the bars grow from 0, or from the bottom when the axis starts above 0
     const bw = innerW / points.length;
     const stepMs = points.length > 1 ? Math.max(60000, points[1].time.getTime() - points[0].time.getTime()) : 3600000;
     const sortedToday = d.today.map((p) => p.price).sort((a, b) => a - b);
@@ -1744,9 +1754,8 @@ class ElectricityOptimizerPanel extends HTMLElement {
 
     // y ticks
     const yTicks = [];
-    const steps = 4;
-    for (let s = 0; s <= steps; s++) {
-      const v = minP + (range * s) / steps;
+    for (let k = Math.ceil((minP - 1e-9) / niceStep); k * niceStep <= maxP + 1e-9; k++) {
+      const v = Math.round(k * niceStep * 1000) / 1000 || 0; // no "-0,00"
       yTicks.push(`<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" opacity="0.5"/>`);
       yTicks.push(`<text class="tick" x="${padL - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmtNum(v, 2)}</text>`);
     }
@@ -2001,7 +2010,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
     const points = d.all;
     const W = size ? size.W : Math.max(320, Math.floor(this._chartWidth || (this._contentEl && this._contentEl.clientWidth - 34) || 640));
     const H = size ? size.H : 200;
-    const padL = 44, padR = 8, padT = 10, padB = 22;
+    const padL = 44, padR = 8, padT = 6, padB = 20;
     const innerW = W - padL - padR, innerH = H - padT - padB;
     const t0 = points[0].time.getTime();
     const slotMs = points.length > 1 ? points[1].time.getTime() - t0 : 3600000;
@@ -2013,17 +2022,17 @@ class ElectricityOptimizerPanel extends HTMLElement {
     for (const se of shown) for (const v of eh.series[se.key]) if (v !== null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     if (hi - lo < 0.5) hi = lo + 0.5;
     const span = hi - lo;
-    // round the scale to whole kW steps
-    const stepKw = [0.5, 1, 2, 5, 10, 20, 50].find((st) => span / st <= 4) || 100;
-    lo = Math.floor(lo / stepKw) * stepKw;
-    hi = Math.ceil(hi / stepKw) * stepKw;
+    // the curves fill the height: the axis is the data's range plus a little air, ticks at a round step inside it
+    const stepKw = [0.5, 1, 2, 2.5, 5, 10, 20, 50].find((st) => span / st <= 4) || 100;
+    lo -= lo < 0 ? span * 0.04 : 0;
+    hi += span * 0.06;
     const y = (v) => padT + innerH - ((v - lo) / (hi - lo)) * innerH;
     const grid = [];
-    for (let v = lo; v <= hi + 1e-9; v += stepKw) {
+    for (let v = Math.ceil(lo / stepKw) * stepKw; v <= hi + 1e-9; v += stepKw) {
       grid.push(`<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" opacity="${Math.abs(v) < 1e-9 ? 1 : 0.5}"/>`);
       grid.push(`<text class="tick" x="${padL - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmtNum(v, stepKw < 1 ? 1 : 0)}</text>`);
     }
-    grid.push(`<text class="tick" x="2" y="${(y(hi) + 3).toFixed(1)}">kW</text>`);
+    grid.push(`<text class="tick" x="2" y="${(padT + 8).toFixed(1)}">kW</text>`);
     // hour ticks under the same hours as the price chart
     const ticks = [];
     const hours = (tEnd - t0) / 3600000;
