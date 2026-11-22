@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -10,6 +11,9 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import COMMAND_DOMAINS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+# a charger or inverter cloud that does not answer must not hold up the next evaluation for ever
+COMMAND_TIMEOUT_S = 30
 
 SWITCH_ON_VALUES = ("on", "tænd", "true", "1")
 SWITCH_OFF_VALUES = ("off", "sluk", "false", "0")
@@ -41,7 +45,8 @@ async def async_run_command(
         if demo is not None and demo.owns(entity_id):
             demo.handle_command(service, data)  # demo mode: the simulator plays the charger and the inverter
         else:
-            await hass.services.async_call(service.split(".", 1)[0], service.split(".", 1)[1], data, blocking=True)
+            async with asyncio.timeout(COMMAND_TIMEOUT_S):
+                await hass.services.async_call(service.split(".", 1)[0], service.split(".", 1)[1], data, blocking=True)
     except Exception as err:
         _record(hass, who, action, entity_id, value, ok=False, error=str(err) or type(err).__name__, reason=reason)
         if isinstance(err, HomeAssistantError):

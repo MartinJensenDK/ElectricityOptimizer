@@ -1105,3 +1105,32 @@ async def test_grid_money_reaches_the_panel(hass: HomeAssistant, hass_ws_client,
     today = res["context"]["grid_money"]["today"]
     assert today["imp_kwh"] == 1.0 and today["imp_kr"] > 0
     assert today["exp_kwh"] == 2.0 and today["exp_kr"] == 1.2  # 60 øre/kWh
+
+
+async def test_overlapping_evaluations_send_one_stop(hass: HomeAssistant, hass_ws_client) -> None:
+    """Several evaluations at once (many sensors changing together) must not send the same stop several times."""
+    import asyncio
+
+    _set_prices(hass)
+    hass.states.async_set("sensor.car_soc", "50")
+    hass.states.async_set("sensor.charger_status", "connected_charging")
+    calls: list[str] = []
+
+    async def _slow(call) -> None:  # a cloud charger that takes a moment to answer
+        calls.append(call.service)
+        await asyncio.sleep(0.05)
+
+    hass.services.async_register("switch", "turn_on", _slow)
+    hass.services.async_register("switch", "turn_off", _slow)
+    async_mock_service(hass, "number", "set_value")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "plugged_entity": "sensor.charger_status"}})
+    res = await _ws(hass, client, 2, {"type": f"{DOMAIN}/cars/save", "car": {"id": res["car"]["id"], "charge_now": True}})
+    assert res["car"]["runtime"]["charging"] and calls[-1] == "turn_on"
+
+    calls.clear()
+    hass.states.async_set("sensor.charger_status", "disconnected")
+    optimizer = hass.data[DOMAIN]["optimizer"]
+    await asyncio.gather(*(optimizer.async_evaluate() for _ in range(6)))
+    assert calls == ["turn_off"]  # one stop, not six

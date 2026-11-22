@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -40,6 +41,9 @@ class Optimizer:
         self.state = None  # RuntimeStateStore, set by __init__
         self._cost_saved_at: datetime | None = None
         self._startup_hold_until: datetime | None = None
+        # one evaluation at a time: two that overlap both see a charge that is still running before the
+        # first one's stop command has finished, and both send it (seen as six stops within two seconds)
+        self._eval_lock = asyncio.Lock()
 
     def hold_for_startup(self) -> None:
         """Home Assistant is starting: wait for the sensors before deciding anything.
@@ -181,6 +185,10 @@ class Optimizer:
         )
 
     async def async_evaluate(self) -> None:
+        async with self._eval_lock:
+            await self._async_evaluate()
+
+    async def _async_evaluate(self) -> None:
         if self._held_at_startup():
             return
         ctx = self.build_context()

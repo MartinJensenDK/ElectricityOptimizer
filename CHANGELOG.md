@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.60.4
+
+- Rettet: når mange sensorer skiftede på én gang (fx når laderen kortvarigt var utilgængelig), kunne flere vurderinger køre samtidig og sende den samme start- eller stop-kommando flere gange inden for få sekunder. Nu kører kun én vurdering ad gangen.
+- En kommando til en lader eller inverter, der ikke svarer inden for 30 sekunder, regnes nu som fejlet i stedet for at vente for evigt.
+
 ## 0.60.3
 
 - Elprisgrafen: aksen starter ikke længere ved 0, men følger dagens laveste og højeste pris, så udsvingene ses tydeligt. Ved negative priser er 0 stadig med på aksen.
