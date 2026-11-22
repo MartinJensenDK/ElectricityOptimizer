@@ -11,6 +11,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, GRID_VOLTAGE, STORAGE_VERSION
+from .ev_controller import EvController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,6 +160,15 @@ class HistoryTracker:
                 if mean is not None:
                     session["saved"] += kwh * (mean - price)  # vs. charging at today's average price
 
+    @staticmethod
+    def _ev_why(rt: dict[str, Any]) -> str | None:
+        """What started a car's charging period, in the words of the command log."""
+        status = rt.get("status")
+        if not status:
+            return None
+        text = EvController.REASON_TEXT.get(status, status)
+        return f"{text} · {rt['why']}" if rt.get("why") else text
+
     def update(self, ctx: Any, cars: list[dict[str, Any]], car_runtime: dict[str, dict[str, Any]], battery_cfg: dict[str, Any] | None, battery_runtime: dict[str, Any]) -> None:
         now = ctx.now
         seen: set[str] = set()
@@ -170,7 +180,7 @@ class HistoryTracker:
                 car_w = rt.get("car_w")
                 amps = rt.get("amps") or car["max_amps"]
                 power_w = car_w if car_w is not None else amps * GRID_VOLTAGE * car["phases"]
-                self._touch(key, ctx, kind="ev", item_id=car["id"], name=car["name"], source=rt["mode"], power_w=power_w, soc=rt.get("soc"))
+                self._touch(key, ctx, kind="ev", item_id=car["id"], name=car["name"], source=rt["mode"], power_w=power_w, soc=rt.get("soc"), why=self._ev_why(rt))
         if battery_cfg is not None and battery_runtime.get("mode") == "charge":
             seen.add("battery")
             power_w = ctx.battery_w if ctx.battery_w and ctx.battery_w > 0 else battery_cfg["max_charge_kw"] * 1000

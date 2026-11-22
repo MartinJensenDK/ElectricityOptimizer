@@ -608,6 +608,7 @@ class EvController:
             # (Zaptec: authorize) would only be rejected - keep the session and just update the current limit
             self._force_send.discard(cid)
         starting = desired and not self._last_cmd.get(cid)
+        rt["why"] = self._why(ctx, car, rt, plan, soc, amps if desired else None)
         reason = self._reason(rt)
         if desired and not (mode == "solar" and starting):
             # solar: the start command goes alone; the current limit follows after the chosen interval
@@ -860,12 +861,71 @@ class EvController:
 
     @classmethod
     def _reason(cls, rt: dict[str, Any]) -> str:
-        """Why a command is sent right now, in the words the panel uses."""
+        """Why a command is sent right now, in the words the panel uses, followed by the numbers behind it."""
         status = rt.get("status") or ""
         text = cls.REASON_TEXT.get(status, status)
-        if status in ("solar", "solar_min", "solar_wait") and rt.get("surplus_w") is not None:
+        if status in ("solar", "solar_min", "solar_wait") and rt.get("surplus_w") is not None and not rt.get("why"):
             text += f" {round(rt['surplus_w'])} W"
-        return text
+        return f"{text} – {rt['why']}" if rt.get("why") else text
+
+    def _why(self, ctx: Context, car: dict[str, Any], rt: dict[str, Any], plan: dict[str, Any] | None, soc: float, amps: int | None) -> str:
+        """The numbers a decision was made on, as one line (parts separated by " · ") for the Historik page."""
+
+        def kr(v: float | None) -> str:
+            return "?" if v is None else f"{v:.2f}".replace(".", ",")
+
+        def num(v: float | None, unit: str) -> str:
+            return "?" if v is None else f"{round(v)} {unit}"
+
+        def hhmm(iso: str | None) -> str:
+            return datetime.fromisoformat(iso).strftime("%H:%M") if iso else "?"
+
+        status = rt.get("status") or ""
+        rules = ctx.rules
+        price = plan["current_price"] if plan else None
+        target = rt.get("target_soc", car["target_soc"])
+        parts: list[str] = []
+        if status == "below_limit":
+            parts.append(f"pris nu {kr(price)} kr er ikke over bilens prisgrænse {kr(car['price_limit'])} kr")
+        elif status == "charging" and plan:
+            parts.append(f"denne time ({kr(price)} kr) er blandt de billigste, der skal bruges for at nå {target} % inden kl. {hhmm(plan.get('deadline'))}")
+            parts.append(f"mangler {plan['need_kwh']:.1f} kWh ≈ {plan['need_hours']:.1f} t".replace(".", ","))
+        elif status == "charge_now":
+            parts.append("Lad nu er trykket på bilens kort")
+        elif status in ("solar", "solar_min", "solar_wait"):
+            need = car["min_amps"] * GRID_VOLTAGE * car["phases"]
+            parts.append(f"sol-overskud {num(rt.get('surplus_w'), 'W')}, min. ladestrøm kræver {need} W")
+            if rt.get("battery_discharge_w"):
+                parts.append(f"husbatteriet aflader {rt['battery_discharge_w']} W (trukket fra)")
+            if status == "solar_min":
+                parts.append(f"husbatteriet har forrang op til {rules['solar_priority_over']} %")
+        elif status == "solar_low":
+            parts.append(f"solproduktion {num(rt.get('solar_w'), 'W')} er under grænsen {num(rules.get('solar_min_w'), 'W')} i {rules['solar_min_minutes']} min")
+        elif status == "battery_first":
+            bat = ctx.battery_soc
+            parts.append(f"husbatteriet er på {num(bat, '%')} og har forrang op til {rules['solar_priority_over']} %")
+        elif status == "done":
+            parts.append(f"SoC {num(soc, '%')} har nået målet {target} %")
+        elif status in ("not_plugged", "plug_unknown"):
+            st = self.hass.states.get(car.get("plugged_entity") or "")
+            if st is not None:
+                parts.append(f"{car['plugged_entity']} = {st.state}")
+        elif status == "disabled":
+            parts.append("Smart opladning er slået fra på bilens kort")
+        elif status == "fuse_wait":
+            parts.append(f"hovedsikring {rules.get('max_total_amps')} A, allerede brugt {round(ctx.ev_amps_total)} A")
+        elif status == "waiting" and plan:
+            if plan.get("next_start"):
+                parts.append(f"næste planlagte time kl. {hhmm(plan['next_start'])}")
+            if car["price_limit"] is not None and price is not None:
+                parts.append(f"pris nu {kr(price)} kr er over prisgrænsen {kr(car['price_limit'])} kr")
+        if status not in ("done",):
+            parts.append(f"SoC {num(soc, '%')} → mål {target} %")
+        if price is not None and status not in ("below_limit", "charging", "waiting"):
+            parts.append(f"pris nu {kr(price)} kr")
+        if amps is not None:
+            parts.append(f"ladestrøm {amps} A")
+        return " · ".join(parts)
 
     async def _apply_amps(self, ctx: Context, car: dict[str, Any], amps: int, *, rate_limited: bool = False, reason: str = "") -> None:
         """Push the current limit to the charger (only on change; solar modulation is rate limited)."""

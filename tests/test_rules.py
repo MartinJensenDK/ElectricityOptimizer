@@ -1134,3 +1134,24 @@ async def test_overlapping_evaluations_send_one_stop(hass: HomeAssistant, hass_w
     optimizer = hass.data[DOMAIN]["optimizer"]
     await asyncio.gather(*(optimizer.async_evaluate() for _ in range(6)))
     assert calls == ["turn_off"]  # one stop, not six
+
+
+async def test_history_shows_why_a_car_started(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    """The command log and the charge period say why the car started, with the numbers behind it."""
+    _set_prices(hass, default=2.5)
+    hass.states.async_set("sensor.car_soc", "59")
+    async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+    await _setup(hass)
+    client = await hass_ws_client(hass)
+    res = await _ws(hass, client, 1, {"type": f"{DOMAIN}/cars/save", "car": {**CAR, "source": "solar_plan", "price_limit": 2.5, "target_soc": 70}})
+    assert res["car"]["runtime"]["status"] == "below_limit"
+    freezer.tick(60)
+    await hass.data[DOMAIN]["optimizer"].async_evaluate()
+    hist = await _ws(hass, client, 2, {"type": f"{DOMAIN}/history/list"})
+    start = next(c for c in hist["commands"] if c["action"] == "start")
+    assert start["reason"].startswith("Prisen er under prisgrænsen – pris nu 2,50 kr er ikke over bilens prisgrænse 2,50 kr")
+    assert "SoC 59 % → mål 70 %" in start["reason"] and "ladestrøm 16 A" in start["reason"]
+    period = hist["open"][0]
+    assert period["why"].startswith("Prisen er under prisgrænsen · pris nu 2,50 kr")

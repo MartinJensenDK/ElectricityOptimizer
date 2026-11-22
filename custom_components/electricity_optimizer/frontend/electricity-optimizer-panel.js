@@ -5,7 +5,7 @@
  * EV charging and house battery settings.
  */
 
-const PANEL_JS_VERSION = "0.60.4";
+const PANEL_JS_VERSION = "0.61.0";
 
 // 24-hour time text field (native <input type=time> follows the browser locale and may show AM/PM).
 const timeInput = (attrs, value) =>
@@ -180,6 +180,7 @@ const STYLE = `
   .batt .reserve { stroke: var(--secondary-text-color); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.8; }
   .batt .bv { font-size: 26px; font-weight: 500; fill: var(--primary-text-color); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 4px; stroke-linejoin: round; }
   .batt .bu { font-size: 12px; font-weight: 400; }
+  table.history td.reason { max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cmdlog td.reason { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
   .batt .bolt { fill: var(--primary-text-color); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 2px; }
   .badge {
@@ -3728,6 +3729,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
           <td class="num">${avg === null ? "–" : fmtNum(avg, 2)}</td>
           <td class="num">${fmtNum(e.saved || 0, 2)}</td>
           <td class="num">${soc}</td>
+          <td class="reason"${e.why ? ` data-tip="${esc(e.why.split(" · ").join("\n"))}"` : ""}>${esc(e.why ? e.why.split(" · ")[0] : "–")}</td>
         </tr>`;
       })
       .join("");
@@ -3740,7 +3742,7 @@ class ElectricityOptimizerPanel extends HTMLElement {
         ${
           all.length
             ? `<div class="chart-wrap"><table class="history">
-          <thead><tr><th>Start</th><th>Slut</th><th>Hvad</th><th>Kilde</th><th style="text-align:right">kWh</th><th style="text-align:right">Betalt kr</th><th style="text-align:right">Gns. kr/kWh</th><th style="text-align:right">Sparet kr</th><th style="text-align:right">SoC</th></tr></thead>
+          <thead><tr><th>Start</th><th>Slut</th><th>Hvad</th><th>Kilde</th><th style="text-align:right">kWh</th><th style="text-align:right">Betalt kr</th><th style="text-align:right">Gns. kr/kWh</th><th style="text-align:right">Sparet kr</th><th style="text-align:right">SoC</th><th>Årsag</th></tr></thead>
           <tbody>${rows}</tbody></table></div>`
             : `<div class="empty"><ha-icon icon="mdi:battery-clock"></ha-icon>Ingen ladeperioder endnu. De dukker op her, når en bil eller husbatteriet har ladet.</div>`
         }

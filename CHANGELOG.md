@@ -2,6 +2,11 @@
 
 Alle ændringer i Electricity Optimizer. Afsnittet for en version bruges som release notes på GitHub og vises i HACS, når du opdaterer.
 
+## 0.61.0
+
+- Historik-siden: hver elbil-kommando gemmer nu tallene bag beslutningen sammen med årsagen, fx "Prisen er under prisgrænsen – pris nu 2,50 kr er ikke over bilens prisgrænse 2,50 kr · SoC 59 % → mål 70 % · ladestrøm 16 A". For sol-opladning står overskud, solproduktion og husbatteri; for et stop fx tilsluttet-sensorens værdi. Klik på en linje for at se årsagen punkt for punkt.
+- Ladeperioder har fået kolonnen Årsag, der viser, hvad der startede perioden – også for elbiler. Hold musen over for hele teksten, eller klik på linjen.
+
 ## 0.60.4
 
 - Rettet: når mange sensorer skiftede på én gang (fx når laderen kortvarigt var utilgængelig), kunne flere vurderinger køre samtidig og sende den samme start- eller stop-kommando flere gange inden for få sekunder. Nu kører kun én vurdering ad gangen.
